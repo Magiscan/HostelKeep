@@ -1,20 +1,113 @@
+import 'react-native-get-random-values';
+import 'react-native-gesture-handler';
+import { Buffer } from 'buffer';
+import './src/i18n';   
+import { I18nextProvider } from 'react-i18next';
+import i18n from './src/i18n';  
+global.Buffer = Buffer;
+
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
+import {
+  useFonts,
+  Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
+} from '@expo-google-fonts/inter';
+
+import { AuthProvider, useAuth } from './src/contexts/AuthContext';
+import { AppProvider, useApp } from './src/contexts/AppContext';
+import LoginScreen from './src/screens/LoginScreen';
+import CreateHostelScreen from './src/screens/CreateHostelScreen';
+import ManagerApp from './src/screens/manager/ManagerApp';
+import CleanerScreen from './src/screens/CleanerScreen';
+import { COLORS } from './src/theme';
+
+SplashScreen.preventAutoHideAsync();
+
+const NavTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    primary: COLORS.primary,
+    background: COLORS.background,
+    card: COLORS.surface,
+    text: COLORS.text,
+    border: COLORS.border,
+  },
+};
+
+const Stack = createNativeStackNavigator();
+
+function AuthStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="CreateHostel" component={CreateHostelScreen} />
+    </Stack.Navigator>
+  );
+}
+
+function RootNavigator() {
+  const { user, loading } = useAuth();
+  const { loaded } = useApp();
+
+  if (!loaded || loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  if (!user) return <AuthStack />;
+  if (user.role === 'manager') return <ManagerApp />;
+  return <CleanerScreen />;
+}
 
 export default function App() {
+  const [appIsReady, setAppIsReady] = useState(false);
+  const [fontsLoaded, fontError] = useFonts({
+    Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
+  });
+
+  useEffect(() => {
+    if (fontsLoaded || fontError) setAppIsReady(true);
+    else {
+      const timer = setTimeout(() => setAppIsReady(true), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [fontsLoaded, fontError]);
+
+  const onLayoutRootView = useCallback(async () => {
+    if (appIsReady) await SplashScreen.hideAsync();
+  }, [appIsReady]);
+
+  if (!appIsReady) return null;
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.js to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <GestureHandlerRootView style={styles.flex}>
+      <SafeAreaProvider onLayout={onLayoutRootView}>
+        <StatusBar style="auto" translucent backgroundColor="transparent" />
+        <I18nextProvider i18n={i18n}>
+          <AuthProvider>
+            <AppProvider>
+              <NavigationContainer theme={NavTheme}>
+                <RootNavigator />
+              </NavigationContainer>
+            </AppProvider>
+          </AuthProvider>
+        </I18nextProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  flex: { flex: 1 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
 });

@@ -1,29 +1,63 @@
 {
   "expo": {
-    "name": "KeepCleanBlank",
+    "version": "1.0.5",
+    "name": "KeepClean",
     "slug": "KeepCleanBlank",
-    "version": "1.0.0",
     "orientation": "portrait",
+
     "icon": "./assets/icon.png",
+
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.keepclean"
     },
+
     "android": {
+      "versionCode": 5,
+      "package": "com.keepclean",
+      "permissions": [],
+
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "monochromeImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#2563EB"
       },
-      "edgeToEdgeEnabled": true
+
+      "edgeToEdgeEnabled": true,
+
+      "softwareKeyboardLayoutMode": "pan"
     },
+
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+
+    "plugins": [
+      "expo-secure-store",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200
+        }
+      ]
+    ],
+
+    "extra": {
+      "eas": {
+        "projectId": "f9873d21-3fa5-4cc1-b18c-d6c6f846511d"
+      }
     }
   }
 }
