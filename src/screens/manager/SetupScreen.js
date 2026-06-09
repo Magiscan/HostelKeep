@@ -226,9 +226,10 @@ function RoomFormModal({ visible, floors, room, onSave, onCancel, roomAttributes
   );
 }
 
-// ─── Room Attributes Management Modal (unchanged) ───────────────
-function AttributesModal({ visible, attributes, onSave, onClose }) {
+// ─── Attributes Management Modal (now checks usage) ─────────────
+function AttributesModal({ visible, attributes, rooms, onSave, onClose }) {
   const [newAttr, setNewAttr] = useState('');
+  const [cannotRemove, setCannotRemove] = useState(null); // stores the name that can't be removed
 
   const addAttr = () => {
     if (!newAttr.trim()) return;
@@ -237,6 +238,12 @@ function AttributesModal({ visible, attributes, onSave, onClose }) {
   };
 
   const removeAttr = (index) => {
+    const attrName = attributes[index];
+    const isUsed = rooms.some(room => room.attributes && room.attributes[attrName] === true);
+    if (isUsed) {
+      setCannotRemove(attrName);
+      return;
+    }
     const updated = attributes.filter((_, i) => i !== index);
     onSave(updated);
   };
@@ -291,6 +298,24 @@ function AttributesModal({ visible, attributes, onSave, onClose }) {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Cannot remove modal */}
+      <Modal visible={!!cannotRemove} transparent animationType="fade">
+        <Pressable style={styles.modalBackdrop} onPress={() => setCannotRemove(null)}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Cannot remove</Text>
+            <Text style={styles.modalMessage}>
+              The attribute "{cannotRemove}" is still used by at least one room.
+            </Text>
+            <TouchableOpacity
+              onPress={() => setCannotRemove(null)}
+              style={[styles.modalBtn, { backgroundColor: COLORS.primary }]}
+            >
+              <Text style={[styles.modalBtnText, { color: COLORS.white }]}>OK</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </Modal>
   );
 }
@@ -460,8 +485,20 @@ function ConfirmModal({ visible, title, message, onConfirm, onCancel }) {
           <Text style={styles.modalTitle}>{title}</Text>
           <Text style={styles.modalMessage}>{message}</Text>
           <View style={styles.modalActions}>
-            <Button title="Cancel" variant="secondary" onPress={onCancel} style={{ flex: 1 }} />
-            <Button title="Delete" variant="danger" onPress={onConfirm} style={{ flex: 1 }} />
+            {/* Cancel – system font always visible */}
+            <TouchableOpacity
+              onPress={onCancel}
+              style={[styles.modalBtn, styles.modalBtnCancel]}
+            >
+              <Text style={styles.modalBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            {/* Delete – system font always visible */}
+            <TouchableOpacity
+              onPress={onConfirm}
+              style={[styles.modalBtn, { backgroundColor: COLORS.danger }]}
+            >
+              <Text style={[styles.modalBtnText, { color: COLORS.white }]}>Delete</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -686,6 +723,7 @@ export default function SetupScreen() {
         <AttributesModal
           visible={showAttrModal}
           attributes={roomAttributes}
+          rooms={rooms}
           onSave={updateRoomAttributes}
           onClose={() => setShowAttrModal(false)}
         />
