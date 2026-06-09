@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { COLORS, RADIUS, FONTS, FONT_SIZE, SPACING, SHADOW } from '../../theme';
 import { Avatar, Button } from '../../components/UI';
 import DashboardScreen from './DashboardScreen';
@@ -13,21 +14,38 @@ import AssignScreen from './AssignScreen';
 import { useAuth } from '../../contexts/AuthContext';
 import { useApp } from '../../contexts/AppContext';
 
-const TABS = [
-  { key: 'dashboard', label: 'Dashboard', icon: 'grid-outline', iconActive: 'grid' },
-  { key: 'setup',     label: 'Setup',     icon: 'construct-outline', iconActive: 'construct' },
-  { key: 'team',      label: 'Team',      icon: 'people-outline', iconActive: 'people' },
-  { key: 'assign',    label: 'Assign',    icon: 'swap-horizontal-outline', iconActive: 'swap-horizontal' },
+const LANGS = [
+  { code: 'en', label: 'English' },
+  { code: 'it', label: 'Italiano' },
+  { code: 'es', label: 'Español' },
 ];
 
 export default function ManagerApp() {
+  const { t, i18n } = useTranslation();
   const { user, logout } = useAuth();
   const { hostel, updateHostel, hostelCode } = useApp();
   const [tab, setTab] = useState('dashboard');
+
+  // Dynamic tab list with translated labels
+  const TABS = useMemo(() => [
+    { key: 'dashboard', label: t('manager.tabDashboard'), icon: 'grid-outline', iconActive: 'grid' },
+    { key: 'setup',     label: t('manager.tabSetup'),     icon: 'construct-outline', iconActive: 'construct' },
+    { key: 'team',      label: t('manager.tabTeam'),      icon: 'people-outline', iconActive: 'people' },
+    { key: 'assign',    label: t('manager.tabAssign'),    icon: 'swap-horizontal-outline', iconActive: 'swap-horizontal' },
+  ], [t]);
+
+  // Edit hostel name modal
   const [editVisible, setEditVisible] = useState(false);
   const [newName, setNewName] = useState(hostel.name || '');
+
+  // Hostel code modal
   const [showCodeModal, setShowCodeModal] = useState(false);
+
+  // User menu modal
   const [showUserMenu, setShowUserMenu] = useState(false);
+
+  // Language menu modal
+  const [showLangMenu, setShowLangMenu] = useState(false);
 
   const saveName = () => {
     if (newName.trim()) updateHostel({ name: newName.trim() });
@@ -44,7 +62,7 @@ export default function ManagerApp() {
       {/* ── Header ── */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.logo}>KeepClean</Text>
+          <Text style={styles.logo}>{t('appName')}</Text>
           {hostel.name ? (
             <TouchableOpacity onPress={openEdit} activeOpacity={0.7}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -56,9 +74,17 @@ export default function ManagerApp() {
         </View>
 
         <View style={styles.headerRight}>
+          {/* Language switcher */}
+          <TouchableOpacity onPress={() => setShowLangMenu(true)} style={styles.iconBtn}>
+            <Ionicons name="globe-outline" size={22} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+
+          {/* Hostel code */}
           <TouchableOpacity onPress={() => setShowCodeModal(true)} style={styles.codeBtn} activeOpacity={0.7}>
             <Ionicons name="key-outline" size={20} color={COLORS.primary} />
           </TouchableOpacity>
+
+          {/* Avatar */}
           <TouchableOpacity onPress={() => setShowUserMenu(true)} activeOpacity={0.7}>
             <Avatar name={user.username} />
           </TouchableOpacity>
@@ -75,12 +101,23 @@ export default function ManagerApp() {
 
       {/* ── Bottom Tabs ── */}
       <View style={styles.tabBar}>
-        {TABS.map(t => {
-          const isActive = tab === t.key;
+        {TABS.map(tabItem => {
+          const isActive = tab === tabItem.key;
           return (
-            <TouchableOpacity key={t.key} style={styles.tabItem} onPress={() => setTab(t.key)} activeOpacity={0.75}>
-              <Ionicons name={isActive ? t.iconActive : t.icon} size={22} color={isActive ? COLORS.primary : COLORS.textMuted} />
-              <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>{t.label}</Text>
+            <TouchableOpacity
+              key={tabItem.key}
+              style={styles.tabItem}
+              onPress={() => setTab(tabItem.key)}
+              activeOpacity={0.75}
+            >
+              <Ionicons
+                name={isActive ? tabItem.iconActive : tabItem.icon}
+                size={22}
+                color={isActive ? COLORS.primary : COLORS.textMuted}
+              />
+              <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+                {tabItem.label}
+              </Text>
             </TouchableOpacity>
           );
         })}
@@ -90,41 +127,30 @@ export default function ManagerApp() {
       <Modal visible={editVisible} transparent animationType="fade" onRequestClose={() => setEditVisible(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Edit property name</Text>
+            <Text style={styles.modalTitle}>{t('manager.editPropertyName')}</Text>
             <TextInput
               style={styles.modalInput}
               value={newName}
               onChangeText={setNewName}
-              placeholder="Property name"
+              placeholder={t('manager.propertyNamePlaceholder')}
               autoCapitalize="words"
               placeholderTextColor={COLORS.textMuted}
             />
             <View style={{ flexDirection: 'row', gap: SPACING[2], marginTop: SPACING[4] }}>
-              <TouchableOpacity
-                onPress={() => setEditVisible(false)}
-                style={[styles.modalBtn, styles.modalBtnCancel]}
-              >
-                <Text style={styles.modalBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={saveName}
-                style={[styles.modalBtn, styles.modalBtnPrimary]}
-                disabled={!newName.trim()}
-              >
-                <Text style={[styles.modalBtnText, { color: COLORS.white }]}>Save</Text>
-              </TouchableOpacity>
+              <Button title={t('cancel')} variant="secondary" onPress={() => setEditVisible(false)} style={{ flex: 1 }} />
+              <Button title={t('save')} onPress={saveName} style={{ flex: 1 }} disabled={!newName.trim()} />
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* ── Hostel Code Modal (buttons fixed) ── */}
+      {/* ── Hostel Code Modal ── */}
       <Modal visible={showCodeModal} transparent animationType="fade" onRequestClose={() => setShowCodeModal(false)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Your Hostel Code</Text>
+            <Text style={styles.modalTitle}>{t('manager.yourHostelCode')}</Text>
             <Text style={styles.codeText}>{hostel.code || hostelCode || 'N/A'}</Text>
-            <Text style={styles.codeHint}>Share this code with your cleaners so they can log in.</Text>
+            <Text style={styles.codeHint}>{t('manager.hostelCodeHint')}</Text>
             <TouchableOpacity
               onPress={() => setShowCodeModal(false)}
               style={{
@@ -137,30 +163,63 @@ export default function ManagerApp() {
               }}
             >
               <Text style={{ fontFamily: 'System', fontWeight: '600', fontSize: 16, color: COLORS.white }}>
-                Close
+                {t('close')}
               </Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* ── User Menu Modal ── */}
+      {/* ── User Menu Modal (sign out) ── */}
       <Modal visible={showUserMenu} transparent animationType="fade" onRequestClose={() => setShowUserMenu(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setShowUserMenu(false)}>
-          <Pressable style={styles.menuCard}>
+          <View style={styles.menuCard}>
             <Text style={styles.menuTitle}>{user.username}</Text>
             <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: SPACING[2] }} />
             <TouchableOpacity
               style={styles.menuItem}
-              onPress={() => {
-                setShowUserMenu(false);
-                logout();
-              }}
+              onPress={() => { setShowUserMenu(false); logout(); }}
+              activeOpacity={0.7}
             >
-              <Ionicons name="log-out-outline" size={18} color={COLORS.danger} />
-              <Text style={styles.menuItemText}>Sign out</Text>
+              <Ionicons name="log-out-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[2] }} />
+              <Text style={[styles.menuItemText, { color: COLORS.danger }]}>{t('signOut')}</Text>
             </TouchableOpacity>
-          </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* ── Language Menu Modal ── */}
+      <Modal visible={showLangMenu} transparent animationType="fade" onRequestClose={() => setShowLangMenu(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowLangMenu(false)}>
+          <View style={styles.menuCard}>
+            <Text style={styles.menuTitle}>{t('manager.language')}</Text>
+            <View style={{ gap: SPACING[2] }}>
+              {LANGS.map(lang => (
+                <TouchableOpacity
+                  key={lang.code}
+                  style={[styles.menuItem, i18n.language === lang.code && styles.menuItemActive]}
+                  onPress={() => { i18n.changeLanguage(lang.code); setShowLangMenu(false); }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.menuItemText, i18n.language === lang.code && styles.menuItemTextActive]}>
+                    {lang.label}
+                  </Text>
+                  {i18n.language === lang.code && (
+                    <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: SPACING[2] }} />
+            <TouchableOpacity
+              onPress={() => setShowLangMenu(false)}
+              style={[styles.menuItem, { justifyContent: 'center' }]}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close-circle-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[1] }} />
+              <Text style={[styles.menuItemText, { color: COLORS.danger }]}>{t('close')}</Text>
+            </TouchableOpacity>
+          </View>
         </Pressable>
       </Modal>
     </SafeAreaView>
@@ -178,6 +237,7 @@ const styles = StyleSheet.create({
   logo: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.primary, letterSpacing: -0.3 },
   hostelName: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.textSecondary },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: SPACING[2] },
+  iconBtn: { padding: 6 },
   codeBtn: { padding: 6, borderRadius: RADIUS.sm, backgroundColor: COLORS.primaryLight },
   content: { flex: 1 },
   tabBar: {
@@ -197,33 +257,40 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border,
     paddingHorizontal: SPACING[3], paddingVertical: SPACING[3],
   },
-  modalBtn: {
-    flex: 1,
-    paddingVertical: SPACING[3],
-    borderRadius: RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  modalBtnCancel: {
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.border,
-  },
-  modalBtnPrimary: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  modalBtnText: {
-    fontFamily: 'System',
-    fontWeight: '600',
-    fontSize: 16,
-    color: COLORS.primary,
-  },
   codeText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xxxl, color: COLORS.primary, textAlign: 'center', marginBottom: SPACING[2] },
   codeHint: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, textAlign: 'center' },
-  // User menu
-  menuCard: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING[4], width: 200, ...SHADOW.md },
-  menuTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.lg, color: COLORS.text, marginBottom: SPACING[1] },
-  menuItem: { flexDirection: 'row', alignItems: 'center', gap: SPACING[2], paddingVertical: SPACING[2] },
-  menuItemText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.danger },
+  // Menus
+  menuCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING[4],
+    width: 240,
+    ...SHADOW.md,
+  },
+  menuTitle: {
+    fontFamily: FONTS.bold,
+    fontSize: FONT_SIZE.lg,
+    color: COLORS.text,
+    marginBottom: SPACING[3],
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING[2],
+    paddingVertical: SPACING[3],
+    paddingHorizontal: SPACING[3],
+    borderRadius: RADIUS.md,
+  },
+  menuItemActive: {
+    backgroundColor: COLORS.primaryLight,
+  },
+  menuItemText: {
+    fontFamily: FONTS.medium,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.text,
+  },
+  menuItemTextActive: {
+    color: COLORS.primary,
+    fontFamily: FONTS.bold,
+  },
 });

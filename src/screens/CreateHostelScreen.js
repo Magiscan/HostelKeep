@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
-  View, Text, StyleSheet, KeyboardAvoidingView,
-  Platform, ScrollView, ActivityIndicator,
+  View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, RADIUS, SHADOW, FONTS, FONT_SIZE, SPACING } from '../theme';
@@ -12,14 +12,14 @@ import { db } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 
 export default function CreateHostelScreen() {
-  const { registerManager, logout } = useAuth();
+  const { t } = useTranslation();
+  const { registerManager, login } = useAuth();
   const navigation = useNavigation();
   const [hostelName, setHostelName] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [successCode, setSuccessCode] = useState('');
 
   const generateCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -34,25 +34,22 @@ export default function CreateHostelScreen() {
     if (!hostelName.trim() || !username.trim() || !password.trim()) return;
     setLoading(true);
     setError('');
-    setSuccessCode('');
 
     try {
       const code = generateCode();
 
-      // 1. Create manager account (signs in)
+      // 1. Create the manager's Firebase Auth account (this signs them in)
       await registerManager(username.trim(), password, code);
 
-      // 2. Create hostel document
+      // 2. Now that the user is authenticated, create the hostel document
       await setDoc(doc(db, 'hostels', code), {
         name: hostelName.trim(),
         code,
       });
 
-      // 3. Show the success message (set state BEFORE logging out)
-      setSuccessCode(code);
-
-      // 4. Sign out – this keeps us on the auth stack, because user becomes null
-      await logout();
+      // 3. Login to load the full user object (hostelCode, role, etc.) into context
+      await login(username, password, code);
+      // navigation is handled automatically by AuthContext – no need to navigate
     } catch (e) {
       setError(e.message);
     } finally {
@@ -60,38 +57,6 @@ export default function CreateHostelScreen() {
     }
   };
 
-  const goToLogin = () => {
-    // We are already signed out, just navigate to Login
-    navigation.replace('Login');
-  };
-
-  // ── SUCCESS VIEW ──
-  if (successCode) {
-    return (
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <View style={styles.successContainer}>
-          <Card style={styles.card}>
-            <Text style={styles.successTitle}>Hostel created!</Text>
-            <Text style={styles.successMessage}>
-              Your hostel code has been sent to your email.
-            </Text>
-            <Text style={styles.codeText}>{successCode}</Text>
-            <Text style={styles.hint}>
-              Please log in with this code to start managing your hostel.
-            </Text>
-            <Button
-              title="Go to Login"
-              onPress={goToLogin}
-              glow
-              style={{ marginTop: SPACING[6] }}
-            />
-          </Card>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // ── CREATION FORM ──
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
@@ -103,8 +68,8 @@ export default function CreateHostelScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <Card style={styles.card}>
-            <Text style={styles.title}>Create Your Hostel</Text>
-            <Label>Hostel Name</Label>
+            <Text style={styles.title}>{t('createHostelTitle')}</Text>
+            <Label>{t('hostelName')}</Label>
             <Input
               value={hostelName}
               onChangeText={setHostelName}
@@ -112,15 +77,15 @@ export default function CreateHostelScreen() {
               autoCapitalize="words"
               style={{ marginBottom: SPACING[3] }}
             />
-            <Label>Manager Username</Label>
+            <Label>{t('managerUsername')}</Label>
             <Input
               value={username}
               onChangeText={setUsername}
-              placeholder="Your username"
+              placeholder={t('managerUsername')}
               autoCapitalize="words"
               style={{ marginBottom: SPACING[3] }}
             />
-            <Label>Password</Label>
+            <Label>{t('password')}</Label>
             <Input
               value={password}
               onChangeText={setPassword}
@@ -130,19 +95,11 @@ export default function CreateHostelScreen() {
             />
             {error ? <Text style={styles.errText}>{error}</Text> : null}
             <Button
-              title={loading ? 'Creating…' : 'Create Hostel'}
+              title={loading ? t('creating') : t('createBtn')}
               onPress={handleCreate}
               disabled={!hostelName.trim() || !username.trim() || !password || loading}
               glow
             />
-            {loading && (
-              <View style={{ marginTop: SPACING[4], alignItems: 'center' }}>
-                <ActivityIndicator color={COLORS.primary} />
-                <Text style={{ marginTop: SPACING[2], color: COLORS.textSecondary }}>
-                  Setting up your hostel…
-                </Text>
-              </View>
-            )}
           </Card>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -166,34 +123,5 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.sm,
     color: COLORS.danger,
     marginBottom: SPACING[3],
-  },
-  successContainer: { flex: 1, justifyContent: 'center', padding: SPACING[4] },
-  successTitle: {
-    fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.xxl,
-    color: COLORS.success,
-    marginBottom: SPACING[4],
-    textAlign: 'center',
-  },
-  successMessage: {
-    fontFamily: FONTS.regular,
-    fontSize: FONT_SIZE.md,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING[2],
-    textAlign: 'center',
-  },
-  codeText: {
-    fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.xxxl,
-    color: COLORS.primary,
-    marginBottom: SPACING[2],
-    textAlign: 'center',
-  },
-  hint: {
-    fontFamily: FONTS.regular,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    marginTop: SPACING[2],
   },
 });

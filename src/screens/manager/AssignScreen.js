@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal,
   Pressable, KeyboardAvoidingView, Platform,
@@ -21,6 +22,7 @@ const BED_STATES = [
 ];
 
 export default function AssignScreen() {
+  const { t } = useTranslation();
   const {
     rooms, cleaners, floors, assignRoomWithDetails, unassignRoom, roomStatus,
     roomAttributes,
@@ -113,7 +115,7 @@ export default function AssignScreen() {
   if (rooms.length === 0) {
     return (
       <SafeAreaView style={styles.safe} edges={['bottom']}>
-        <EmptyState icon="📋" title="No rooms to assign" subtitle="Add rooms first in the Setup tab" />
+        <EmptyState icon="📋" title={t('noRoomsToAssign')} subtitle={t('addRoomsFirst')} />
       </SafeAreaView>
     );
   }
@@ -121,7 +123,7 @@ export default function AssignScreen() {
   if (cleaners.length === 0) {
     return (
       <SafeAreaView style={styles.safe} edges={['bottom']}>
-        <EmptyState icon="👤" title="No cleaners yet" subtitle="Add cleaners in the Team tab first" />
+        <EmptyState icon="👤" title={t('noCleaners')} subtitle={t('addCleanersFirst')} />
       </SafeAreaView>
     );
   }
@@ -130,10 +132,10 @@ export default function AssignScreen() {
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.headerRow}>
-          <SectionTitle title="Assignments" subtitle="Tap a cleaner to configure assignment" />
+          <SectionTitle  title={t('assignments')} subtitle={t('tapToAssign') } />
           <TouchableOpacity onPress={clearAll} style={styles.clearBtn} activeOpacity={0.7}>
             <Ionicons name="close-circle-outline" size={16} color={COLORS.textMuted} />
-            <Text style={styles.clearText}>Clear all</Text>
+            <Text style={styles.clearText}>{t('clearAll')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -152,9 +154,9 @@ export default function AssignScreen() {
                         <View>
                           <Text style={styles.roomName}>{room.name}</Text>
                           <View style={{ flexDirection: 'row', gap: SPACING[2], marginTop: 4 }}>
-                            <Badge label={room.type === 'private' ? 'Private' : 'Dorm'} type={room.type === 'private' ? 'priv' : 'dorm'} />
+                            <Badge label={room.type === 'private' ? t('private') : t('dormitory')} type={room.type === 'private' ? 'priv' : 'dorm'} />
                             {room.type === 'dorm' && room.beds?.length > 0 && (
-                              <Text style={styles.bedCount}>{room.beds.length} beds</Text>
+                              <Text style={styles.bedCount}>{room.beds.length} {t('beds')}</Text>
                             )}
                           </View>
                         </View>
@@ -164,7 +166,7 @@ export default function AssignScreen() {
                             <Text style={styles.assignedName}>{currentCleaner.username}</Text>
                           </View>
                         ) : (
-                          <Text style={styles.unassignedHint}>No cleaner</Text>
+                          <Text style={styles.unassignedHint}>{t('noCleaner')}</Text>
                         )}
                       </View>
 
@@ -184,7 +186,7 @@ export default function AssignScreen() {
                           })}
                           {currentCleaner && (
                             <Chip
-                              label="Unassign"
+                              label={t('unassign')}
                               icon="close"
                               onPress={() => unassignRoom(room.id)}
                               colorBg={COLORS.dangerLight}
@@ -210,13 +212,13 @@ export default function AssignScreen() {
         >
           <View style={styles.modalBackdrop}>
             <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Assign {selectedRoom?.name}</Text>
-              <Text style={styles.modalSubtitle}>Cleaner: {selectedCleaner?.username}</Text>
+              <Text style={styles.modalTitle}>{t('assign')} {selectedRoom?.name}</Text>
+              <Text style={styles.modalSubtitle}>{t('cleaner')}: {selectedCleaner?.username}</Text>
 
               {selectedRoom?.type === 'dorm' && selectedRoom.beds?.length > 0 && (
                 <View style={{ marginBottom: SPACING[4] }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING[2] }}>
-                    <Label>Refresh</Label>
+                    <Label>{t('commonOnly')}</Label>
                     <TouchableOpacity
                       onPress={() => setCommonOnly(!commonOnly)}
                       style={[styles.checkbox, commonOnly && styles.checkboxActive]}
@@ -225,7 +227,7 @@ export default function AssignScreen() {
                     </TouchableOpacity>
                   </View>
                   <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginBottom: SPACING[2] }}>
-                    {commonOnly ? 'Cleaner will only clean common areas' : 'Scroll horizontally to see all options'}
+                    {commonOnly ? t('commonOnly') : t('scrollToSeeOptions')}
                   </Text>
 
                   {!commonOnly && (
@@ -262,7 +264,7 @@ export default function AssignScreen() {
                                         ]}
                                         numberOfLines={1}
                                       >
-                                        {state.label}
+                                        {t('bedState_' + state.key)}
                                       </Text>
                                     </TouchableOpacity>
                                   );
@@ -279,7 +281,7 @@ export default function AssignScreen() {
 
               {selectedRoom?.type === 'private' && Object.keys(assignmentAttributes).length > 0 && (
                 <View style={{ marginBottom: SPACING[4] }}>
-                  <Label>Room features</Label>
+                  <Label>{t('roomFeatures')}</Label>
                   {Object.keys(assignmentAttributes).map(attr => {
                     const isActive = assignmentAttributes[attr];
                     return (
@@ -304,27 +306,27 @@ export default function AssignScreen() {
                 </View>
               )}
 
-              <Label>Room flags (optional)</Label>
+              <Label>{t('roomFlags')}</Label>
               <View style={{ flexDirection: 'row', gap: SPACING[4], marginBottom: SPACING[4] }}>
                 <TouchableOpacity
                   style={[styles.flagBtn, earlyCheckIn && { backgroundColor: '#FFFBEB', borderColor: '#D97706' }]}
                   onPress={() => setEarlyCheckIn(!earlyCheckIn)}
                 >
-                  <Text style={[styles.flagText, earlyCheckIn && { color: '#D97706' }]}>Early c/in</Text>
+                  <Text style={[styles.flagText, earlyCheckIn && { color: '#D97706' }]}>{t('earlyCheckInFlag')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.flagBtn, lateCheckOut && { backgroundColor: COLORS.dangerLight, borderColor: COLORS.danger }]}
                   onPress={() => setLateCheckOut(!lateCheckOut)}
                 >
-                  <Text style={[styles.flagText, lateCheckOut && { color: COLORS.danger }]}>Late c/out</Text>
+                  <Text style={[styles.flagText, lateCheckOut && { color: COLORS.danger }]}>{t('lateCheckOutFlag')}</Text>
                 </TouchableOpacity>
               </View>
 
-              <Label>Notes for cleaner (optional)</Label>
+              <Label>{t('notesPlaceholder1')}</Label>
               <Input
                 value={managerNotes}
                 onChangeText={setManagerNotes}
-                placeholder="e.g. Only change sheets, skip bed C"
+                placeholder={t('notesPlaceholder2')}
                 multiline
                 style={{ marginBottom: SPACING[4] }}
               />
@@ -334,13 +336,13 @@ export default function AssignScreen() {
                   onPress={() => setShowConfigModal(false)}
                   style={[styles.modalBtn, styles.modalBtnCancel]}
                 >
-                  <Text style={styles.modalBtnText}>Cancel</Text>
+                  <Text style={styles.modalBtnText}>{t('cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleAssign}
                   style={[styles.modalBtn, styles.modalBtnPrimary]}
                 >
-                  <Text style={[styles.modalBtnText, { color: COLORS.white }]}>Assign</Text>
+                  <Text style={[styles.modalBtnText, { color: COLORS.white }]}>{t('assign')}</Text>
                 </TouchableOpacity>
               </View>
             </View>

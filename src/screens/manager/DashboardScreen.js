@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity, Modal, TextInput,
 } from 'react-native';
@@ -13,13 +14,13 @@ const REASONS = {
   clean:    { label: 'Clean',      color: COLORS.success, bg: COLORS.successLight },
   stayover: { label: 'Stay‑over',  color: COLORS.amber,   bg: COLORS.amberLight },
   late:     { label: 'Late c/out', color: COLORS.danger,  bg: COLORS.dangerLight },
-  early:    { label: 'Early c/in', color: COLORS.primary,      bg: COLORS.primaryLight },
+  early:    { label: 'Early c/in', color: COLORS.primary, bg: COLORS.primaryLight },
   noone:    { label: 'No one',     color: COLORS.blue,    bg: COLORS.blueLight },
   common:   { label: 'Common',     color: COLORS.textMuted, bg: COLORS.surface },
 };
 
-// ─── Confirmation Modal ────────────────────────────────────────
-function ConfirmModal({ visible, onConfirm, onCancel, title, message }) {
+// ─── Confirmation Modal ─────────────────────────────────────────
+function ConfirmModal({ visible, onConfirm, onCancel, title, message, t }) {
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalBackdrop}>
@@ -28,10 +29,10 @@ function ConfirmModal({ visible, onConfirm, onCancel, title, message }) {
           <Text style={styles.modalMessage}>{message}</Text>
           <View style={styles.modalActions}>
             <TouchableOpacity onPress={onCancel} style={[styles.modalBtn, styles.modalBtnCancel]}>
-              <Text style={styles.modalBtnText}>Cancel</Text>
+              <Text style={styles.modalBtnText}>{t('cancel')}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={onConfirm} style={[styles.modalBtn, styles.modalBtnDanger]}>
-              <Text style={[styles.modalBtnText, { color: COLORS.white }]}>Reset</Text>
+              <Text style={[styles.modalBtnText, { color: COLORS.white }]}>{t('reset')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -40,18 +41,18 @@ function ConfirmModal({ visible, onConfirm, onCancel, title, message }) {
   );
 }
 
-// ─── Cleaner Detail Modal ──────────────────────────────────────
-function CleanerDetailModal({ visible, cleaner, rooms = [], roomStatus, onClose }) {
+// ─── Cleaner Detail Modal ───────────────────────────────────────
+function CleanerDetailModal({ visible, cleaner, rooms = [], roomStatus, onClose, t }) {
   if (!cleaner) return null;
   const assignedRooms = rooms.filter(r => r.assignedTo === cleaner.id);
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalBackdrop}>
         <View style={[styles.modalCard, { maxHeight: '80%' }]}>
-          <Text style={styles.modalTitle}>{cleaner.username}'s Rooms</Text>
+          <Text style={styles.modalTitle}>{t('cleanerRooms', { name: cleaner.username })}</Text>
           <ScrollView style={{ marginBottom: SPACING[4] }}>
             {assignedRooms.length === 0 ? (
-              <Text style={styles.emptyText}>No rooms assigned yet.</Text>
+              <Text style={styles.emptyText}>{t('noRoomsAssignedYet')}</Text>
             ) : (
               assignedRooms.map(room => {
                 const status = roomStatus[room.id] || {};
@@ -65,7 +66,6 @@ function CleanerDetailModal({ visible, cleaner, rooms = [], roomStatus, onClose 
                 const assignmentAttributes = status.assignmentAttributes || {};
                 const isEarly = status.earlyCheckIn === true;
                 const isLate  = status.lateCheckOut === true;
-                // check dorm beds for early/late
                 const hasEarlyBed = room.type === 'dorm' && room.beds?.some(b => (assignmentBedStatus[b.id] || {}).status === 'early');
                 const hasLateBed  = room.type === 'dorm' && room.beds?.some(b => (assignmentBedStatus[b.id] || {}).status === 'late');
                 const showEarly = isEarly || hasEarlyBed;
@@ -75,34 +75,46 @@ function CleanerDetailModal({ visible, cleaner, rooms = [], roomStatus, onClose 
                   <View key={room.id} style={styles.cleanerRoomCard}>
                     <View style={styles.roomHeader}>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.roomName}>{room.name}</Text>
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                          {status.extraCleaning && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                              <Text style={{ fontSize: 14 }}>⭐</Text>
-                              <Text style={{ fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.primary }}>Extra</Text>
-                            </View>
-                          )}
-                          {showEarly && (
-                            <View style={{ backgroundColor: COLORS.blueLight, paddingHorizontal: SPACING[1], paddingVertical: 1, borderRadius: RADIUS.sm }}>
-                              <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.blue }}>Early c/in</Text>
-                            </View>
-                          )}
-                          {showLate && (
-                            <View style={{ backgroundColor: COLORS.dangerLight, paddingHorizontal: SPACING[1], paddingVertical: 1, borderRadius: RADIUS.sm }}>
-                              <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.danger }}>Late c/out</Text>
-                            </View>
-                          )}
-                        </View>
+                        {/* Room name and type badge – scrollable */}
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING[2] }}>
+                            <Text style={styles.roomName}>{room.name}</Text>
+                            <Badge
+                              label={room.type === 'private' ? t('private') : t('dormitory')}
+                              type={room.type === 'private' ? 'priv' : 'dorm'}
+                            />
+                          </View>
+                        </ScrollView>
+                        {/* Flags row – scrollable */}
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
+                          <View style={{ flexDirection: 'row', gap: 4 }}>
+                            {status.extraCleaning && (
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                                <Text style={{ fontSize: 14 }}>⭐</Text>
+                                <Text style={{ fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.primary }}>{t('extra')}</Text>
+                              </View>
+                            )}
+                            {showEarly && (
+                              <View style={{ backgroundColor: COLORS.blueLight, paddingHorizontal: SPACING[1], paddingVertical: 1, borderRadius: RADIUS.sm }}>
+                                <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.blue }}>{t('earlyCheckInFlag')}</Text>
+                              </View>
+                            )}
+                            {showLate && (
+                              <View style={{ backgroundColor: COLORS.dangerLight, paddingHorizontal: SPACING[1], paddingVertical: 1, borderRadius: RADIUS.sm }}>
+                                <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.danger }}>{t('lateCheckOutFlag')}</Text>
+                              </View>
+                            )}
+                          </View>
+                        </ScrollView>
                       </View>
-                      <Badge label={cleaned ? 'Cleaned' : 'Pending'} type={cleaned ? 'clean' : 'extra'} />
+                      <Badge label={cleaned ? t('cleaned') : t('pending')} type={cleaned ? 'clean' : 'extra'} />
                     </View>
                     {managerNotes ? (
                       <View style={styles.managerNotesBox}>
                         <Text style={styles.managerNotesText}>📋 {managerNotes}</Text>
                       </View>
                     ) : null}
-                    {extraTime > 0 && <Text style={styles.detailLine}>Extra time: +{extraTime} min</Text>}
+                    {extraTime > 0 && <Text style={styles.detailLine}>{t('extraTimeValue', { minutes: extraTime })}</Text>}
                     {notes ? (
                       <View style={styles.notesBox}>
                         <Text style={styles.notesText}>📝 “{notes}”</Text>
@@ -110,7 +122,7 @@ function CleanerDetailModal({ visible, cleaner, rooms = [], roomStatus, onClose 
                     ) : null}
                     {room.type === 'private' && Object.keys(assignmentAttributes).length > 0 && (
                       <View style={styles.attributeSection}>
-                        <Text style={styles.detailLine}>Room features:</Text>
+                        <Text style={styles.detailLine}>{t('roomFeatures')}:</Text>
                         {Object.entries(assignmentAttributes).map(([attr]) => (
                           <View key={attr} style={styles.attributeRow}>
                             <Ionicons
@@ -132,7 +144,7 @@ function CleanerDetailModal({ visible, cleaner, rooms = [], roomStatus, onClose 
                           color={cleaned ? COLORS.success : COLORS.textMuted}
                         />
                         <Text style={[styles.commonText, cleaned && { color: COLORS.success }]}>
-                          {cleaned ? 'Common areas cleaned' : 'Common areas not yet cleaned'}
+                          {cleaned ? t('commonCleaned') : t('commonNotCleaned')}
                         </Text>
                       </View>
                     ) : (
@@ -142,16 +154,9 @@ function CleanerDetailModal({ visible, cleaner, rooms = [], roomStatus, onClose 
                             const assignment = assignmentBedStatus[bed.id] || { status: 'clean', reason: 'clean' };
                             const reasonKey = assignment.reason || assignment.status || 'clean';
                             const reason = REASONS[reasonKey] || REASONS.clean;
-
-                            // The cleaner's own cleaning mark
                             const bedClean = bedStatus[bed.id]?.status === 'cleaned';
-
-                            // Beds that are locked and never cleaned by the cleaner
                             const isSkipped = assignment.status === 'stayover' || assignment.status === 'noone';
-
-                            // All other beds can be cleaned – show checkmark if the cleaner did it
                             const isCleaned = !isSkipped && bedClean;
-
                             return (
                               <Chip
                                 key={bed.id}
@@ -171,7 +176,7 @@ function CleanerDetailModal({ visible, cleaner, rooms = [], roomStatus, onClose 
               })
             )}
           </ScrollView>
-          <Button title="Close" onPress={onClose} variant="secondary" style={{ alignSelf: 'center' }} />
+          <Button title={t('close')} onPress={onClose} variant="secondary" style={{ alignSelf: 'center' }} />
         </View>
       </View>
     </Modal>
@@ -179,7 +184,7 @@ function CleanerDetailModal({ visible, cleaner, rooms = [], roomStatus, onClose 
 }
 
 // ─── Room Detail Modal ──────────────────────────────────────────
-function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose }) {
+function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose, t }) {
   if (!room) return null;
   const status = roomStatus[room.id] || {};
   const cleaned = status.cleaned || false;
@@ -202,39 +207,46 @@ function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose }) {
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalBackdrop}>
         <View style={[styles.modalCard, { maxHeight: '80%' }]}>
-          <Text style={styles.modalTitle}>{room.name}</Text>
-          <View style={styles.roomHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.roomName}>{room.name}</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                {status.extraCleaning && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                    <Text style={{ fontSize: 14 }}>⭐</Text>
-                    <Text style={{ fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.primary }}>Extra</Text>
-                  </View>
-                )}
-                {showEarly && (
-                  <View style={{ backgroundColor: COLORS.blueLight, paddingHorizontal: SPACING[1], paddingVertical: 1, borderRadius: RADIUS.sm }}>
-                    <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.blue }}>Early c/in</Text>
-                  </View>
-                )}
-                {showLate && (
-                  <View style={{ backgroundColor: COLORS.dangerLight, paddingHorizontal: SPACING[1], paddingVertical: 1, borderRadius: RADIUS.sm }}>
-                    <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.danger }}>Late c/out</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-            <Badge label={cleaned ? 'Cleaned' : 'Pending'} type={cleaned ? 'clean' : 'extra'} />
+          {/* Room name and cleaned/pending badge on the same row */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING[3] }}>
+            <Text style={[styles.modalTitle, { marginBottom: 0, flex: 1 }]} numberOfLines={2}>{room.name}</Text>
+            <Badge label={cleaned ? t('cleaned') : t('pending')} type={cleaned ? 'clean' : 'extra'} />
           </View>
+
+          {/* Other badges (type, extra, early, late) – scrollable row */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: SPACING[4] }}>
+            <View style={{ flexDirection: 'row', gap: SPACING[2] }}>
+              <Badge
+                label={room.type === 'private' ? t('private') : t('dormitory')}
+                type={room.type === 'private' ? 'priv' : 'dorm'}
+              />
+              {status.extraCleaning && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                  <Text style={{ fontSize: 14 }}>⭐</Text>
+                  <Text style={{ fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.primary }}>{t('extra')}</Text>
+                </View>
+              )}
+              {showEarly && (
+                <View style={{ backgroundColor: COLORS.blueLight, paddingHorizontal: SPACING[2], paddingVertical: 2, borderRadius: RADIUS.sm }}>
+                  <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.blue }}>{t('earlyCheckInFlag')}</Text>
+                </View>
+              )}
+              {showLate && (
+                <View style={{ backgroundColor: COLORS.dangerLight, paddingHorizontal: SPACING[2], paddingVertical: 2, borderRadius: RADIUS.sm }}>
+                  <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.danger }}>{t('lateCheckOutFlag')}</Text>
+                </View>
+              )}
+            </View>
+          </ScrollView>
+
           <ScrollView style={{ marginBottom: SPACING[4] }}>
-            <Text style={styles.detailLine}>Cleaner: {cleaner ? cleaner.username : 'Unassigned'}</Text>
+            <Text style={styles.detailLine}>{t('cleaner')}: {cleaner ? cleaner.username : t('unassigned')}</Text>
             {managerNotes ? (
               <View style={styles.managerNotesBox}>
                 <Text style={styles.managerNotesText}>📋 {managerNotes}</Text>
               </View>
             ) : null}
-            {extraTime > 0 && <Text style={styles.detailLine}>Extra time: +{extraTime} min</Text>}
+            {extraTime > 0 && <Text style={styles.detailLine}>{t('extraTimeValue', { minutes: extraTime })}</Text>}
             {notes ? (
               <View style={styles.notesBox}>
                 <Text style={styles.notesText}>📝 “{notes}”</Text>
@@ -242,7 +254,7 @@ function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose }) {
             ) : null}
             {room.type === 'private' && Object.keys(assignmentAttributes).length > 0 && (
               <View style={styles.attributeSection}>
-                <Text style={styles.detailLine}>Room features:</Text>
+                <Text style={styles.detailLine}>{t('roomFeatures')}:</Text>
                 {Object.entries(assignmentAttributes).map(([attr]) => (
                   <View key={attr} style={styles.attributeRow}>
                     <Ionicons
@@ -264,7 +276,7 @@ function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose }) {
                   color={cleaned ? COLORS.success : COLORS.textMuted}
                 />
                 <Text style={[styles.commonText, cleaned && { color: COLORS.success }]}>
-                  {cleaned ? 'Common areas cleaned' : 'Common areas not yet cleaned'}
+                  {cleaned ? t('commonCleaned') : t('commonNotCleaned')}
                 </Text>
               </View>
             ) : (
@@ -274,16 +286,9 @@ function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose }) {
                     const assignment = assignmentBedStatus[bed.id] || { status: 'clean', reason: 'clean' };
                     const reasonKey = assignment.reason || assignment.status || 'clean';
                     const reason = REASONS[reasonKey] || REASONS.clean;
-
-                    // The cleaner's own cleaning mark
                     const bedClean = bedStatus[bed.id]?.status === 'cleaned';
-
-                    // Beds that are locked and never cleaned by the cleaner
                     const isSkipped = assignment.status === 'stayover' || assignment.status === 'noone';
-
-                    // All other beds can be cleaned – show checkmark if the cleaner did it
                     const isCleaned = !isSkipped && bedClean;
-
                     return (
                       <Chip
                         key={bed.id}
@@ -299,7 +304,7 @@ function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose }) {
               )
             )}
           </ScrollView>
-          <Button title="Close" onPress={onClose} variant="secondary" style={{ alignSelf: 'center' }} />
+          <Button title={t('close')} onPress={onClose} variant="secondary" style={{ alignSelf: 'center' }} />
         </View>
       </View>
     </Modal>
@@ -314,6 +319,8 @@ export default function DashboardScreen() {
     extraRequests = [],
     approveExtraRoom, rejectExtraRoom,
   } = useApp();
+
+  const { t } = useTranslation();
 
   const [search, setSearch] = useState('');
   const [selectedRoom, setSelectedRoom] = useState(null);
@@ -361,7 +368,7 @@ export default function DashboardScreen() {
   if (!hostel.name) {
     return (
       <ScrollView contentContainerStyle={styles.scroll}>
-        <EmptyState icon="🏠" title="No property" subtitle="Create a hostel first" />
+        <EmptyState icon="🏠" title={t('noProperty')} subtitle={t('createHostelFirst')} />
       </ScrollView>
     );
   }
@@ -374,16 +381,19 @@ export default function DashboardScreen() {
       contentContainerStyle={styles.scroll}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
+      {/* Header row – flexWrap to prevent overflow */}
       <View style={styles.headRow}>
-        <SectionTitle title="Today’s Overview" subtitle={hostel.name} />
+        <View style={{ flex: 1 }}>
+          <SectionTitle title={t('todaysOverview')} subtitle={hostel.name} />
+        </View>
         <TouchableOpacity onPress={() => setResetAllModal(true)} style={styles.resetAllBtn}>
           <Ionicons name="refresh" size={18} color={COLORS.danger} />
-          <Text style={styles.resetAllText}>Reset all rooms</Text>
+          <Text style={styles.resetAllText}>{t('resetAllRooms')}</Text>
         </TouchableOpacity>
       </View>
 
       <Card style={styles.overviewCard}>
-        <Text style={styles.overviewText}>{overallCleaned} of {rooms.length} rooms cleaned ({overallPct}%)</Text>
+        <Text style={styles.overviewText}>{t('roomsCleanedPercent', { cleaned: overallCleaned, total: rooms.length, percent: overallPct })}</Text>
         <ProgressBar pct={overallPct} />
       </Card>
 
@@ -392,7 +402,7 @@ export default function DashboardScreen() {
         <TextInput
           value={search}
           onChangeText={setSearch}
-          placeholder="Search for a room…"
+          placeholder={t('search')}
           placeholderTextColor={COLORS.textMuted}
           style={styles.searchInput}
           clearButtonMode="while-editing"
@@ -404,14 +414,15 @@ export default function DashboardScreen() {
         )}
       </View>
 
+      {/* ── Search Results ─────────────────────────────────── */}
       {filteredRooms !== null && (
         <View style={{ marginBottom: SPACING[4] }}>
           <SectionTitle
-            title={`Search Results (${filteredRooms.length})`}
-            subtitle={search.trim() ? `Matching "${search.trim()}"` : ''}
+            title={t('searchResults', { count: filteredRooms.length })}
+            subtitle={search.trim() ? t('matching', { query: search.trim() }) : ''}
           />
           {filteredRooms.length === 0 ? (
-            <Text style={styles.emptyText}>No rooms found.</Text>
+            <Text style={styles.emptyText}>{t('noResults')}</Text>
           ) : (
             filteredRooms.map(room => {
               const status = roomStatus[room.id] || {};
@@ -428,26 +439,33 @@ export default function DashboardScreen() {
                 <TouchableOpacity key={room.id} onPress={() => setSelectedRoom(room)} activeOpacity={0.7}>
                   <Card style={styles.roomDetailCard}>
                     <View style={styles.roomHeader}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING[2] }}>
-                        <Text style={styles.roomName}>{room.name}</Text>
-                        {showEarly && (
-                          <View style={{ backgroundColor: COLORS.blueLight, paddingHorizontal: SPACING[2], paddingVertical: 2, borderRadius: RADIUS.sm }}>
-                            <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.blue }}>Early c/in</Text>
-                          </View>
-                        )}
-                        {showLate && (
-                          <View style={{ backgroundColor: COLORS.dangerLight, paddingHorizontal: SPACING[2], paddingVertical: 2, borderRadius: RADIUS.sm }}>
-                            <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.danger }}>Late c/out</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Badge label={cleaned ? 'Cleaned' : 'Pending'} type={cleaned ? 'clean' : 'extra'} />
+                      {/* Left side – scrollable badges */}
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING[2] }}>
+                          <Text style={styles.roomName}>{room.name}</Text>
+                          <Badge
+                            label={room.type === 'private' ? t('private') : t('dormitory')}
+                            type={room.type === 'private' ? 'priv' : 'dorm'}
+                          />
+                          {showEarly && (
+                            <View style={{ backgroundColor: COLORS.blueLight, paddingHorizontal: SPACING[2], paddingVertical: 2, borderRadius: RADIUS.sm }}>
+                              <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.blue }}>{t('earlyCheckInFlag')}</Text>
+                            </View>
+                          )}
+                          {showLate && (
+                            <View style={{ backgroundColor: COLORS.dangerLight, paddingHorizontal: SPACING[2], paddingVertical: 2, borderRadius: RADIUS.sm }}>
+                              <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.danger }}>{t('lateCheckOutFlag')}</Text>
+                            </View>
+                          )}
+                        </View>
+                      </ScrollView>
+                      <Badge label={cleaned ? t('cleaned') : t('pending')} type={cleaned ? 'clean' : 'extra'} />
                     </View>
                     <Text style={styles.detailLine}>
-                      Cleaner: {cleaner ? cleaner.username : 'Unassigned'}
+                      {t('cleaner')}: {cleaner ? cleaner.username : t('unassigned')}
                     </Text>
                     {status.extraCleaning && (
-                      <Text style={[styles.detailLine, { color: COLORS.primary }]}>⭐ Extra</Text>
+                      <Text style={[styles.detailLine, { color: COLORS.primary }]}>⭐ {t('extra')}</Text>
                     )}
                   </Card>
                 </TouchableOpacity>
@@ -457,9 +475,10 @@ export default function DashboardScreen() {
         </View>
       )}
 
+      {/* ── Extra Room Requests ─────────────────────────────── */}
       {extraRequests.length > 0 && !search.trim() && (
         <View style={{ marginBottom: SPACING[4] }}>
-          <SectionTitle title="Extra Room Requests" subtitle="Cleaners asking to clean extra rooms" />
+          <SectionTitle title={t('extraRoomRequests')} subtitle={t('extraRequestsSubtitle')} />
           {extraRequests.map(req => {
             const room = rooms.find(r => r.id === req.id);
             const cleaner = cleaners.find(c => c.id === req.cleanerId);
@@ -467,9 +486,9 @@ export default function DashboardScreen() {
               <Card key={req.id} style={styles.requestCard}>
                 <View style={styles.requestRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.requestRoomName}>{room?.name || 'Unknown room'}</Text>
+                    <Text style={styles.requestRoomName}>{room?.name || t('unknownRoom')}</Text>
                     <Text style={styles.requestCleaner}>
-                      Requested by: {cleaner?.username || 'Unknown'}
+                      {t('requestedBy', { name: cleaner?.username || t('unknown') })}
                     </Text>
                   </View>
                   <View style={styles.requestActions}>
@@ -477,13 +496,13 @@ export default function DashboardScreen() {
                       style={styles.approveBtn}
                       onPress={() => approveExtraRoom(req.id, req.cleanerId)}
                     >
-                      <Text style={styles.approveBtnText}>Approve</Text>
+                      <Text style={styles.approveBtnText}>{t('approve')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.rejectBtn}
                       onPress={() => rejectExtraRoom(req.id)}
                     >
-                      <Text style={styles.rejectBtnText}>Reject</Text>
+                      <Text style={styles.rejectBtnText}>{t('reject')}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -493,9 +512,10 @@ export default function DashboardScreen() {
         </View>
       )}
 
+      {/* ── Cleaner Progress ───────────────────────────────── */}
       {!search.trim() && cleaners.length > 0 && (
         <>
-          <SectionTitle title="Cleaner Progress" subtitle="Tap a cleaner to see details" />
+          <SectionTitle title={t('cleanerProgress')} subtitle={t('tapCleaner')} />
           {cleaners.map(c => {
             const assigned = rooms.filter(r => r.assignedTo === c.id);
             const done = assigned.filter(r => roomStatus[r.id]?.cleaned).length;
@@ -511,7 +531,7 @@ export default function DashboardScreen() {
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.cleanerName}>{c.username}</Text>
-                      <Text style={styles.cleanerStats}>{done}/{assigned.length} rooms cleaned</Text>
+                      <Text style={styles.cleanerStats}>{t('cleanerRoomsStats', { done, total: assigned.length })}</Text>
                       <ProgressBar pct={pct} />
                     </View>
                     {extraCount > 0 && (
@@ -527,11 +547,12 @@ export default function DashboardScreen() {
         </>
       )}
 
+      {/* ── Unassigned Rooms ───────────────────────────────── */}
       {!search.trim() && (
         <>
-          <SectionTitle title="Unassigned Rooms" subtitle="Rooms not yet assigned to a cleaner" />
+          <SectionTitle title={t('unassignedRooms')} subtitle={t('unassignedRoomsSubtitle')} />
           {rooms.length === 0 ? (
-            <EmptyState icon="🚪" title="No rooms yet" />
+            <EmptyState icon="🚪" title={t('noRoomsYet')} />
           ) : (
             sortedFloors.map(floor => {
               const floorRooms = rooms.filter(r => r.floorId === floor.id && !r.assignedTo);
@@ -557,9 +578,18 @@ export default function DashboardScreen() {
                         return (
                           <Card key={room.id} style={styles.roomDetailCard}>
                             <View style={styles.roomHeader}>
-                              <Text style={styles.roomName}>{room.name}</Text>
+                              {/* Left side – scrollable room name & type badge */}
+                              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING[2] }}>
+                                  <Text style={styles.roomName}>{room.name}</Text>
+                                  <Badge
+                                    label={room.type === 'private' ? t('private') : t('dormitory')}
+                                    type={room.type === 'private' ? 'priv' : 'dorm'}
+                                  />
+                                </View>
+                              </ScrollView>
                               <View style={{ flexDirection: 'row', gap: SPACING[2] }}>
-                                <Badge label={cleaned ? 'Cleaned' : 'Pending'} type={cleaned ? 'clean' : 'extra'} />
+                                <Badge label={cleaned ? t('cleaned') : t('pending')} type={cleaned ? 'clean' : 'extra'} />
                                 <TouchableOpacity onPress={() => setResetSingleModal(room.id)}>
                                   <Ionicons name="refresh-circle" size={24} color={COLORS.danger} />
                                 </TouchableOpacity>
@@ -570,8 +600,8 @@ export default function DashboardScreen() {
                                 <Text style={styles.managerNotesText}>📋 {managerNotes}</Text>
                               </View>
                             ) : null}
-                            <Text style={styles.detailLine}>Cleaner: Unassigned</Text>
-                            {extraTime > 0 && <Text style={styles.detailLine}>Extra time: +{extraTime} min</Text>}
+                            <Text style={styles.detailLine}>{t('cleaner')}: {t('unassigned')}</Text>
+                            {extraTime > 0 && <Text style={styles.detailLine}>{t('extraTimeValue', { minutes: extraTime })}</Text>}
                             {notes ? (
                               <View style={styles.notesBox}>
                                 <Text style={styles.notesText}>📝 “{notes}”</Text>
@@ -596,7 +626,7 @@ export default function DashboardScreen() {
                             )}
                             {room.type === 'private' && Object.keys(assignmentAttributes).length > 0 && (
                               <View style={styles.attributeSection}>
-                                <Text style={styles.detailLine}>Room features:</Text>
+                                <Text style={styles.detailLine}>{t('roomFeatures')}:</Text>
                                 {Object.entries(assignmentAttributes).map(([attr, value]) => (
                                   <View key={attr} style={styles.attributeRow}>
                                     <Ionicons
@@ -622,19 +652,22 @@ export default function DashboardScreen() {
         </>
       )}
 
+      {/* ── Modals ─────────────────────────────────────────── */}
       <ConfirmModal
         visible={resetAllModal}
         onConfirm={confirmResetAll}
         onCancel={() => setResetAllModal(false)}
-        title="Reset all rooms"
-        message="Mark every room as not cleaned and remove all notes?"
+        title={t('resetAllRooms')}
+        message={t('resetAllMsg')}
+        t={t}
       />
       <ConfirmModal
         visible={!!resetSingleModal}
         onConfirm={confirmResetSingle}
         onCancel={() => setResetSingleModal(null)}
-        title="Reset room"
-        message="Mark this room as not cleaned?"
+        title={t('resetRoom')}
+        message={t('resetRoomMsg')}
+        t={t}
       />
       <CleanerDetailModal
         visible={!!selectedCleaner}
@@ -642,6 +675,7 @@ export default function DashboardScreen() {
         rooms={rooms}
         roomStatus={roomStatus}
         onClose={() => setSelectedCleaner(null)}
+        t={t}
       />
       <RoomDetailModal
         visible={!!selectedRoom}
@@ -649,22 +683,26 @@ export default function DashboardScreen() {
         roomStatus={roomStatus}
         cleaners={cleaners}
         onClose={() => setSelectedRoom(null)}
+        t={t}
       />
     </ScrollView>
   );
 }
 
+// ─── Styles ─────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   scroll: { padding: SPACING[4], paddingBottom: SPACING[10] },
   headRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    marginBottom: SPACING[3],
+    marginBottom: SPACING[3], flexWrap: 'wrap',
   },
   resetAllBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: SPACING[3], paddingVertical: SPACING[1],
     backgroundColor: COLORS.dangerLight, borderRadius: RADIUS.sm,
     borderWidth: 1, borderColor: COLORS.danger,
+    alignSelf: 'flex-start', marginTop: SPACING[1],
+    maxWidth: '40%',
   },
   resetAllText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.danger },
   overviewCard: { marginBottom: SPACING[4], padding: SPACING[4] },

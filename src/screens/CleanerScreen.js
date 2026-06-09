@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, Pressable, TextInput,
 } from 'react-native';
@@ -12,7 +13,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 
 // ------------------------------------------------------------------
-// Constants
+// Constants – REASONS used for colours (no translation needed)
 // ------------------------------------------------------------------
 const REASONS = {
   clean:    { label: 'To clean',   color: COLORS.success,      bg: COLORS.successLight,  icon: 'checkmark-circle' },
@@ -24,9 +25,9 @@ const REASONS = {
 };
 
 // ------------------------------------------------------------------
-// Kebab Menu (unchanged)
+// Kebab Menu (translated)
 // ------------------------------------------------------------------
-function KebabMenu({ onEditBeds, onUndo }) {
+function KebabMenu({ onEditBeds, onUndo, t }) {
   const [visible, setVisible] = useState(false);
   return (
     <View>
@@ -43,14 +44,14 @@ function KebabMenu({ onEditBeds, onUndo }) {
             onPress={() => { setVisible(false); onEditBeds(); }}
           >
             <Ionicons name="create-outline" size={18} color={COLORS.text} />
-            <Text style={styles.kebabOptionText}>Edit beds</Text>
+            <Text style={styles.kebabOptionText}>{t('cleaner.editBeds')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.kebabOption}
             onPress={() => { setVisible(false); onUndo(); }}
           >
             <Ionicons name="refresh-circle-outline" size={18} color={COLORS.danger} />
-            <Text style={[styles.kebabOptionText, { color: COLORS.danger }]}>Undo room</Text>
+            <Text style={[styles.kebabOptionText, { color: COLORS.danger }]}>{t('undoRoom')}</Text>
           </TouchableOpacity>
         </View>
       </Modal>
@@ -59,14 +60,14 @@ function KebabMenu({ onEditBeds, onUndo }) {
 }
 
 // ------------------------------------------------------------------
-// Room Card (redesigned bed grid, clean all, extra time toggle)
+// Room Card (translated)
 // ------------------------------------------------------------------
-function RoomCard({ room, status, onUpdate }) {
+function RoomCard({ room, status, onUpdate, t }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [note, setNote] = useState(status.notes || '');
 
-  // Extra time – toggle + free number input
+  // Extra time
   const [extraEnabled, setExtraEnabled] = useState(!!status.extraTime);
   const [extraMinutes, setExtraMinutes] = useState(status.extraTime?.toString() || '0');
 
@@ -86,7 +87,6 @@ function RoomCard({ room, status, onUpdate }) {
   const showEarly = isEarly || hasEarlyBed;
   const showLate  = isLate  || hasLateBed;
 
-  // Get effective bed state
   const getEffectiveBedState = (bedId) => {
     const assignment = assignmentBedStatus[bedId] || { status: 'clean', reason: 'clean' };
     if (commonOnly) return { ...assignment, status: 'common' };
@@ -120,23 +120,17 @@ function RoomCard({ room, status, onUpdate }) {
     }
   };
 
-  // Toggle a single bed
   const toggleBed = (bedId) => {
     const assignment = assignmentBedStatus[bedId] || { status: 'clean', reason: 'clean' };
-    if (assignment.status === 'stayover' || assignment.status === 'noone') return; // locked
-
-    if (cleaned && !editing) {
-      startEditing();
-    }
+    if (assignment.status === 'stayover' || assignment.status === 'noone') return;
+    if (cleaned && !editing) startEditing();
     if (!editing) return;
-
     const current = bedStatus[bedId]?.status || 'pending';
     const nextStatus = current === 'cleaned' ? 'pending' : 'cleaned';
     const newBS = { ...bedStatus, [bedId]: { status: nextStatus } };
     onUpdate({ bedStatus: newBS, cleaned: false, notes: note, extraTime: extraEnabled ? parseInt(extraMinutes, 10) || 0 : 0 });
   };
 
-  // Mark all cleanable beds as cleaned (bulk action)
   const cleanAllBeds = () => {
     if (!editing) return;
     const newBS = { ...bedStatus };
@@ -150,8 +144,7 @@ function RoomCard({ room, status, onUpdate }) {
 
   const markCleaned = () => {
     if (!canMarkCleaned) {
-      // Use a simple alert – still acceptable for this critical warning
-      Alert.alert('Beds not ready', 'All assigned beds must be cleaned or skipped before finishing the room.');
+      Alert.alert(t('bedsNotReady'), t('finishBedsFirst'));
       return;
     }
     if (isDorm) {
@@ -195,6 +188,20 @@ function RoomCard({ room, status, onUpdate }) {
 
   const priorityColor = showEarly ? COLORS.primary : showLate ? COLORS.danger : (cleaned ? COLORS.success : extraEnabled ? COLORS.danger : COLORS.accent);
 
+  const bedStateLabel = (bedId) => {
+    const state = getEffectiveBedState(bedId);
+    const isCleaned = state.status === 'cleaned';
+    const prefix = isCleaned ? '✓ ' : '';
+
+    if (state.status === 'common') return t('common');
+    if (state.reason === 'early') return prefix + t('bedState_early');
+    if (state.reason === 'late')  return prefix + t('bedState_late');
+    if (state.reason === 'stayover') return t('bedState_stayover');
+    if (state.reason === 'noone') return t('bedState_noone');
+    if (isCleaned) return '✓ ' + t('bedState_clean');
+    return t('bedState_clean'); // pending
+  };
+
   const bedCardStyle = (bedId) => {
     const state = getEffectiveBedState(bedId);
     const reason = REASONS[state.reason] || REASONS.clean;
@@ -206,20 +213,6 @@ function RoomCard({ room, status, onUpdate }) {
     };
   };
 
-  const bedStateLabel = (bedId) => {
-    const state = getEffectiveBedState(bedId);
-    const isCleaned = state.status === 'cleaned';
-    const prefix = isCleaned ? '✓ ' : '';
-
-    if (state.status === 'common') return 'Common';
-    if (state.reason === 'early') return prefix + 'Early c/in';
-    if (state.reason === 'late')  return prefix + 'Late c/out';
-    if (state.reason === 'stayover') return 'Stay‑over';
-    if (state.reason === 'noone') return 'No one';
-    if (isCleaned) return '✓ Cleaned';
-    return 'To clean';
-  };
-
   return (
     <View style={[styles.roomCard, { borderLeftColor: priorityColor }, cleaned && { opacity: 0.85 }]}>
       <View style={styles.roomHeaderRow}>
@@ -229,21 +222,21 @@ function RoomCard({ room, status, onUpdate }) {
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING[2] }}>
                 <Text style={styles.roomName}>{room.name}</Text>
-                {isExtra && <Badge label="Extra" type="clean" />}
+                {isExtra && <Badge label={t('extra')} type="clean" />}
                 {showEarly && (
                   <View style={{ backgroundColor: COLORS.blueLight, paddingHorizontal: SPACING[2], paddingVertical: 2, borderRadius: RADIUS.sm }}>
-                    <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.blue }}>Early c/in</Text>
+                    <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.blue }}>{t('earlyCheckInFlag')}</Text>
                   </View>
                 )}
                 {showLate && (
                   <View style={{ backgroundColor: COLORS.dangerLight, paddingHorizontal: SPACING[2], paddingVertical: 2, borderRadius: RADIUS.sm }}>
-                    <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.danger }}>Late c/out</Text>
+                    <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.danger }}>{t('lateCheckOutFlag')}</Text>
                   </View>
                 )}
               </View>
               <View style={{ flexDirection: 'row', gap: SPACING[2], marginTop: 6 }}>
-                <Badge label={room.type === 'private' ? 'Private' : 'Dorm'} type={room.type === 'private' ? 'priv' : 'dorm'} />
-                {cleaned && <Badge label="Cleaned" type="clean" />}
+                <Badge label={room.type === 'private' ? t('private') : t('dormitory')} type={room.type === 'private' ? 'priv' : 'dorm'} />
+                {cleaned && <Badge label={t('cleaned')} type="clean" />}
                 {extraEnabled && !cleaned && <Badge label={`+${extraMinutes}m`} type="extra" />}
               </View>
             </View>
@@ -251,10 +244,10 @@ function RoomCard({ room, status, onUpdate }) {
         </TouchableOpacity>
 
         {cleaned && isDorm ? (
-          <KebabMenu onEditBeds={startEditing} onUndo={undo} />
+          <KebabMenu onEditBeds={startEditing} onUndo={undo} t={t} />
         ) : cleaned && !isDorm ? (
           <TouchableOpacity onPress={undo} style={styles.undoBtn}>
-            <Text style={styles.undoText}>Undo</Text>
+            <Text style={styles.undoText}>{t('undo')}</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity onPress={handleOpen} style={{ padding: 4 }}>
@@ -263,36 +256,36 @@ function RoomCard({ room, status, onUpdate }) {
         )}
       </View>
 
-      {cleaned && status.notes ? <Text style={styles.savedNote}>Note: "{status.notes}"</Text> : null}
+      {cleaned && status.notes ? <Text style={styles.savedNote}>{t('note')}: "{status.notes}"</Text> : null}
       {cleaned && status.extraTime > 0 && (
-        <Text style={styles.savedNote}>Extra time: +{status.extraTime}m</Text>
+        <Text style={styles.savedNote}>{t('extraTimeValue', { minutes: status.extraTime })}</Text>
       )}
 
       {open && (
         <View style={styles.roomBody}>
           {managerNotes ? (
             <View style={styles.managerNotesBox}>
-              <Text style={styles.managerNotesLabel}>📋 Manager note:</Text>
+              <Text style={styles.managerNotesLabel}>{t('managerNote')}</Text>
               <Text style={styles.managerNotesText}>{managerNotes}</Text>
             </View>
           ) : null}
 
           {commonOnly && !cleaned && (
             <View style={styles.commonBanner}>
-              <Text style={styles.commonBannerText}>🧹 Common areas only – no bed cleaning required</Text>
+              <Text style={styles.commonBannerText}>{t('commonOnlyBanner')}</Text>
             </View>
           )}
           {commonOnly && cleaned && (
             <View style={[styles.commonBanner, { backgroundColor: COLORS.successLight }]}>
               <Ionicons name="checkmark-circle" size={18} color={COLORS.success} style={{ marginRight: SPACING[2] }} />
-              <Text style={[styles.commonBannerText, { color: COLORS.success }]}>Common areas cleaned</Text>
+              <Text style={[styles.commonBannerText, { color: COLORS.success }]}>{t('commonCleaned')}</Text>
             </View>
           )}
 
           {/* Bed grid */}
           {isDorm && beds.length > 0 && !commonOnly && (
             <View style={{ marginBottom: SPACING[4] }}>
-              <Label>Beds</Label>
+              <Label>{t('beds')}</Label>
               <View style={styles.bedGrid}>
                 {beds.map(b => {
                   const state = getEffectiveBedState(b.id);
@@ -350,7 +343,7 @@ function RoomCard({ room, status, onUpdate }) {
               }) && (
                 <TouchableOpacity style={styles.cleanAllBtn} onPress={cleanAllBeds}>
                   <Ionicons name="checkmark-done-outline" size={18} color={COLORS.white} />
-                  <Text style={styles.cleanAllText}>Clean all</Text>
+                  <Text style={styles.cleanAllText}>{t('cleaner.cleanAll')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -359,7 +352,7 @@ function RoomCard({ room, status, onUpdate }) {
           {/* Room features for private */}
           {!isDorm && Object.keys(assignmentAttributes).length > 0 && (
             <View style={{ marginBottom: SPACING[4] }}>
-              <Label>Room features</Label>
+              <Label>{t('roomFeatures')}</Label>
               {Object.entries(assignmentAttributes)
                 .filter(([, v]) => v)
                 .map(([attr, value]) => (
@@ -376,7 +369,7 @@ function RoomCard({ room, status, onUpdate }) {
             </View>
           )}
 
-          {/* Extra time toggle + free input */}
+          {/* Extra time toggle */}
           {!cleaned && (
             <View style={{ marginBottom: SPACING[4] }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACING[2] }}>
@@ -387,7 +380,7 @@ function RoomCard({ room, status, onUpdate }) {
                   {extraEnabled && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
                 </TouchableOpacity>
                 <Text style={{ marginLeft: SPACING[2], fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.text }}>
-                  Extra time needed
+                  {t('extraTime')}
                 </Text>
               </View>
               {extraEnabled && (
@@ -399,7 +392,7 @@ function RoomCard({ room, status, onUpdate }) {
                     placeholder="0"
                     style={styles.minutesInput}
                   />
-                  <Text style={{ fontFamily: FONTS.medium, color: COLORS.textSecondary }}>minutes</Text>
+                  <Text style={{ fontFamily: FONTS.medium, color: COLORS.textSecondary }}>{t('cleaner.minutes')}</Text>
                 </View>
               )}
             </View>
@@ -408,11 +401,11 @@ function RoomCard({ room, status, onUpdate }) {
           {/* Notes */}
           {!cleaned && (
             <View style={{ marginBottom: SPACING[4] }}>
-              <Label>Notes (optional)</Label>
+              <Label>{t('notesOptional')}</Label>
               <Input
                 value={note}
                 onChangeText={setNote}
-                placeholder="e.g. missing towel, broken lock…"
+                placeholder={t('cleaner.notesPlaceholder')}
                 multiline numberOfLines={2}
               />
             </View>
@@ -427,7 +420,7 @@ function RoomCard({ room, status, onUpdate }) {
             >
               <Ionicons name="checkmark-circle" size={22} color={COLORS.white} />
               <Text style={styles.cleanBtnText}>
-                {canMarkCleaned ? 'Mark as cleaned' : 'Finish all beds first'}
+                {canMarkCleaned ? t('markAsCleaned') : t('finishBedsFirst')}
               </Text>
             </TouchableOpacity>
           )}
@@ -438,9 +431,9 @@ function RoomCard({ room, status, onUpdate }) {
 }
 
 // ------------------------------------------------------------------
-// Request Extra Room Modal (unchanged)
+// Request Extra Room Modal (translated)
 // ------------------------------------------------------------------
-function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, onClose, onRequest }) {
+function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, onClose, onRequest, t }) {
   const [loadingRoomId, setLoadingRoomId] = useState(null);
   const sortedFloors = useMemo(() => {
     if (!floors) return [];
@@ -467,8 +460,7 @@ function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, 
       await onRequest(room);
       onClose();
     } catch (e) {
-      // Use a simple alert for errors – fine here
-      Alert.alert('Error', e.message);
+      Alert.alert(t('error'), e.message);
     } finally {
       setLoadingRoomId(null);
     }
@@ -478,9 +470,9 @@ function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, 
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalBackdrop}>
         <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Request extra room</Text>
+          <Text style={styles.modalTitle}>{t('requestExtra')}</Text>
           <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginBottom: SPACING[3] }}>
-            Tap a room to send a request to the manager.
+            {t('cleaner.requestExtraDescription')}
           </Text>
           <ScrollView style={{ maxHeight: 300 }} nestedScrollEnabled>
             {sortedFloors.map(floor => {
@@ -499,7 +491,7 @@ function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, 
                         disabled={isLoading}
                       >
                         <Text style={styles.roomOptionText}>
-                          {room.name} ({room.type === 'private' ? 'Private' : 'Dorm'})
+                          {room.name} ({room.type === 'private' ? t('private') : t('dormitory')})
                           {isLoading ? '  ⏳' : ''}
                         </Text>
                         <Ionicons
@@ -514,7 +506,7 @@ function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, 
               );
             })}
           </ScrollView>
-          <Button title="Close" onPress={onClose} variant="secondary" style={{ marginTop: SPACING[4], alignSelf: 'center' }} />
+          <Button title={t('close')} onPress={onClose} variant="secondary" style={{ marginTop: SPACING[4], alignSelf: 'center' }} />
         </View>
       </View>
     </Modal>
@@ -525,6 +517,7 @@ function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, 
 // Main Cleaner Screen
 // ------------------------------------------------------------------
 export default function CleanerScreen() {
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
   const {
     hostel, floors = [], rooms = [], roomStatus = {}, updateRoomStatus,
@@ -595,7 +588,7 @@ export default function CleanerScreen() {
 
   const handleRequestExtra = async (room) => {
     await requestExtraRoom(room.id, user.uid);
-    Alert.alert('Request sent', 'The manager has been notified.');
+    Alert.alert(t('requestSent'));
   };
 
   const sortedFloors = useMemo(() => {
@@ -622,38 +615,37 @@ export default function CleanerScreen() {
         <View style={styles.topBarLeft}>
           <Avatar name={user.username} size={40} color={COLORS.primary} />
           <View>
-            <Text style={styles.greeting}>Ciao, {user.username} 👋</Text>
-            <Text style={styles.greetingSub}>{hostel.name || 'Today'}</Text>
+            <Text style={styles.greeting}>{t('greeting', { name: user.username })}</Text>
+            <Text style={styles.greetingSub}>{hostel.name || t('today')}</Text>
           </View>
         </View>
         <TouchableOpacity onPress={logout} style={styles.signOutBtn}>
           <Ionicons name="log-out-outline" size={18} color={COLORS.textSecondary} />
-          <Text style={styles.signOutText}>Sign out</Text>
+          <Text style={styles.signOutText}>{t('signOut')}</Text>
         </TouchableOpacity>
       </View>
 
       {/* Progress */}
       <View style={styles.progressWrap}>
         <View style={styles.progressRow}>
-          <Text style={styles.progressLabel}>{cleaned} of {total} rooms done</Text>
+          <Text style={styles.progressLabel}>{t('cleaner.roomsDoneProgress', { cleaned, total })}</Text>
           <Text style={styles.progressPct}>{pct}%</Text>
         </View>
         <ProgressBar pct={pct} />
       </View>
 
-      {/* Scrollable content */}
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Pending requests with cancel */}
+        {/* Pending requests */}
         {pendingRequests.length > 0 && (
           <View style={{ marginBottom: SPACING[4] }}>
-            <SectionTitle title="Pending Requests" subtitle="Waiting for manager approval" />
+            <SectionTitle title={t('cleaner.pendingRequests')} subtitle={t('cleaner.waitingApproval')} />
             {pendingRequests.map(req => {
               const room = rooms.find(r => r.id === req.id);
               return (
                 <Card key={req.id} style={styles.pendingCard}>
                   <View style={styles.pendingRow}>
                     <Ionicons name="time-outline" size={18} color={COLORS.amber} style={{ marginRight: SPACING[2] }} />
-                    <Text style={styles.pendingText}>{room?.name || 'Unknown room'}</Text>
+                    <Text style={styles.pendingText}>{room?.name || t('unknownRoom')}</Text>
                     <TouchableOpacity
                       onPress={() => setCancelRequestId(req.id)}
                       style={{ padding: 4, marginLeft: 'auto' }}
@@ -670,7 +662,7 @@ export default function CleanerScreen() {
         {/* My Rooms */}
         {regularRooms.length > 0 && (
           <View style={{ marginBottom: SPACING[4] }}>
-            <SectionTitle title="My Rooms" subtitle="Assigned to you" />
+            <SectionTitle title={t('myRooms')} subtitle={t('cleaner.assignedToYou')} />
             {sortedFloors.map(floor => {
               const floorRooms = regularRooms.filter(r => r.floorId === floor.id);
               if (!floorRooms.length) return null;
@@ -691,6 +683,7 @@ export default function CleanerScreen() {
                           onUpdate={upd =>
                             updateRoomStatus(room.id, { ...roomStatus[room.id], ...upd })
                           }
+                          t={t}
                         />
                       ))}
                     </View>
@@ -704,7 +697,7 @@ export default function CleanerScreen() {
         {/* Extra Rooms */}
         {extraRooms.length > 0 && (
           <View style={{ marginBottom: SPACING[4] }}>
-            <SectionTitle title="Extra Rooms" subtitle="Approved extra cleanings" />
+            <SectionTitle title={t('extraRooms')} subtitle={t('cleaner.approvedExtra')} />
             {sortedFloors.map(floor => {
               const floorRooms = extraRooms.filter(r => r.floorId === floor.id);
               if (!floorRooms.length) return null;
@@ -725,6 +718,7 @@ export default function CleanerScreen() {
                           onUpdate={upd =>
                             updateRoomStatus(room.id, { ...roomStatus[room.id], ...upd })
                           }
+                          t={t}
                         />
                       ))}
                     </View>
@@ -737,32 +731,32 @@ export default function CleanerScreen() {
 
         {/* Empty state */}
         {myRooms.length === 0 && pendingRequests.length === 0 && (
-          <EmptyState icon="✨" title="No rooms assigned" subtitle="The manager hasn't assigned rooms to you yet" />
+          <EmptyState icon="✨" title={t('noRoomsAssigned')} subtitle={t('cleaner.noRoomsAssignedSubtitle')} />
         )}
 
         {/* All done */}
         {myRooms.length > 0 && cleaned === total && (
           <View style={styles.doneBox}>
             <Text style={styles.doneIcon}>🎉</Text>
-            <Text style={styles.doneTitle}>All done!</Text>
-            <Text style={styles.doneSub}>Amazing work today, {user.username}.</Text>
+            <Text style={styles.doneTitle}>{t('cleaner.allDone')}</Text>
+            <Text style={styles.doneSub}>{t('cleaner.amazingWork', { name: user.username })}</Text>
           </View>
         )}
 
         <View style={{ height: 80 }} />
       </ScrollView>
 
-      {/* Footer always visible */}
+      {/* Footer */}
       {myRooms.length > 0 && (
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Need an extra room?</Text>
+          <Text style={styles.footerText}>{t('cleaner.needExtra')}</Text>
           <TouchableOpacity
             onPress={() => setShowRequestModal(true)}
             style={styles.footerBtn}
             activeOpacity={0.8}
           >
             <Ionicons name="add-circle-outline" size={20} color={COLORS.white} />
-            <Text style={styles.footerBtnText}>Extra</Text>
+            <Text style={styles.footerBtnText}>{t('extra')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -776,6 +770,7 @@ export default function CleanerScreen() {
         extraRequests={extraRequests}
         onClose={() => setShowRequestModal(false)}
         onRequest={handleRequestExtra}
+        t={t}
       />
 
       {/* Cancel confirmation modal */}
@@ -785,16 +780,16 @@ export default function CleanerScreen() {
           onPress={() => setCancelRequestId(null)}
         >
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Cancel request?</Text>
+            <Text style={styles.modalTitle}>{t('cleaner.cancelRequest')}</Text>
             <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.textSecondary, marginBottom: SPACING[4] }}>
-              Remove this extra room request?
+              {t('cleaner.cancelRequestMsg')}
             </Text>
             <View style={{ flexDirection: 'row', gap: SPACING[2] }}>
               <TouchableOpacity
                 onPress={() => setCancelRequestId(null)}
                 style={[styles.modalBtn, styles.modalBtnCancel]}
               >
-                <Text style={styles.modalBtnText}>Keep</Text>
+                <Text style={styles.modalBtnText}>{t('cleaner.keep')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
@@ -803,7 +798,7 @@ export default function CleanerScreen() {
                 }}
                 style={[styles.modalBtn, { backgroundColor: COLORS.danger }]}
               >
-                <Text style={[styles.modalBtnText, { color: COLORS.white }]}>Cancel Request</Text>
+                <Text style={[styles.modalBtnText, { color: COLORS.white }]}>{t('cleaner.cancelRequestBtn')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -814,7 +809,7 @@ export default function CleanerScreen() {
 }
 
 // ------------------------------------------------------------------
-// Styles
+// Styles (unchanged except for removed hardcoded strings)
 // ------------------------------------------------------------------
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
