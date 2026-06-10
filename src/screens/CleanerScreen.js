@@ -24,8 +24,14 @@ const REASONS = {
   common:   { label: 'Common',     color: COLORS.textMuted,    bg: COLORS.surface,       icon: 'home-outline' },
 };
 
+const LANGS = [
+  { code: 'en', label: 'English' },
+  { code: 'it', label: 'Italiano' },
+  { code: 'es', label: 'Español' },
+];
+
 // ------------------------------------------------------------------
-// Kebab Menu (translated)
+// Kebab Menu
 // ------------------------------------------------------------------
 function KebabMenu({ onEditBeds, onUndo, t }) {
   const [visible, setVisible] = useState(false);
@@ -44,7 +50,7 @@ function KebabMenu({ onEditBeds, onUndo, t }) {
             onPress={() => { setVisible(false); onEditBeds(); }}
           >
             <Ionicons name="create-outline" size={18} color={COLORS.text} />
-            <Text style={styles.kebabOptionText}>{t('cleaner.editBeds')}</Text>
+            <Text style={styles.kebabOptionText}>{t('cleanerScreen.editBeds')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.kebabOption}
@@ -60,7 +66,7 @@ function KebabMenu({ onEditBeds, onUndo, t }) {
 }
 
 // ------------------------------------------------------------------
-// Room Card (translated)
+// Room Card
 // ------------------------------------------------------------------
 function RoomCard({ room, status, onUpdate, t }) {
   const [open, setOpen] = useState(false);
@@ -343,7 +349,7 @@ function RoomCard({ room, status, onUpdate, t }) {
               }) && (
                 <TouchableOpacity style={styles.cleanAllBtn} onPress={cleanAllBeds}>
                   <Ionicons name="checkmark-done-outline" size={18} color={COLORS.white} />
-                  <Text style={styles.cleanAllText}>{t('cleaner.cleanAll')}</Text>
+                  <Text style={styles.cleanAllText}>{t('cleanerScreen.cleanAll')}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -392,7 +398,7 @@ function RoomCard({ room, status, onUpdate, t }) {
                     placeholder="0"
                     style={styles.minutesInput}
                   />
-                  <Text style={{ fontFamily: FONTS.medium, color: COLORS.textSecondary }}>{t('cleaner.minutes')}</Text>
+                  <Text style={{ fontFamily: FONTS.medium, color: COLORS.textSecondary }}>{t('cleanerScreen.minutes')}</Text>
                 </View>
               )}
             </View>
@@ -405,7 +411,7 @@ function RoomCard({ room, status, onUpdate, t }) {
               <Input
                 value={note}
                 onChangeText={setNote}
-                placeholder={t('cleaner.notesPlaceholder')}
+                placeholder={t('cleanerScreen.notesPlaceholder')}
                 multiline numberOfLines={2}
               />
             </View>
@@ -431,7 +437,7 @@ function RoomCard({ room, status, onUpdate, t }) {
 }
 
 // ------------------------------------------------------------------
-// Request Extra Room Modal (translated)
+// Request Extra Room Modal
 // ------------------------------------------------------------------
 function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, onClose, onRequest, t }) {
   const [loadingRoomId, setLoadingRoomId] = useState(null);
@@ -472,7 +478,7 @@ function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, 
         <View style={styles.modalCard}>
           <Text style={styles.modalTitle}>{t('requestExtra')}</Text>
           <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginBottom: SPACING[3] }}>
-            {t('cleaner.requestExtraDescription')}
+            {t('cleanerScreen.requestExtraDescription')}
           </Text>
           <ScrollView style={{ maxHeight: 300 }} nestedScrollEnabled>
             {sortedFloors.map(floor => {
@@ -517,7 +523,7 @@ function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, 
 // Main Cleaner Screen
 // ------------------------------------------------------------------
 export default function CleanerScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user, logout } = useAuth();
   const {
     hostel, floors = [], rooms = [], roomStatus = {}, updateRoomStatus,
@@ -526,7 +532,6 @@ export default function CleanerScreen() {
 
   const myRooms = rooms.filter(r => r.assignedTo === user.uid);
 
-  // Priority sorting
   const sortedRooms = useMemo(() => {
     const numericName = (name) => {
       const num = parseInt(name, 10);
@@ -585,6 +590,7 @@ export default function CleanerScreen() {
 
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [cancelRequestId, setCancelRequestId] = useState(null);
+  const [showLangMenu, setShowLangMenu] = useState(false);
 
   const handleRequestExtra = async (room) => {
     await requestExtraRoom(room.id, user.uid);
@@ -610,7 +616,7 @@ export default function CleanerScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Top bar */}
+      {/* Top bar with language switcher */}
       <View style={styles.topBar}>
         <View style={styles.topBarLeft}>
           <Avatar name={user.username} size={40} color={COLORS.primary} />
@@ -619,16 +625,23 @@ export default function CleanerScreen() {
             <Text style={styles.greetingSub}>{hostel.name || t('today')}</Text>
           </View>
         </View>
-        <TouchableOpacity onPress={logout} style={styles.signOutBtn}>
-          <Ionicons name="log-out-outline" size={18} color={COLORS.textSecondary} />
-          <Text style={styles.signOutText}>{t('signOut')}</Text>
-        </TouchableOpacity>
+        <View style={styles.topBarRight}>
+          {/* Language globe icon */}
+          <TouchableOpacity onPress={() => setShowLangMenu(true)} style={styles.iconBtn}>
+            <Ionicons name="globe-outline" size={22} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+          {/* Sign out button */}
+          <TouchableOpacity onPress={logout} style={styles.signOutBtn}>
+            <Ionicons name="log-out-outline" size={18} color={COLORS.textSecondary} />
+            <Text style={styles.signOutText}>{t('signOut')}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Progress */}
       <View style={styles.progressWrap}>
         <View style={styles.progressRow}>
-          <Text style={styles.progressLabel}>{t('cleaner.roomsDoneProgress', { cleaned, total })}</Text>
+          <Text style={styles.progressLabel}>{t('cleanerScreen.roomsDoneProgress', { cleaned, total })}</Text>
           <Text style={styles.progressPct}>{pct}%</Text>
         </View>
         <ProgressBar pct={pct} />
@@ -638,7 +651,7 @@ export default function CleanerScreen() {
         {/* Pending requests */}
         {pendingRequests.length > 0 && (
           <View style={{ marginBottom: SPACING[4] }}>
-            <SectionTitle title={t('cleaner.pendingRequests')} subtitle={t('cleaner.waitingApproval')} />
+            <SectionTitle title={t('cleanerScreen.pendingRequests')} subtitle={t('cleanerScreen.waitingApproval')} />
             {pendingRequests.map(req => {
               const room = rooms.find(r => r.id === req.id);
               return (
@@ -662,7 +675,7 @@ export default function CleanerScreen() {
         {/* My Rooms */}
         {regularRooms.length > 0 && (
           <View style={{ marginBottom: SPACING[4] }}>
-            <SectionTitle title={t('myRooms')} subtitle={t('cleaner.assignedToYou')} />
+            <SectionTitle title={t('myRooms')} subtitle={t('cleanerScreen.assignedToYou')} />
             {sortedFloors.map(floor => {
               const floorRooms = regularRooms.filter(r => r.floorId === floor.id);
               if (!floorRooms.length) return null;
@@ -697,7 +710,7 @@ export default function CleanerScreen() {
         {/* Extra Rooms */}
         {extraRooms.length > 0 && (
           <View style={{ marginBottom: SPACING[4] }}>
-            <SectionTitle title={t('extraRooms')} subtitle={t('cleaner.approvedExtra')} />
+            <SectionTitle title={t('extraRooms')} subtitle={t('cleanerScreen.approvedExtra')} />
             {sortedFloors.map(floor => {
               const floorRooms = extraRooms.filter(r => r.floorId === floor.id);
               if (!floorRooms.length) return null;
@@ -731,15 +744,15 @@ export default function CleanerScreen() {
 
         {/* Empty state */}
         {myRooms.length === 0 && pendingRequests.length === 0 && (
-          <EmptyState icon="✨" title={t('noRoomsAssigned')} subtitle={t('cleaner.noRoomsAssignedSubtitle')} />
+          <EmptyState icon="✨" title={t('noRoomsAssigned')} subtitle={t('cleanerScreen.noRoomsAssignedSubtitle')} />
         )}
 
         {/* All done */}
         {myRooms.length > 0 && cleaned === total && (
           <View style={styles.doneBox}>
             <Text style={styles.doneIcon}>🎉</Text>
-            <Text style={styles.doneTitle}>{t('cleaner.allDone')}</Text>
-            <Text style={styles.doneSub}>{t('cleaner.amazingWork', { name: user.username })}</Text>
+            <Text style={styles.doneTitle}>{t('cleanerScreen.allDone')}</Text>
+            <Text style={styles.doneSub}>{t('cleanerScreen.amazingWork', { name: user.username })}</Text>
           </View>
         )}
 
@@ -749,7 +762,7 @@ export default function CleanerScreen() {
       {/* Footer */}
       {myRooms.length > 0 && (
         <View style={styles.footer}>
-          <Text style={styles.footerText}>{t('cleaner.needExtra')}</Text>
+          <Text style={styles.footerText}>{t('cleanerScreen.needExtra')}</Text>
           <TouchableOpacity
             onPress={() => setShowRequestModal(true)}
             style={styles.footerBtn}
@@ -780,16 +793,16 @@ export default function CleanerScreen() {
           onPress={() => setCancelRequestId(null)}
         >
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{t('cleaner.cancelRequest')}</Text>
+            <Text style={styles.modalTitle}>{t('cleanerScreen.cancelRequest')}</Text>
             <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.textSecondary, marginBottom: SPACING[4] }}>
-              {t('cleaner.cancelRequestMsg')}
+              {t('cleanerScreen.cancelRequestMsg')}
             </Text>
             <View style={{ flexDirection: 'row', gap: SPACING[2] }}>
               <TouchableOpacity
                 onPress={() => setCancelRequestId(null)}
                 style={[styles.modalBtn, styles.modalBtnCancel]}
               >
-                <Text style={styles.modalBtnText}>{t('cleaner.keep')}</Text>
+                <Text style={styles.modalBtnText}>{t('cleanerScreen.keep')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
@@ -798,9 +811,44 @@ export default function CleanerScreen() {
                 }}
                 style={[styles.modalBtn, { backgroundColor: COLORS.danger }]}
               >
-                <Text style={[styles.modalBtnText, { color: COLORS.white }]}>{t('cleaner.cancelRequestBtn')}</Text>
+                <Text style={[styles.modalBtnText, { color: COLORS.white }]}>{t('cleanerScreen.cancelRequestBtn')}</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Language menu modal */}
+      <Modal visible={showLangMenu} transparent animationType="fade" onRequestClose={() => setShowLangMenu(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowLangMenu(false)}>
+          <View style={styles.langMenuCard}>
+            <Text style={styles.langMenuTitle}>{t('manager.language')}</Text>
+            <View style={{ gap: SPACING[2] }}>
+              {LANGS.map(lang => (
+                <TouchableOpacity
+                  key={lang.code}
+                  style={[styles.langMenuItem, i18n.language === lang.code && styles.langMenuItemActive]}
+                  onPress={() => { i18n.changeLanguage(lang.code); setShowLangMenu(false); }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.langMenuItemText, i18n.language === lang.code && styles.langMenuItemTextActive]}>
+                    {lang.label}
+                  </Text>
+                  {i18n.language === lang.code && (
+                    <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: SPACING[2] }} />
+            <TouchableOpacity
+              onPress={() => setShowLangMenu(false)}
+              style={[styles.langMenuItem, { justifyContent: 'center' }]}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close-circle-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[1] }} />
+              <Text style={[styles.langMenuItemText, { color: COLORS.danger }]}>{t('close')}</Text>
+            </TouchableOpacity>
           </View>
         </Pressable>
       </Modal>
@@ -809,7 +857,7 @@ export default function CleanerScreen() {
 }
 
 // ------------------------------------------------------------------
-// Styles (unchanged except for removed hardcoded strings)
+// Styles
 // ------------------------------------------------------------------
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
@@ -819,8 +867,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   topBarLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING[3] },
+  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: SPACING[2] },
   greeting: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.lg, color: COLORS.text },
   greetingSub: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary, marginTop: 2 },
+  iconBtn: { padding: 6 },
   signOutBtn: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING[1],
     paddingHorizontal: SPACING[3], paddingVertical: SPACING[2],
@@ -1027,4 +1077,38 @@ const styles = StyleSheet.create({
   modalBtn: { flex: 1, paddingVertical: SPACING[3], borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   modalBtnCancel: { backgroundColor: COLORS.surface, borderColor: COLORS.border },
   modalBtnText: { fontFamily: 'System', fontWeight: '600', fontSize: 16, color: COLORS.primary },
+  // Language modal specific
+  langMenuCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING[4],
+    width: 240,
+    ...SHADOW.md,
+  },
+  langMenuTitle: {
+    fontFamily: FONTS.bold,
+    fontSize: FONT_SIZE.lg,
+    color: COLORS.text,
+    marginBottom: SPACING[3],
+  },
+  langMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING[3],
+    paddingHorizontal: SPACING[3],
+    borderRadius: RADIUS.md,
+  },
+  langMenuItemActive: {
+    backgroundColor: COLORS.primaryLight,
+  },
+  langMenuItemText: {
+    fontFamily: FONTS.medium,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.text,
+  },
+  langMenuItemTextActive: {
+    color: COLORS.primary,
+    fontFamily: FONTS.bold,
+  },
 });
