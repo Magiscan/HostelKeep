@@ -31,6 +31,8 @@ const resources = {
       note: 'Note',
       bedsNotReady: 'Beds not ready',
 
+      exportCSV: 'Export CSV', 
+
       // ---- Login ----
       username: 'Username',
       password: 'Password',
@@ -274,6 +276,8 @@ const resources = {
       note: 'Nota',
       bedsNotReady: 'Letti non pronti',
 
+      exportCSV: 'Esporta CSV',
+
       // ---- Login ----
       username: 'Nome utente',
       password: 'Password',
@@ -512,6 +516,8 @@ const resources = {
       error: 'Error',
       note: 'Nota',
       bedsNotReady: 'Camas no listas',
+
+      exportCSV: 'Exportar CSV',
 
       // ---- Login ----
       username: 'Usuario',

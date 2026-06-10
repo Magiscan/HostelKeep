@@ -1,15 +1,36 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity, Modal, TextInput,
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  RefreshControl,
+  TouchableOpacity,
+  Modal,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, FONT_SIZE, RADIUS, SHADOW, SPACING } from '../../theme';
 import {
-  SectionTitle, Card, Badge, ProgressBar, EmptyState, Button, Chip, FloorHeader,
+  SectionTitle,
+  Card,
+  Badge,
+  ProgressBar,
+  EmptyState,
+  Button,
+  Chip,
+  FloorHeader,
 } from '../../components/UI';
 import { useApp } from '../../contexts/AppContext';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import { Platform } from 'react-native';
 
+// ------------------------------------------------------------------
+// Helpers
+// ------------------------------------------------------------------
 const REASONS = {
   clean:    { label: 'Clean',      color: COLORS.success, bg: COLORS.successLight },
   stayover: { label: 'Stay‑over',  color: COLORS.amber,   bg: COLORS.amberLight },
@@ -17,6 +38,70 @@ const REASONS = {
   early:    { label: 'Early c/in', color: COLORS.primary, bg: COLORS.primaryLight },
   noone:    { label: 'No one',     color: COLORS.blue,    bg: COLORS.blueLight },
   common:   { label: 'Common',     color: COLORS.textMuted, bg: COLORS.surface },
+};
+
+const generateCSV = (rooms, roomStatus, cleaners, extraRequests, floors) => {
+  const headers = [
+    'Room',
+    'Floor',
+    'Type',
+    'Cleaner',
+    'Status',
+    'Notes',
+    'Extra Time (min)',
+    'Bed Details',
+    'Flags',
+    'Extra Request',
+  ].join(',');
+
+  const rows = rooms.map(room => {
+    const status = roomStatus[room.id] || {};
+    const cleaned = status.cleaned ? 'Cleaned' : 'Pending';
+    const cleaner = cleaners.find(c => c.id === room.assignedTo);
+    const cleanerName = cleaner ? cleaner.username : 'Unassigned';
+    const notes = (status.notes || '').replace(/"/g, '""');
+    const extraTime = status.extraTime || 0;
+    const floor = floors.find(f => f.id === room.floorId);
+    const floorName = floor ? floor.name : '';
+
+    const bedStatus = status.bedStatus || {};
+    const assignment = status.assignmentBedStatus || {};
+    const beds = room.beds || [];
+    const bedDetails = beds
+      .map(bed => {
+        const bStat = bedStatus[bed.id]?.status || 'pending';
+        const aStat = assignment[bed.id]?.status || 'clean';
+        return `${bed.name}:${bStat}(${aStat})`;
+      })
+      .join('; ');
+
+    const flags = [];
+    if (status.earlyCheckIn) flags.push('Early Check-in');
+    if (status.lateCheckOut) flags.push('Late Check-out');
+    if (status.commonOnly) flags.push('Common Only');
+    if (status.extraCleaning) flags.push('Extra Cleaning');
+    const flagsStr = flags.join('/');
+
+    const extraReq = extraRequests.find(req => req.id === room.id);
+    const extraReqStr = extraReq
+      ? `Requested by ${extraReq.cleanerId}`
+      : '';
+
+    return [
+      `"${room.name}"`,
+      `"${floorName}"`,
+      room.type,
+      `"${cleanerName}"`,
+      cleaned,
+      `"${notes}"`,
+      extraTime,
+      `"${bedDetails}"`,
+      `"${flagsStr}"`,
+      `"${extraReqStr}"`,
+    ].join(',');
+  });
+
+  return [headers, ...rows].join('\n');
 };
 
 // ─── Confirmation Modal ─────────────────────────────────────────
@@ -28,11 +113,19 @@ function ConfirmModal({ visible, onConfirm, onCancel, title, message, t }) {
           <Text style={styles.modalTitle}>{title}</Text>
           <Text style={styles.modalMessage}>{message}</Text>
           <View style={styles.modalActions}>
-            <TouchableOpacity onPress={onCancel} style={[styles.modalBtn, styles.modalBtnCancel]}>
+            <TouchableOpacity
+              onPress={onCancel}
+              style={[styles.modalBtn, styles.modalBtnCancel]}
+            >
               <Text style={styles.modalBtnText}>{t('cancel')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={onConfirm} style={[styles.modalBtn, styles.modalBtnDanger]}>
-              <Text style={[styles.modalBtnText, { color: COLORS.white }]}>{t('reset')}</Text>
+            <TouchableOpacity
+              onPress={onConfirm}
+              style={[styles.modalBtn, styles.modalBtnDanger]}
+            >
+              <Text style={[styles.modalBtnText, { color: COLORS.white }]}>
+                {t('reset')}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -41,15 +134,38 @@ function ConfirmModal({ visible, onConfirm, onCancel, title, message, t }) {
   );
 }
 
-// ─── Cleaner Detail Modal ───────────────────────────────────────
-function CleanerDetailModal({ visible, cleaner, rooms = [], roomStatus, onClose, t }) {
+// ─── Cleaner Detail Modal (with per‑cleaner export) ─────────────
+function CleanerDetailModal({
+  visible,
+  cleaner,
+  rooms = [],
+  roomStatus,
+  onClose,
+  t,
+  onExport,       // <-- new prop
+}) {
   if (!cleaner) return null;
   const assignedRooms = rooms.filter(r => r.assignedTo === cleaner.id);
+
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalBackdrop}>
         <View style={[styles.modalCard, { maxHeight: '80%' }]}>
-          <Text style={styles.modalTitle}>{t('cleanerRooms', { name: cleaner.username })}</Text>
+          {/* Title row with export button */}
+          <View style={styles.modalTitleRow}>
+            <Text style={[styles.modalTitle, { marginBottom: 0, flex: 1 }]}>
+              {t('cleanerRooms', { name: cleaner.username })}
+            </Text>
+            <TouchableOpacity
+              onPress={() => onExport(assignedRooms)}
+              style={styles.exportBtnSmall}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="download-outline" size={18} color={COLORS.primary} />
+              <Text style={styles.exportBtnTextSmall}>{t('exportCSV')}</Text>
+            </TouchableOpacity>
+          </View>
+
           <ScrollView style={{ marginBottom: SPACING[4] }}>
             {assignedRooms.length === 0 ? (
               <Text style={styles.emptyText}>{t('noRoomsAssignedYet')}</Text>
@@ -65,103 +181,225 @@ function CleanerDetailModal({ visible, cleaner, rooms = [], roomStatus, onClose,
                 const isCommon = status.commonOnly || false;
                 const assignmentAttributes = status.assignmentAttributes || {};
                 const isEarly = status.earlyCheckIn === true;
-                const isLate  = status.lateCheckOut === true;
-                const hasEarlyBed = room.type === 'dorm' && room.beds?.some(b => (assignmentBedStatus[b.id] || {}).status === 'early');
-                const hasLateBed  = room.type === 'dorm' && room.beds?.some(b => (assignmentBedStatus[b.id] || {}).status === 'late');
+                const isLate = status.lateCheckOut === true;
+                const hasEarlyBed =
+                  room.type === 'dorm' &&
+                  room.beds?.some(
+                    b => (assignmentBedStatus[b.id] || {}).status === 'early'
+                  );
+                const hasLateBed =
+                  room.type === 'dorm' &&
+                  room.beds?.some(
+                    b => (assignmentBedStatus[b.id] || {}).status === 'late'
+                  );
                 const showEarly = isEarly || hasEarlyBed;
-                const showLate  = isLate  || hasLateBed;
+                const showLate = isLate || hasLateBed;
 
                 return (
                   <View key={room.id} style={styles.cleanerRoomCard}>
                     <View style={styles.roomHeader}>
                       <View style={{ flex: 1 }}>
-                        {/* Room name and type badge – scrollable */}
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING[2] }}>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                        >
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: SPACING[2],
+                            }}
+                          >
                             <Text style={styles.roomName}>{room.name}</Text>
                             <Badge
-                              label={room.type === 'private' ? t('private') : t('dormitory')}
+                              label={
+                                room.type === 'private'
+                                  ? t('private')
+                                  : t('dormitory')
+                              }
                               type={room.type === 'private' ? 'priv' : 'dorm'}
                             />
                           </View>
                         </ScrollView>
-                        {/* Flags row – scrollable */}
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 4 }}>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          style={{ marginTop: 4 }}
+                        >
                           <View style={{ flexDirection: 'row', gap: 4 }}>
                             {status.extraCleaning && (
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                              <View
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: 2,
+                                }}
+                              >
                                 <Text style={{ fontSize: 14 }}>⭐</Text>
-                                <Text style={{ fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.primary }}>{t('extra')}</Text>
+                                <Text
+                                  style={{
+                                    fontFamily: FONTS.semiBold,
+                                    fontSize: FONT_SIZE.xs,
+                                    color: COLORS.primary,
+                                  }}
+                                >
+                                  {t('extra')}
+                                </Text>
                               </View>
                             )}
                             {showEarly && (
-                              <View style={{ backgroundColor: COLORS.blueLight, paddingHorizontal: SPACING[1], paddingVertical: 1, borderRadius: RADIUS.sm }}>
-                                <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.blue }}>{t('earlyCheckInFlag')}</Text>
+                              <View
+                                style={{
+                                  backgroundColor: COLORS.blueLight,
+                                  paddingHorizontal: SPACING[1],
+                                  paddingVertical: 1,
+                                  borderRadius: RADIUS.sm,
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    fontFamily: FONTS.bold,
+                                    fontSize: FONT_SIZE.xs,
+                                    color: COLORS.blue,
+                                  }}
+                                >
+                                  {t('earlyCheckInFlag')}
+                                </Text>
                               </View>
                             )}
                             {showLate && (
-                              <View style={{ backgroundColor: COLORS.dangerLight, paddingHorizontal: SPACING[1], paddingVertical: 1, borderRadius: RADIUS.sm }}>
-                                <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.danger }}>{t('lateCheckOutFlag')}</Text>
+                              <View
+                                style={{
+                                  backgroundColor: COLORS.dangerLight,
+                                  paddingHorizontal: SPACING[1],
+                                  paddingVertical: 1,
+                                  borderRadius: RADIUS.sm,
+                                }}
+                              >
+                                <Text
+                                  style={{
+                                    fontFamily: FONTS.bold,
+                                    fontSize: FONT_SIZE.xs,
+                                    color: COLORS.danger,
+                                  }}
+                                >
+                                  {t('lateCheckOutFlag')}
+                                </Text>
                               </View>
                             )}
                           </View>
                         </ScrollView>
                       </View>
-                      <Badge label={cleaned ? t('cleaned') : t('pending')} type={cleaned ? 'clean' : 'extra'} />
+                      <Badge
+                        label={cleaned ? t('cleaned') : t('pending')}
+                        type={cleaned ? 'clean' : 'extra'}
+                      />
                     </View>
                     {managerNotes ? (
                       <View style={styles.managerNotesBox}>
-                        <Text style={styles.managerNotesText}>📋 {managerNotes}</Text>
+                        <Text style={styles.managerNotesText}>
+                          📋 {managerNotes}
+                        </Text>
                       </View>
                     ) : null}
-                    {extraTime > 0 && <Text style={styles.detailLine}>{t('extraTimeValue', { minutes: extraTime })}</Text>}
+                    {extraTime > 0 && (
+                      <Text style={styles.detailLine}>
+                        {t('extraTimeValue', { minutes: extraTime })}
+                      </Text>
+                    )}
                     {notes ? (
                       <View style={styles.notesBox}>
                         <Text style={styles.notesText}>📝 “{notes}”</Text>
                       </View>
                     ) : null}
-                    {room.type === 'private' && Object.keys(assignmentAttributes).length > 0 && (
-                      <View style={styles.attributeSection}>
-                        <Text style={styles.detailLine}>{t('roomFeatures')}:</Text>
-                        {Object.entries(assignmentAttributes).map(([attr]) => (
-                          <View key={attr} style={styles.attributeRow}>
-                            <Ionicons
-                              name={cleaned ? 'checkmark-circle' : 'ellipse-outline'}
-                              size={16}
-                              color={cleaned ? COLORS.success : COLORS.textMuted}
-                              style={{ marginRight: SPACING[1] }}
-                            />
-                            <Text style={styles.attributeText}>{attr}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    )}
+                    {room.type === 'private' &&
+                      Object.keys(assignmentAttributes).length > 0 && (
+                        <View style={styles.attributeSection}>
+                          <Text style={styles.detailLine}>
+                            {t('roomFeatures')}:
+                          </Text>
+                          {Object.entries(assignmentAttributes).map(
+                            ([attr]) => (
+                              <View key={attr} style={styles.attributeRow}>
+                                <Ionicons
+                                  name={
+                                    cleaned
+                                      ? 'checkmark-circle'
+                                      : 'ellipse-outline'
+                                  }
+                                  size={16}
+                                  color={
+                                    cleaned
+                                      ? COLORS.success
+                                      : COLORS.textMuted
+                                  }
+                                  style={{ marginRight: SPACING[1] }}
+                                />
+                                <Text style={styles.attributeText}>
+                                  {attr}
+                                </Text>
+                              </View>
+                            )
+                          )}
+                        </View>
+                      )}
                     {isCommon ? (
                       <View style={styles.commonIndicator}>
                         <Ionicons
-                          name={cleaned ? 'checkmark-circle' : 'ellipse-outline'}
+                          name={
+                            cleaned
+                              ? 'checkmark-circle'
+                              : 'ellipse-outline'
+                          }
                           size={18}
-                          color={cleaned ? COLORS.success : COLORS.textMuted}
+                          color={
+                            cleaned ? COLORS.success : COLORS.textMuted
+                          }
                         />
-                        <Text style={[styles.commonText, cleaned && { color: COLORS.success }]}>
-                          {cleaned ? t('commonCleaned') : t('commonNotCleaned')}
+                        <Text
+                          style={[
+                            styles.commonText,
+                            cleaned && { color: COLORS.success },
+                          ]}
+                        >
+                          {cleaned
+                            ? t('commonCleaned')
+                            : t('commonNotCleaned')}
                         </Text>
                       </View>
                     ) : (
-                      room.type === 'dorm' && room.beds?.length > 0 && (
+                      room.type === 'dorm' &&
+                      room.beds?.length > 0 && (
                         <View style={styles.bedSummary}>
                           {room.beds.map(bed => {
-                            const assignment = assignmentBedStatus[bed.id] || { status: 'clean', reason: 'clean' };
-                            const reasonKey = assignment.reason || assignment.status || 'clean';
-                            const reason = REASONS[reasonKey] || REASONS.clean;
-                            const bedClean = bedStatus[bed.id]?.status === 'cleaned';
-                            const isSkipped = assignment.status === 'stayover' || assignment.status === 'noone';
+                            const assignment =
+                              assignmentBedStatus[bed.id] || {
+                                status: 'clean',
+                                reason: 'clean',
+                              };
+                            const reasonKey =
+                              assignment.reason ||
+                              assignment.status ||
+                              'clean';
+                            const reason =
+                              REASONS[reasonKey] || REASONS.clean;
+                            const bedClean =
+                              bedStatus[bed.id]?.status === 'cleaned';
+                            const isSkipped =
+                              assignment.status === 'stayover' ||
+                              assignment.status === 'noone';
                             const isCleaned = !isSkipped && bedClean;
                             return (
                               <Chip
                                 key={bed.id}
-                                label={`${isCleaned ? '✓' : isSkipped ? '⊘' : '○'} ${bed.name}`}
-                                colorText={isCleaned ? COLORS.success : reason.color}
+                                label={`${
+                                  isCleaned ? '✓' : isSkipped ? '⊘' : '○'
+                                } ${bed.name}`}
+                                colorText={
+                                  isCleaned
+                                    ? COLORS.success
+                                    : reason.color
+                                }
                                 colorBg={COLORS.surface}
                                 colorBorder={COLORS.border}
                                 fontSize={FONT_SIZE.xs}
@@ -176,7 +414,12 @@ function CleanerDetailModal({ visible, cleaner, rooms = [], roomStatus, onClose,
               })
             )}
           </ScrollView>
-          <Button title={t('close')} onPress={onClose} variant="secondary" style={{ alignSelf: 'center' }} />
+          <Button
+            title={t('close')}
+            onPress={onClose}
+            variant="secondary"
+            style={{ alignSelf: 'center' }}
+          />
         </View>
       </View>
     </Modal>
@@ -197,103 +440,221 @@ function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose, t }) {
   const assignmentAttributes = status.assignmentAttributes || {};
   const cleaner = cleaners.find(c => c.id === room.assignedTo);
   const isEarly = status.earlyCheckIn === true;
-  const isLate  = status.lateCheckOut === true;
-  const hasEarlyBed = room.type === 'dorm' && room.beds?.some(b => (assignmentBedStatus[b.id] || {}).status === 'early');
-  const hasLateBed  = room.type === 'dorm' && room.beds?.some(b => (assignmentBedStatus[b.id] || {}).status === 'late');
+  const isLate = status.lateCheckOut === true;
+  const hasEarlyBed =
+    room.type === 'dorm' &&
+    room.beds?.some(
+      b => (assignmentBedStatus[b.id] || {}).status === 'early'
+    );
+  const hasLateBed =
+    room.type === 'dorm' &&
+    room.beds?.some(
+      b => (assignmentBedStatus[b.id] || {}).status === 'late'
+    );
   const showEarly = isEarly || hasEarlyBed;
-  const showLate  = isLate  || hasLateBed;
+  const showLate = isLate || hasLateBed;
 
   return (
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalBackdrop}>
         <View style={[styles.modalCard, { maxHeight: '80%' }]}>
           {/* Room name and cleaned/pending badge on the same row */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING[3] }}>
-            <Text style={[styles.modalTitle, { marginBottom: 0, flex: 1 }]} numberOfLines={2}>{room.name}</Text>
-            <Badge label={cleaned ? t('cleaned') : t('pending')} type={cleaned ? 'clean' : 'extra'} />
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: SPACING[3],
+            }}
+          >
+            <Text
+              style={[styles.modalTitle, { marginBottom: 0, flex: 1 }]}
+              numberOfLines={2}
+            >
+              {room.name}
+            </Text>
+            <Badge
+              label={cleaned ? t('cleaned') : t('pending')}
+              type={cleaned ? 'clean' : 'extra'}
+            />
           </View>
 
-          {/* Other badges (type, extra, early, late) – scrollable row */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: SPACING[4] }}>
+          {/* Other badges – scrollable */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginBottom: SPACING[4] }}
+          >
             <View style={{ flexDirection: 'row', gap: SPACING[2] }}>
               <Badge
-                label={room.type === 'private' ? t('private') : t('dormitory')}
+                label={
+                  room.type === 'private' ? t('private') : t('dormitory')
+                }
                 type={room.type === 'private' ? 'priv' : 'dorm'}
               />
               {status.extraCleaning && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 2,
+                  }}
+                >
                   <Text style={{ fontSize: 14 }}>⭐</Text>
-                  <Text style={{ fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.primary }}>{t('extra')}</Text>
+                  <Text
+                    style={{
+                      fontFamily: FONTS.semiBold,
+                      fontSize: FONT_SIZE.xs,
+                      color: COLORS.primary,
+                    }}
+                  >
+                    {t('extra')}
+                  </Text>
                 </View>
               )}
               {showEarly && (
-                <View style={{ backgroundColor: COLORS.blueLight, paddingHorizontal: SPACING[2], paddingVertical: 2, borderRadius: RADIUS.sm }}>
-                  <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.blue }}>{t('earlyCheckInFlag')}</Text>
+                <View
+                  style={{
+                    backgroundColor: COLORS.blueLight,
+                    paddingHorizontal: SPACING[2],
+                    paddingVertical: 2,
+                    borderRadius: RADIUS.sm,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: FONTS.bold,
+                      fontSize: FONT_SIZE.xs,
+                      color: COLORS.blue,
+                    }}
+                  >
+                    {t('earlyCheckInFlag')}
+                  </Text>
                 </View>
               )}
               {showLate && (
-                <View style={{ backgroundColor: COLORS.dangerLight, paddingHorizontal: SPACING[2], paddingVertical: 2, borderRadius: RADIUS.sm }}>
-                  <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.danger }}>{t('lateCheckOutFlag')}</Text>
+                <View
+                  style={{
+                    backgroundColor: COLORS.dangerLight,
+                    paddingHorizontal: SPACING[2],
+                    paddingVertical: 2,
+                    borderRadius: RADIUS.sm,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: FONTS.bold,
+                      fontSize: FONT_SIZE.xs,
+                      color: COLORS.danger,
+                    }}
+                  >
+                    {t('lateCheckOutFlag')}
+                  </Text>
                 </View>
               )}
             </View>
           </ScrollView>
 
           <ScrollView style={{ marginBottom: SPACING[4] }}>
-            <Text style={styles.detailLine}>{t('cleaner')}: {cleaner ? cleaner.username : t('unassigned')}</Text>
+            <Text style={styles.detailLine}>
+              {t('cleaner')}:{' '}
+              {cleaner ? cleaner.username : t('unassigned')}
+            </Text>
             {managerNotes ? (
               <View style={styles.managerNotesBox}>
-                <Text style={styles.managerNotesText}>📋 {managerNotes}</Text>
+                <Text style={styles.managerNotesText}>
+                  📋 {managerNotes}
+                </Text>
               </View>
             ) : null}
-            {extraTime > 0 && <Text style={styles.detailLine}>{t('extraTimeValue', { minutes: extraTime })}</Text>}
+            {extraTime > 0 && (
+              <Text style={styles.detailLine}>
+                {t('extraTimeValue', { minutes: extraTime })}
+              </Text>
+            )}
             {notes ? (
               <View style={styles.notesBox}>
                 <Text style={styles.notesText}>📝 “{notes}”</Text>
               </View>
             ) : null}
-            {room.type === 'private' && Object.keys(assignmentAttributes).length > 0 && (
-              <View style={styles.attributeSection}>
-                <Text style={styles.detailLine}>{t('roomFeatures')}:</Text>
-                {Object.entries(assignmentAttributes).map(([attr]) => (
-                  <View key={attr} style={styles.attributeRow}>
-                    <Ionicons
-                      name={cleaned ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={16}
-                      color={cleaned ? COLORS.success : COLORS.textMuted}
-                      style={{ marginRight: SPACING[1] }}
-                    />
-                    <Text style={styles.attributeText}>{attr}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
+            {room.type === 'private' &&
+              Object.keys(assignmentAttributes).length > 0 && (
+                <View style={styles.attributeSection}>
+                  <Text style={styles.detailLine}>
+                    {t('roomFeatures')}:
+                  </Text>
+                  {Object.entries(assignmentAttributes).map(([attr]) => (
+                    <View key={attr} style={styles.attributeRow}>
+                      <Ionicons
+                        name={
+                          cleaned
+                            ? 'checkmark-circle'
+                            : 'ellipse-outline'
+                        }
+                        size={16}
+                        color={
+                          cleaned ? COLORS.success : COLORS.textMuted
+                        }
+                        style={{ marginRight: SPACING[1] }}
+                      />
+                      <Text style={styles.attributeText}>{attr}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             {isCommon ? (
               <View style={styles.commonIndicator}>
                 <Ionicons
-                  name={cleaned ? 'checkmark-circle' : 'ellipse-outline'}
+                  name={
+                    cleaned ? 'checkmark-circle' : 'ellipse-outline'
+                  }
                   size={18}
                   color={cleaned ? COLORS.success : COLORS.textMuted}
                 />
-                <Text style={[styles.commonText, cleaned && { color: COLORS.success }]}>
-                  {cleaned ? t('commonCleaned') : t('commonNotCleaned')}
+                <Text
+                  style={[
+                    styles.commonText,
+                    cleaned && { color: COLORS.success },
+                  ]}
+                >
+                  {cleaned
+                    ? t('commonCleaned')
+                    : t('commonNotCleaned')}
                 </Text>
               </View>
             ) : (
-              room.type === 'dorm' && room.beds?.length > 0 && (
+              room.type === 'dorm' &&
+              room.beds?.length > 0 && (
                 <View style={styles.bedSummary}>
                   {room.beds.map(bed => {
-                    const assignment = assignmentBedStatus[bed.id] || { status: 'clean', reason: 'clean' };
-                    const reasonKey = assignment.reason || assignment.status || 'clean';
+                    const assignment = assignmentBedStatus[bed.id] || {
+                      status: 'clean',
+                      reason: 'clean',
+                    };
+                    const reasonKey =
+                      assignment.reason ||
+                      assignment.status ||
+                      'clean';
                     const reason = REASONS[reasonKey] || REASONS.clean;
-                    const bedClean = bedStatus[bed.id]?.status === 'cleaned';
-                    const isSkipped = assignment.status === 'stayover' || assignment.status === 'noone';
+                    const bedClean =
+                      bedStatus[bed.id]?.status === 'cleaned';
+                    const isSkipped =
+                      assignment.status === 'stayover' ||
+                      assignment.status === 'noone';
                     const isCleaned = !isSkipped && bedClean;
                     return (
                       <Chip
                         key={bed.id}
-                        label={`${isCleaned ? '✓' : isSkipped ? '⊘' : '○'} ${bed.name}`}
-                        colorText={isCleaned ? COLORS.success : reason.color}
+                        label={`${
+                          isCleaned
+                            ? '✓'
+                            : isSkipped
+                            ? '⊘'
+                            : '○'
+                        } ${bed.name}`}
+                        colorText={
+                          isCleaned ? COLORS.success : reason.color
+                        }
                         colorBg={COLORS.surface}
                         colorBorder={COLORS.border}
                         fontSize={FONT_SIZE.xs}
@@ -304,7 +665,12 @@ function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose, t }) {
               )
             )}
           </ScrollView>
-          <Button title={t('close')} onPress={onClose} variant="secondary" style={{ alignSelf: 'center' }} />
+          <Button
+            title={t('close')}
+            onPress={onClose}
+            variant="secondary"
+            style={{ alignSelf: 'center' }}
+          />
         </View>
       </View>
     </Modal>
@@ -314,10 +680,16 @@ function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose, t }) {
 // ─── Main Dashboard Screen ──────────────────────────────────────
 export default function DashboardScreen() {
   const {
-    rooms = [], roomStatus = {}, hostel = {}, floors = [], cleaners = [],
-    updateRoomStatus, resetAllRoomStatus,
+    rooms = [],
+    roomStatus = {},
+    hostel = {},
+    floors = [],
+    cleaners = [],
+    updateRoomStatus,
+    resetAllRoomStatus,
     extraRequests = [],
-    approveExtraRoom, rejectExtraRoom,
+    approveExtraRoom,
+    rejectExtraRoom,
   } = useApp();
 
   const { t } = useTranslation();
@@ -327,7 +699,7 @@ export default function DashboardScreen() {
 
   const sortedFloors = useMemo(() => {
     return [...floors].sort((a, b) => {
-      const order = (name) => {
+      const order = name => {
         if (name === 'Ground Floor') return 0;
         if (name === 'Garage') return 999;
         const num = parseInt(name);
@@ -355,50 +727,129 @@ export default function DashboardScreen() {
     setTimeout(() => setRefreshing(false), 300);
   }, []);
 
-  const confirmResetAll = () => { resetAllRoomStatus(); setResetAllModal(false); };
+  const confirmResetAll = () => {
+    resetAllRoomStatus();
+    setResetAllModal(false);
+  };
+
   const confirmResetSingle = () => {
     if (resetSingleModal) {
-      updateRoomStatus(resetSingleModal, { cleaned: false, notes: '', extraTime: 0, bedStatus: {} });
+      updateRoomStatus(resetSingleModal, {
+        cleaned: false,
+        notes: '',
+        extraTime: 0,
+        bedStatus: {},
+      });
       setResetSingleModal(null);
     }
   };
 
-  const toggleFloor = (floorId) => setExpandedFloors(prev => ({ ...prev, [floorId]: !prev[floorId] }));
+  const toggleFloor = floorId =>
+    setExpandedFloors(prev => ({ ...prev, [floorId]: !prev[floorId] }));
+
+  // ── CSV Export handler (reusable) ───────────────────────────
+  const handleExport = useCallback(
+    async (roomList) => {
+      try {
+        const csv = generateCSV(roomList, roomStatus, cleaners, extraRequests, floors);
+        const fileName = `keepclean_report_${new Date().toISOString().slice(0, 10)}.csv`;
+
+        if (Platform.OS === 'web') {
+          // Web: create a Blob and trigger download
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = fileName;
+          link.click();
+          URL.revokeObjectURL(url);
+        } else {
+          // Native: write file and share
+          const fileUri = FileSystem.cacheDirectory + fileName;
+          await FileSystem.writeAsStringAsync(fileUri, csv, {
+            encoding: FileSystem.EncodingType.UTF8,
+          });
+          const canShare = await Sharing.isAvailableAsync();
+          if (canShare) {
+            await Sharing.shareAsync(fileUri, {
+              mimeType: 'text/csv',
+              dialogTitle: t('exportCSV'),
+              UTI: 'public.comma-separated-values-text',
+            });
+          } else {
+            Alert.alert('Error', 'Sharing not available on this device.');
+          }
+        }
+      } catch (error) {
+        console.error('Export error:', error);
+        Alert.alert('Export failed', error.message);
+      }
+    },
+    [roomStatus, cleaners, extraRequests, floors, t]
+  );
 
   if (!hostel.name) {
     return (
       <ScrollView contentContainerStyle={styles.scroll}>
-        <EmptyState icon="🏠" title={t('noProperty')} subtitle={t('createHostelFirst')} />
+        <EmptyState
+          icon="🏠"
+          title={t('noProperty')}
+          subtitle={t('createHostelFirst')}
+        />
       </ScrollView>
     );
   }
 
-  const overallCleaned = rooms.filter(r => roomStatus[r.id]?.cleaned).length;
-  const overallPct = rooms.length ? Math.round((overallCleaned / rooms.length) * 100) : 0;
+  const overallCleaned = rooms.filter(
+    r => roomStatus[r.id]?.cleaned
+  ).length;
+  const overallPct = rooms.length
+    ? Math.round((overallCleaned / rooms.length) * 100)
+    : 0;
 
   return (
     <ScrollView
       contentContainerStyle={styles.scroll}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
     >
-      {/* Header row – flexWrap to prevent overflow */}
+      {/* Header row */}
       <View style={styles.headRow}>
         <View style={{ flex: 1 }}>
-          <SectionTitle title={t('todaysOverview')} subtitle={hostel.name} />
+          <SectionTitle
+            title={t('todaysOverview')}
+            subtitle={hostel.name}
+          />
         </View>
-        <TouchableOpacity onPress={() => setResetAllModal(true)} style={styles.resetAllBtn}>
+        <TouchableOpacity
+          onPress={() => setResetAllModal(true)}
+          style={styles.resetAllBtn}
+        >
           <Ionicons name="refresh" size={18} color={COLORS.danger} />
           <Text style={styles.resetAllText}>{t('resetAllRooms')}</Text>
         </TouchableOpacity>
       </View>
 
       <Card style={styles.overviewCard}>
-        <Text style={styles.overviewText}>{t('roomsCleanedPercent', { cleaned: overallCleaned, total: rooms.length, percent: overallPct })}</Text>
+        <Text style={styles.overviewText}>
+          {t('roomsCleanedPercent', {
+            cleaned: overallCleaned,
+            total: rooms.length,
+            percent: overallPct,
+          })}
+        </Text>
         <ProgressBar pct={overallPct} />
       </Card>
 
+      {/* Search */}
       <View style={styles.searchContainer}>
-        <Ionicons name="search-outline" size={18} color={COLORS.textMuted} style={{ marginRight: SPACING[2] }} />
+        <Ionicons
+          name="search-outline"
+          size={18}
+          color={COLORS.textMuted}
+          style={{ marginRight: SPACING[2] }}
+        />
         <TextInput
           value={search}
           onChangeText={setSearch}
@@ -408,18 +859,27 @@ export default function DashboardScreen() {
           clearButtonMode="while-editing"
         />
         {search.length > 0 && (
-          <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 4 }}>
-            <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
+          <TouchableOpacity
+            onPress={() => setSearch('')}
+            style={{ padding: 4 }}
+          >
+            <Ionicons
+              name="close-circle"
+              size={18}
+              color={COLORS.textMuted}
+            />
           </TouchableOpacity>
         )}
       </View>
 
-      {/* ── Search Results ─────────────────────────────────── */}
+      {/* ── Search Results ───────────────────────────────────── */}
       {filteredRooms !== null && (
         <View style={{ marginBottom: SPACING[4] }}>
           <SectionTitle
             title={t('searchResults', { count: filteredRooms.length })}
-            subtitle={search.trim() ? t('matching', { query: search.trim() }) : ''}
+            subtitle={
+              search.trim() ? t('matching', { query: search.trim() }) : ''
+            }
           />
           {filteredRooms.length === 0 ? (
             <Text style={styles.emptyText}>{t('noResults')}</Text>
@@ -429,43 +889,121 @@ export default function DashboardScreen() {
               const cleaned = status.cleaned || false;
               const cleaner = cleaners.find(c => c.id === room.assignedTo);
               const isEarly = status.earlyCheckIn === true;
-              const isLate  = status.lateCheckOut === true;
-              const assignmentBedStatus = status.assignmentBedStatus || {};
-              const hasEarlyBed = room.type === 'dorm' && room.beds?.some(b => (assignmentBedStatus[b.id] || {}).status === 'early');
-              const hasLateBed  = room.type === 'dorm' && room.beds?.some(b => (assignmentBedStatus[b.id] || {}).status === 'late');
+              const isLate = status.lateCheckOut === true;
+              const assignmentBedStatus =
+                status.assignmentBedStatus || {};
+              const hasEarlyBed =
+                room.type === 'dorm' &&
+                room.beds?.some(
+                  b =>
+                    (assignmentBedStatus[b.id] || {}).status ===
+                    'early'
+                );
+              const hasLateBed =
+                room.type === 'dorm' &&
+                room.beds?.some(
+                  b =>
+                    (assignmentBedStatus[b.id] || {}).status ===
+                    'late'
+                );
               const showEarly = isEarly || hasEarlyBed;
-              const showLate  = isLate  || hasLateBed;
+              const showLate = isLate || hasLateBed;
+
               return (
-                <TouchableOpacity key={room.id} onPress={() => setSelectedRoom(room)} activeOpacity={0.7}>
+                <TouchableOpacity
+                  key={room.id}
+                  onPress={() => setSelectedRoom(room)}
+                  activeOpacity={0.7}
+                >
                   <Card style={styles.roomDetailCard}>
                     <View style={styles.roomHeader}>
-                      {/* Left side – scrollable badges */}
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING[2] }}>
-                          <Text style={styles.roomName}>{room.name}</Text>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={{ flex: 1 }}
+                      >
+                        <View
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: SPACING[2],
+                          }}
+                        >
+                          <Text style={styles.roomName}>
+                            {room.name}
+                          </Text>
                           <Badge
-                            label={room.type === 'private' ? t('private') : t('dormitory')}
-                            type={room.type === 'private' ? 'priv' : 'dorm'}
+                            label={
+                              room.type === 'private'
+                                ? t('private')
+                                : t('dormitory')
+                            }
+                            type={
+                              room.type === 'private' ? 'priv' : 'dorm'
+                            }
                           />
                           {showEarly && (
-                            <View style={{ backgroundColor: COLORS.blueLight, paddingHorizontal: SPACING[2], paddingVertical: 2, borderRadius: RADIUS.sm }}>
-                              <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.blue }}>{t('earlyCheckInFlag')}</Text>
+                            <View
+                              style={{
+                                backgroundColor: COLORS.blueLight,
+                                paddingHorizontal: SPACING[2],
+                                paddingVertical: 2,
+                                borderRadius: RADIUS.sm,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontFamily: FONTS.bold,
+                                  fontSize: FONT_SIZE.xs,
+                                  color: COLORS.blue,
+                                }}
+                              >
+                                {t('earlyCheckInFlag')}
+                              </Text>
                             </View>
                           )}
                           {showLate && (
-                            <View style={{ backgroundColor: COLORS.dangerLight, paddingHorizontal: SPACING[2], paddingVertical: 2, borderRadius: RADIUS.sm }}>
-                              <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.danger }}>{t('lateCheckOutFlag')}</Text>
+                            <View
+                              style={{
+                                backgroundColor: COLORS.dangerLight,
+                                paddingHorizontal: SPACING[2],
+                                paddingVertical: 2,
+                                borderRadius: RADIUS.sm,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontFamily: FONTS.bold,
+                                  fontSize: FONT_SIZE.xs,
+                                  color: COLORS.danger,
+                                }}
+                              >
+                                {t('lateCheckOutFlag')}
+                              </Text>
                             </View>
                           )}
                         </View>
                       </ScrollView>
-                      <Badge label={cleaned ? t('cleaned') : t('pending')} type={cleaned ? 'clean' : 'extra'} />
+                      <Badge
+                        label={
+                          cleaned ? t('cleaned') : t('pending')
+                        }
+                        type={cleaned ? 'clean' : 'extra'}
+                      />
                     </View>
                     <Text style={styles.detailLine}>
-                      {t('cleaner')}: {cleaner ? cleaner.username : t('unassigned')}
+                      {t('cleaner')}:{' '}
+                      {cleaner ? cleaner.username : t('unassigned')}
                     </Text>
                     {status.extraCleaning && (
-                      <Text style={[styles.detailLine, { color: COLORS.primary }]}>⭐ {t('extra')}</Text>
+                      <Text
+                        style={[
+                          styles.detailLine,
+                          { color: COLORS.primary },
+                        ]}
+                      >
+                        ⭐ {t('extra')}
+                      </Text>
                     )}
                   </Card>
                 </TouchableOpacity>
@@ -475,10 +1013,13 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* ── Extra Room Requests ─────────────────────────────── */}
+      {/* ── Extra Room Requests ───────────────────────────────── */}
       {extraRequests.length > 0 && !search.trim() && (
         <View style={{ marginBottom: SPACING[4] }}>
-          <SectionTitle title={t('extraRoomRequests')} subtitle={t('extraRequestsSubtitle')} />
+          <SectionTitle
+            title={t('extraRoomRequests')}
+            subtitle={t('extraRequestsSubtitle')}
+          />
           {extraRequests.map(req => {
             const room = rooms.find(r => r.id === req.id);
             const cleaner = cleaners.find(c => c.id === req.cleanerId);
@@ -486,23 +1027,33 @@ export default function DashboardScreen() {
               <Card key={req.id} style={styles.requestCard}>
                 <View style={styles.requestRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.requestRoomName}>{room?.name || t('unknownRoom')}</Text>
+                    <Text style={styles.requestRoomName}>
+                      {room?.name || t('unknownRoom')}
+                    </Text>
                     <Text style={styles.requestCleaner}>
-                      {t('requestedBy', { name: cleaner?.username || t('unknown') })}
+                      {t('requestedBy', {
+                        name: cleaner?.username || t('unknown'),
+                      })}
                     </Text>
                   </View>
                   <View style={styles.requestActions}>
                     <TouchableOpacity
                       style={styles.approveBtn}
-                      onPress={() => approveExtraRoom(req.id, req.cleanerId)}
+                      onPress={() =>
+                        approveExtraRoom(req.id, req.cleanerId)
+                      }
                     >
-                      <Text style={styles.approveBtnText}>{t('approve')}</Text>
+                      <Text style={styles.approveBtnText}>
+                        {t('approve')}
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.rejectBtn}
                       onPress={() => rejectExtraRoom(req.id)}
                     >
-                      <Text style={styles.rejectBtnText}>{t('reject')}</Text>
+                      <Text style={styles.rejectBtnText}>
+                        {t('reject')}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -512,31 +1063,76 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* ── Cleaner Progress ───────────────────────────────── */}
+      {/* ── Cleaner Progress (with export all) ──────────────── */}
       {!search.trim() && cleaners.length > 0 && (
         <>
-          <SectionTitle title={t('cleanerProgress')} subtitle={t('tapCleaner')} />
+          <View style={styles.sectionHeaderRow}>
+            <SectionTitle
+              title={t('cleanerProgress')}
+              subtitle={t('tapCleaner')}
+            />
+            <TouchableOpacity
+              onPress={() => handleExport(rooms)} // export all rooms
+              style={styles.exportBtn}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="download-outline"
+                size={16}
+                color={COLORS.primary}
+              />
+              <Text style={styles.exportText}>{t('exportCSV')}</Text>
+            </TouchableOpacity>
+          </View>
           {cleaners.map(c => {
-            const assigned = rooms.filter(r => r.assignedTo === c.id);
-            const done = assigned.filter(r => roomStatus[r.id]?.cleaned).length;
-            const pct = assigned.length ? Math.round((done / assigned.length) * 100) : 0;
+            const assigned = rooms.filter(
+              r => r.assignedTo === c.id
+            );
+            const done = assigned.filter(
+              r => roomStatus[r.id]?.cleaned
+            ).length;
+            const pct = assigned.length
+              ? Math.round((done / assigned.length) * 100)
+              : 0;
             const extraCount = rooms.filter(r => {
               const status = roomStatus[r.id] || {};
-              return status.extraCleaning && status.extraCleaningBy === c.id;
+              return (
+                status.extraCleaning &&
+                status.extraCleaningBy === c.id
+              );
             }).length;
 
             return (
-              <TouchableOpacity key={c.id} activeOpacity={0.7} onPress={() => setSelectedCleaner(c)}>
+              <TouchableOpacity
+                key={c.id}
+                activeOpacity={0.7}
+                onPress={() => setSelectedCleaner(c)}
+              >
                 <Card style={styles.cleanerCard}>
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.cleanerName}>{c.username}</Text>
-                      <Text style={styles.cleanerStats}>{t('cleanerRoomsStats', { done, total: assigned.length })}</Text>
+                      <Text style={styles.cleanerName}>
+                        {c.username}
+                      </Text>
+                      <Text style={styles.cleanerStats}>
+                        {t('cleanerRoomsStats', {
+                          done,
+                          total: assigned.length,
+                        })}
+                      </Text>
                       <ProgressBar pct={pct} />
                     </View>
                     {extraCount > 0 && (
                       <View style={styles.extraBadge}>
-                        <Text style={styles.extraBadgeText}>{extraCount}</Text>
+                        <Text style={styles.extraBadgeText}>
+                          {extraCount}
+                        </Text>
                       </View>
                     )}
                   </View>
@@ -547,99 +1143,238 @@ export default function DashboardScreen() {
         </>
       )}
 
-      {/* ── Unassigned Rooms ───────────────────────────────── */}
+      {/* ── Unassigned Rooms ─────────────────────────────────── */}
       {!search.trim() && (
         <>
-          <SectionTitle title={t('unassignedRooms')} subtitle={t('unassignedRoomsSubtitle')} />
+          <SectionTitle
+            title={t('unassignedRooms')}
+            subtitle={t('unassignedRoomsSubtitle')}
+          />
           {rooms.length === 0 ? (
             <EmptyState icon="🚪" title={t('noRoomsYet')} />
           ) : (
             sortedFloors.map(floor => {
-              const floorRooms = rooms.filter(r => r.floorId === floor.id && !r.assignedTo);
+              const floorRooms = rooms.filter(
+                r => r.floorId === floor.id && !r.assignedTo
+              );
               if (!floorRooms.length) return null;
-              const isExpanded = expandedFloors[floor.id] !== false;
+              const isExpanded =
+                expandedFloors[floor.id] !== false;
               return (
                 <View key={floor.id}>
-                  <TouchableOpacity onPress={() => toggleFloor(floor.id)} style={styles.floorHeaderRow} activeOpacity={0.7}>
+                  <TouchableOpacity
+                    onPress={() => toggleFloor(floor.id)}
+                    style={styles.floorHeaderRow}
+                    activeOpacity={0.7}
+                  >
                     <FloorHeader label={floor.name} />
-                    <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
+                    <Ionicons
+                      name={
+                        isExpanded
+                          ? 'chevron-up'
+                          : 'chevron-down'
+                      }
+                      size={20}
+                      color={COLORS.textMuted}
+                    />
                   </TouchableOpacity>
                   {isExpanded && (
-                    <View style={{ gap: SPACING[2], marginBottom: SPACING[4] }}>
+                    <View
+                      style={{
+                        gap: SPACING[2],
+                        marginBottom: SPACING[4],
+                      }}
+                    >
                       {floorRooms.map(room => {
                         const status = roomStatus[room.id] || {};
                         const cleaned = status.cleaned || false;
                         const notes = status.notes;
                         const extraTime = status.extraTime || 0;
-                        const bedStatus = status.bedStatus || {};
-                        const managerNotes = status.managerNotes;
-                        const assignmentAttributes = status.assignmentAttributes || {};
+                        const bedStatus =
+                          status.bedStatus || {};
+                        const managerNotes =
+                          status.managerNotes;
+                        const assignmentAttributes =
+                          status.assignmentAttributes || {};
 
                         return (
-                          <Card key={room.id} style={styles.roomDetailCard}>
+                          <Card
+                            key={room.id}
+                            style={styles.roomDetailCard}
+                          >
                             <View style={styles.roomHeader}>
-                              {/* Left side – scrollable room name & type badge */}
-                              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING[2] }}>
-                                  <Text style={styles.roomName}>{room.name}</Text>
+                              <ScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={
+                                  false
+                                }
+                                style={{ flex: 1 }}
+                              >
+                                <View
+                                  style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    gap: SPACING[2],
+                                  }}
+                                >
+                                  <Text style={styles.roomName}>
+                                    {room.name}
+                                  </Text>
                                   <Badge
-                                    label={room.type === 'private' ? t('private') : t('dormitory')}
-                                    type={room.type === 'private' ? 'priv' : 'dorm'}
+                                    label={
+                                      room.type === 'private'
+                                        ? t('private')
+                                        : t('dormitory')
+                                    }
+                                    type={
+                                      room.type === 'private'
+                                        ? 'priv'
+                                        : 'dorm'
+                                    }
                                   />
                                 </View>
                               </ScrollView>
-                              <View style={{ flexDirection: 'row', gap: SPACING[2] }}>
-                                <Badge label={cleaned ? t('cleaned') : t('pending')} type={cleaned ? 'clean' : 'extra'} />
-                                <TouchableOpacity onPress={() => setResetSingleModal(room.id)}>
-                                  <Ionicons name="refresh-circle" size={24} color={COLORS.danger} />
+                              <View
+                                style={{
+                                  flexDirection: 'row',
+                                  gap: SPACING[2],
+                                }}
+                              >
+                                <Badge
+                                  label={
+                                    cleaned
+                                      ? t('cleaned')
+                                      : t('pending')
+                                  }
+                                  type={
+                                    cleaned ? 'clean' : 'extra'
+                                  }
+                                />
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    setResetSingleModal(room.id)
+                                  }
+                                >
+                                  <Ionicons
+                                    name="refresh-circle"
+                                    size={24}
+                                    color={COLORS.danger}
+                                  />
                                 </TouchableOpacity>
                               </View>
                             </View>
                             {managerNotes ? (
                               <View style={styles.managerNotesBox}>
-                                <Text style={styles.managerNotesText}>📋 {managerNotes}</Text>
+                                <Text
+                                  style={styles.managerNotesText}
+                                >
+                                  📋 {managerNotes}
+                                </Text>
                               </View>
                             ) : null}
-                            <Text style={styles.detailLine}>{t('cleaner')}: {t('unassigned')}</Text>
-                            {extraTime > 0 && <Text style={styles.detailLine}>{t('extraTimeValue', { minutes: extraTime })}</Text>}
+                            <Text style={styles.detailLine}>
+                              {t('cleaner')}: {t('unassigned')}
+                            </Text>
+                            {extraTime > 0 && (
+                              <Text style={styles.detailLine}>
+                                {t('extraTimeValue', {
+                                  minutes: extraTime,
+                                })}
+                              </Text>
+                            )}
                             {notes ? (
                               <View style={styles.notesBox}>
-                                <Text style={styles.notesText}>📝 “{notes}”</Text>
+                                <Text style={styles.notesText}>
+                                  📝 “{notes}”
+                                </Text>
                               </View>
                             ) : null}
-                            {room.type === 'dorm' && room.beds?.length > 0 && (
-                              <View style={styles.bedSummary}>
-                                {room.beds.map(bed => {
-                                  const bedState = bedStatus[bed.id]?.status || 'pending';
-                                  const isCleaned = bedState === 'cleaned';
-                                  const isSkipped = bedState === 'skipped';
-                                  return (
-                                    <Chip
-                                      key={bed.id}
-                                      label={`${isCleaned ? '✓' : isSkipped ? '⊘' : '○'} ${bed.name}`}
-                                      colorText={isCleaned ? COLORS.success : isSkipped ? COLORS.amber : COLORS.textMuted}
-                                      fontSize={FONT_SIZE.xs}
-                                    />
-                                  );
-                                })}
-                              </View>
-                            )}
-                            {room.type === 'private' && Object.keys(assignmentAttributes).length > 0 && (
-                              <View style={styles.attributeSection}>
-                                <Text style={styles.detailLine}>{t('roomFeatures')}:</Text>
-                                {Object.entries(assignmentAttributes).map(([attr, value]) => (
-                                  <View key={attr} style={styles.attributeRow}>
-                                    <Ionicons
-                                      name={value ? 'checkmark-circle' : 'ellipse-outline'}
-                                      size={16}
-                                      color={value ? COLORS.success : COLORS.textMuted}
-                                      style={{ marginRight: SPACING[1] }}
-                                    />
-                                    <Text style={styles.attributeText}>{attr}</Text>
-                                  </View>
-                                ))}
-                              </View>
-                            )}
+                            {room.type === 'dorm' &&
+                              room.beds?.length > 0 && (
+                                <View style={styles.bedSummary}>
+                                  {room.beds.map(bed => {
+                                    const bedState =
+                                      bedStatus[bed.id]?.status ||
+                                      'pending';
+                                    const isCleaned =
+                                      bedState === 'cleaned';
+                                    const isSkipped =
+                                      bedState === 'skipped';
+                                    return (
+                                      <Chip
+                                        key={bed.id}
+                                        label={`${
+                                          isCleaned
+                                            ? '✓'
+                                            : isSkipped
+                                            ? '⊘'
+                                            : '○'
+                                        } ${bed.name}`}
+                                        colorText={
+                                          isCleaned
+                                            ? COLORS.success
+                                            : isSkipped
+                                            ? COLORS.amber
+                                            : COLORS.textMuted
+                                        }
+                                        fontSize={FONT_SIZE.xs}
+                                      />
+                                    );
+                                  })}
+                                </View>
+                              )}
+                            {room.type === 'private' &&
+                              Object.keys(assignmentAttributes)
+                                .length > 0 && (
+                                <View
+                                  style={
+                                    styles.attributeSection
+                                  }
+                                >
+                                  <Text
+                                    style={
+                                      styles.detailLine
+                                    }
+                                  >
+                                    {t('roomFeatures')}:
+                                  </Text>
+                                  {Object.entries(
+                                    assignmentAttributes
+                                  ).map(([attr, value]) => (
+                                    <View
+                                      key={attr}
+                                      style={
+                                        styles.attributeRow
+                                      }
+                                    >
+                                      <Ionicons
+                                        name={
+                                          value
+                                            ? 'checkmark-circle'
+                                            : 'ellipse-outline'
+                                        }
+                                        size={16}
+                                        color={
+                                          value
+                                            ? COLORS.success
+                                            : COLORS.textMuted
+                                        }
+                                        style={{
+                                          marginRight:
+                                            SPACING[1],
+                                        }}
+                                      />
+                                      <Text
+                                        style={
+                                          styles.attributeText
+                                        }
+                                      >
+                                        {attr}
+                                      </Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              )}
                           </Card>
                         );
                       })}
@@ -676,6 +1411,7 @@ export default function DashboardScreen() {
         roomStatus={roomStatus}
         onClose={() => setSelectedCleaner(null)}
         t={t}
+        onExport={handleExport}
       />
       <RoomDetailModal
         visible={!!selectedRoom}
@@ -693,81 +1429,201 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   scroll: { padding: SPACING[4], paddingBottom: SPACING[10] },
   headRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    marginBottom: SPACING[3], flexWrap: 'wrap',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: SPACING[3],
+    flexWrap: 'wrap',
   },
   resetAllBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: SPACING[3], paddingVertical: SPACING[1],
-    backgroundColor: COLORS.dangerLight, borderRadius: RADIUS.sm,
-    borderWidth: 1, borderColor: COLORS.danger,
-    alignSelf: 'flex-start', marginTop: SPACING[1],
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: SPACING[3],
+    paddingVertical: SPACING[1],
+    backgroundColor: COLORS.dangerLight,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    alignSelf: 'flex-start',
+    marginTop: SPACING[1],
     maxWidth: '40%',
   },
-  resetAllText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.danger },
+  resetAllText: {
+    fontFamily: FONTS.semiBold,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.danger,
+  },
   overviewCard: { marginBottom: SPACING[4], padding: SPACING[4] },
-  overviewText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.textSecondary, marginBottom: SPACING[3] },
+  overviewText: {
+    fontFamily: FONTS.medium,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING[3],
+  },
   searchContainer: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.surface, borderRadius: RADIUS.md,
-    borderWidth: 1, borderColor: COLORS.border,
-    paddingHorizontal: SPACING[3], marginBottom: SPACING[4],
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING[3],
+    marginBottom: SPACING[4],
   },
   searchInput: {
     flex: 1,
-    fontFamily: FONTS.regular, fontSize: FONT_SIZE.md,
-    color: COLORS.text, paddingVertical: SPACING[2],
-  },
-  cleanerCard: { marginBottom: SPACING[3], padding: SPACING[3] },
-  cleanerName: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.lg, color: COLORS.text },
-  cleanerStats: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginBottom: SPACING[3] },
-  roomDetailCard: { marginBottom: SPACING[3], padding: SPACING[3] },
-  roomHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: SPACING[3],
-  },
-  roomName: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.lg, color: COLORS.text },
-  detailLine: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginBottom: 4 },
-  notesBox: { backgroundColor: COLORS.accentLight, borderRadius: RADIUS.sm, padding: SPACING[2], marginTop: SPACING[2] },
-  notesText: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.text, fontStyle: 'italic' },
-  bedSummary: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2], marginTop: SPACING[3] },
-  floorHeaderRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginTop: SPACING[6], marginBottom: SPACING[3],
-  },
-  emptyText: { textAlign: 'center', color: COLORS.textMuted, marginTop: SPACING[4] },
-  cleanerRoomCard: {
-    borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md,
-    padding: SPACING[3], marginBottom: SPACING[2],
-  },
-  managerNotesBox: {
-    backgroundColor: COLORS.primaryLight, borderRadius: RADIUS.sm,
-    padding: SPACING[2], marginTop: SPACING[2],
-  },
-  managerNotesText: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.primaryDark },
-  commonIndicator: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING[2],
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.text,
     paddingVertical: SPACING[2],
   },
-  commonText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.textMuted },
-  attributeSection: { marginTop: SPACING[2], marginBottom: SPACING[2] },
-  attributeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING[1] },
-  attributeText: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary },
-  requestCard: { padding: SPACING[3], marginBottom: SPACING[2] },
-  requestRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  requestRoomName: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.lg, color: COLORS.text },
-  requestCleaner: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginTop: 4 },
+  cleanerCard: { marginBottom: SPACING[3], padding: SPACING[3] },
+  cleanerName: {
+    fontFamily: FONTS.bold,
+    fontSize: FONT_SIZE.lg,
+    color: COLORS.text,
+  },
+  cleanerStats: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING[3],
+  },
+  roomDetailCard: { marginBottom: SPACING[3], padding: SPACING[3] },
+  roomHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING[3],
+  },
+  roomName: {
+    fontFamily: FONTS.bold,
+    fontSize: FONT_SIZE.lg,
+    color: COLORS.text,
+  },
+  detailLine: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    marginBottom: 4,
+  },
+  notesBox: {
+    backgroundColor: COLORS.accentLight,
+    borderRadius: RADIUS.sm,
+    padding: SPACING[2],
+    marginTop: SPACING[2],
+  },
+  notesText: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.text,
+    fontStyle: 'italic',
+  },
+  bedSummary: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING[2],
+    marginTop: SPACING[3],
+  },
+  floorHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: SPACING[6],
+    marginBottom: SPACING[3],
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: COLORS.textMuted,
+    marginTop: SPACING[4],
+  },
+  cleanerRoomCard: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.md,
+    padding: SPACING[3],
+    marginBottom: SPACING[2],
+  },
+  managerNotesBox: {
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.sm,
+    padding: SPACING[2],
+    marginTop: SPACING[2],
+  },
+  managerNotesText: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.primaryDark,
+  },
+  commonIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING[2],
+    paddingVertical: SPACING[2],
+  },
+  commonText: {
+    fontFamily: FONTS.medium,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textMuted,
+  },
+  attributeSection: {
+    marginTop: SPACING[2],
+    marginBottom: SPACING[2],
+  },
+  attributeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING[1],
+  },
+  attributeText: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+  },
+  requestCard: {
+    padding: SPACING[3],
+    marginBottom: SPACING[2],
+  },
+  requestRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  requestRoomName: {
+    fontFamily: FONTS.bold,
+    fontSize: FONT_SIZE.lg,
+    color: COLORS.text,
+  },
+  requestCleaner: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
   requestActions: { flexDirection: 'row', gap: SPACING[2] },
   approveBtn: {
-    backgroundColor: COLORS.success, borderRadius: RADIUS.sm,
-    paddingHorizontal: SPACING[3], paddingVertical: SPACING[2],
+    backgroundColor: COLORS.success,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING[3],
+    paddingVertical: SPACING[2],
   },
-  approveBtnText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.sm, color: COLORS.white },
+  approveBtnText: {
+    fontFamily: FONTS.semiBold,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.white,
+  },
   rejectBtn: {
-    backgroundColor: COLORS.danger, borderRadius: RADIUS.sm,
-    paddingHorizontal: SPACING[3], paddingVertical: SPACING[2],
+    backgroundColor: COLORS.danger,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING[3],
+    paddingVertical: SPACING[2],
   },
-  rejectBtnText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.sm, color: COLORS.white },
+  rejectBtnText: {
+    fontFamily: FONTS.semiBold,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.white,
+  },
   extraBadge: {
     backgroundColor: COLORS.danger,
     borderRadius: 12,
@@ -777,20 +1633,109 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: SPACING[2],
   },
-  extraBadgeText: { fontFamily: 'System', fontWeight: '700', fontSize: 12, color: COLORS.white },
+  extraBadgeText: {
+    fontFamily: 'System',
+    fontWeight: '700',
+    fontSize: 12,
+    color: COLORS.white,
+  },
   modalBackdrop: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center', alignItems: 'center', padding: SPACING[6],
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING[6],
   },
   modalCard: {
-    backgroundColor: COLORS.surface, borderRadius: RADIUS.lg,
-    padding: SPACING[5], width: '100%', maxWidth: 400, ...SHADOW.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING[5],
+    width: '100%',
+    maxWidth: 400,
+    ...SHADOW.md,
   },
-  modalTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text, marginBottom: SPACING[3] },
-  modalMessage: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.textSecondary, marginBottom: SPACING[5] },
+  modalTitle: {
+    fontFamily: FONTS.bold,
+    fontSize: FONT_SIZE.xl,
+    color: COLORS.text,
+    marginBottom: SPACING[3],
+  },
+  modalMessage: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING[5],
+  },
   modalActions: { flexDirection: 'row', gap: SPACING[2] },
-  modalBtn: { flex: 1, paddingVertical: SPACING[3], borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  modalBtnCancel: { backgroundColor: COLORS.surface, borderColor: COLORS.border },
-  modalBtnDanger: { backgroundColor: COLORS.danger, borderColor: COLORS.danger },
-  modalBtnText: { fontFamily: 'System', fontWeight: '600', fontSize: 16, color: COLORS.primary },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: SPACING[3],
+    borderRadius: RADIUS.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  modalBtnCancel: {
+    backgroundColor: COLORS.surface,
+    borderColor: COLORS.border,
+  },
+  modalBtnDanger: {
+    backgroundColor: COLORS.danger,
+    borderColor: COLORS.danger,
+  },
+  modalBtnText: {
+    fontFamily: 'System',
+    fontWeight: '600',
+    fontSize: 16,
+    color: COLORS.primary,
+  },
+
+  // ── New styles for CSV export ────────────────────────────
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING[3],
+    flexWrap: 'wrap',
+  },
+  exportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: SPACING[3],
+    paddingVertical: SPACING[1],
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+  },
+  exportText: {
+    fontFamily: FONTS.semiBold,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.primary,
+  },
+  modalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING[3],
+  },
+  exportBtnSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: SPACING[2],
+    paddingVertical: SPACING[1],
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    marginLeft: SPACING[2],
+  },
+  exportBtnTextSmall: {
+    fontFamily: FONTS.bold,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.primary,
+    marginLeft: 2,
+  },
 });
