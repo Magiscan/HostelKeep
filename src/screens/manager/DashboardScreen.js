@@ -24,7 +24,7 @@ import {
   FloorHeader,
 } from '../../components/UI';
 import { useApp } from '../../contexts/AppContext';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
 
@@ -766,9 +766,8 @@ export default function DashboardScreen() {
         } else {
           // Native: write file and share
           const fileUri = FileSystem.cacheDirectory + fileName;
-          await FileSystem.writeAsStringAsync(fileUri, csv, {
-            encoding: FileSystem.EncodingType.UTF8,
-          });
+          const encoding = FileSystem.EncodingType?.UTF8 ?? 'utf8';
+          await FileSystem.writeAsStringAsync(fileUri, csv, { encoding });
           const canShare = await Sharing.isAvailableAsync();
           if (canShare) {
             await Sharing.shareAsync(fileUri, {

@@ -729,11 +729,9 @@ export default function SetupScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1, marginRight: SPACING[2] }}>
-            <SectionTitle title={t('rooms')} subtitle={`${rooms.length} ${rooms.length !== 1 ? t('setup.roomsPlural') : t('setup.roomSingular')}`} />
-          </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2], justifyContent: 'flex-end' }}>
+        <View style={styles.roomsHeader}>
+          <SectionTitle title={t('rooms')} subtitle={`${rooms.length} ${rooms.length !== 1 ? t('setup.roomsPlural') : t('setup.roomSingular')}`} />
+          <View style={styles.roomsActions}>
             <Button title={t('manageFloors')} onPress={() => setShowFloorModal(true)} variant="secondary" size="sm" icon="layers-outline" />
             <Button title={t('attributes')} onPress={() => setShowAttrModal(true)} variant="secondary" size="sm" icon="options-outline" />
             <Button title={t('addRoom')} onPress={() => openRoomForm()} size="sm" />
@@ -921,6 +919,17 @@ const styles = StyleSheet.create({
   modalCard: {
     backgroundColor: COLORS.surface, borderRadius: RADIUS.lg,
     padding: SPACING[5], width: '100%', maxWidth: 400, ...SHADOW.md,
+  },
+  roomsHeader: {
+  marginBottom: SPACING[4],
+  alignItems: 'center',          // centre everything horizontally
+  },
+  roomsActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING[2],
+    justifyContent: 'center',      // centre buttons within the row
+    marginTop: SPACING[2],
   },
   modalMessage: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.textSecondary, marginBottom: SPACING[5] },
   modalBtn: { flex: 1, paddingVertical: SPACING[3], borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },

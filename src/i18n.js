@@ -30,6 +30,7 @@ const resources = {
       error: 'Error',
       note: 'Note',
       bedsNotReady: 'Beds not ready',
+      hostelsubtitle: 'Hostel operations, connected',
 
       exportCSV: 'Export CSV', 
 
@@ -276,6 +277,8 @@ const resources = {
       note: 'Nota',
       bedsNotReady: 'Letti non pronti',
 
+      hostelsubtitle: 'Operazioni ostello, connesse',
+
       exportCSV: 'Esporta CSV',
 
       // ---- Login ----
@@ -516,6 +519,8 @@ const resources = {
       error: 'Error',
       note: 'Nota',
       bedsNotReady: 'Camas no listas',
+
+      hostelsubtitle: 'Operaciones de hostels, conectadas',
 
       exportCSV: 'Exportar CSV',
 

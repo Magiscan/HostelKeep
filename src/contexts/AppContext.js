@@ -10,7 +10,6 @@ const AppContext = createContext();
 export function AppProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(auth?.currentUser ?? null);
   const [extraRequests, setExtraRequests] = useState([]);
-  const [requests, setRequests] = useState([]);
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged((u) => setCurrentUser(u ?? null));
@@ -283,16 +282,6 @@ export function AppProvider({ children }) {
     }, { merge: true });
     await batch.commit();
   };
-
-  // Listen to requests subcollection
-  useEffect(() => {
-    if (!hostelCode) return;
-    const requestsQuery = collection(db, 'hostels', hostelCode, 'requests');
-    const unsubRequests = onSnapshot(requestsQuery, (snap) => {
-      setRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return unsubRequests;
-  }, [hostelCode]);
 
   // Add request functions
   const requestExtraRoom = async (roomId, cleanerUid) => {

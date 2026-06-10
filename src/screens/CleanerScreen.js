@@ -1028,19 +1028,19 @@ const styles = StyleSheet.create({
   pendingRow: { flexDirection: 'row', alignItems: 'center' },
   pendingText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.text },
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.surface,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    paddingHorizontal: SPACING[4],
-    paddingVertical: SPACING[2],
-    paddingBottom: SPACING[2],
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  backgroundColor: COLORS.surface,
+  borderTopWidth: 1,
+  borderTopColor: COLORS.border,
+  paddingHorizontal: SPACING[4],        // unchanged
+  paddingVertical: SPACING[3],          // was SPACING[2] → taller
+  paddingBottom: SPACING[3],            // was SPACING[2] → taller
   },
   footerText: {
     fontFamily: FONTS.medium,
-    fontSize: FONT_SIZE.sm,
+    fontSize: FONT_SIZE.md,               // was FONT_SIZE.sm → larger
     color: COLORS.textSecondary,
   },
   footerBtn: {
@@ -1049,12 +1049,12 @@ const styles = StyleSheet.create({
     gap: SPACING[1],
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING[3],
-    paddingVertical: SPACING[1],
+    paddingHorizontal: SPACING[4],        // was SPACING[3] → wider
+    paddingVertical: SPACING[2],          // was SPACING[1] → taller
   },
   footerBtnText: {
     fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.sm,
+    fontSize: FONT_SIZE.md,               // was FONT_SIZE.sm → larger
     color: COLORS.white,
   },
   modalBackdrop: {
