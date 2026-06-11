@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from '../../components/Icon';
 import { useTranslation } from 'react-i18next';
 import { COLORS, RADIUS, FONTS, FONT_SIZE, SPACING, SHADOW } from '../../theme';
 import { Avatar, Button } from '../../components/UI';
@@ -57,6 +57,12 @@ export default function ManagerApp() {
     setEditVisible(true);
   };
 
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      document.title = 'KeepClean';
+    }
+  }, []);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* ── Header ── */}
@@ -67,7 +73,7 @@ export default function ManagerApp() {
             <TouchableOpacity onPress={openEdit} activeOpacity={0.7}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                 <Text style={styles.hostelName}>· {hostel.name}</Text>
-                <Ionicons name="pencil" size={14} color={COLORS.textMuted} />
+                <Icon name="pencil" size={14} color={COLORS.textMuted} />
               </View>
             </TouchableOpacity>
           ) : null}
@@ -76,12 +82,12 @@ export default function ManagerApp() {
         <View style={styles.headerRight}>
           {/* Language switcher */}
           <TouchableOpacity onPress={() => setShowLangMenu(true)} style={styles.iconBtn}>
-            <Ionicons name="globe-outline" size={22} color={COLORS.textSecondary} />
+            <Icon name="globe-outline" size={22} color={COLORS.textSecondary} />
           </TouchableOpacity>
 
           {/* Hostel code */}
           <TouchableOpacity onPress={() => setShowCodeModal(true)} style={styles.codeBtn} activeOpacity={0.7}>
-            <Ionicons name="key-outline" size={20} color={COLORS.primary} />
+            <Icon name="key-outline" size={20} color={COLORS.primary} />
           </TouchableOpacity>
 
           {/* Avatar */}
@@ -110,7 +116,7 @@ export default function ManagerApp() {
               onPress={() => setTab(tabItem.key)}
               activeOpacity={0.75}
             >
-              <Ionicons
+              <Icon
                 name={isActive ? tabItem.iconActive : tabItem.icon}
                 size={22}
                 color={isActive ? COLORS.primary : COLORS.textMuted}
@@ -137,8 +143,54 @@ export default function ManagerApp() {
               placeholderTextColor={COLORS.textMuted}
             />
             <View style={{ flexDirection: 'row', gap: SPACING[2], marginTop: SPACING[4] }}>
-              <Button title={t('cancel')} variant="secondary" onPress={() => setEditVisible(false)} style={{ flex: 1 }} />
-              <Button title={t('save')} onPress={saveName} style={{ flex: 1 }} disabled={!newName.trim()} />
+              {/* Cancel button – secondary outline style */}
+              <TouchableOpacity
+                onPress={() => setEditVisible(false)}
+                activeOpacity={0.7}
+                style={{
+                  flex: 1,
+                  backgroundColor: COLORS.surface,
+                  borderRadius: RADIUS.sm,
+                  borderWidth: 1,
+                  borderColor: COLORS.border,
+                  paddingVertical: SPACING[3],
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{
+                  fontFamily: FONTS.bold,
+                  fontSize: FONT_SIZE.md,
+                  color: COLORS.primary,
+                }}>
+                  {t('cancel')}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Save button – primary filled style, disabled if empty */}
+              <TouchableOpacity
+                onPress={saveName}
+                disabled={!newName.trim()}
+                activeOpacity={0.8}
+                style={{
+                  flex: 1,
+                  backgroundColor: !newName.trim() ? '#E2E8F0' : COLORS.primary,
+                  borderRadius: RADIUS.sm,
+                  borderWidth: 1,
+                  borderColor: !newName.trim() ? COLORS.border : COLORS.primary,
+                  paddingVertical: SPACING[3],
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{
+                  fontFamily: FONTS.bold,
+                  fontSize: FONT_SIZE.md,
+                  color: !newName.trim() ? COLORS.textMuted : COLORS.white,
+                }}>
+                  {t('save')}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -181,7 +233,7 @@ export default function ManagerApp() {
               onPress={() => { setShowUserMenu(false); logout(); }}
               activeOpacity={0.7}
             >
-              <Ionicons name="log-out-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[2] }} />
+              <Icon name="log-out-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[2] }} />
               <Text style={[styles.menuItemText, { color: COLORS.danger }]}>{t('signOut')}</Text>
             </TouchableOpacity>
           </View>
@@ -205,7 +257,7 @@ export default function ManagerApp() {
                     {lang.label}
                   </Text>
                   {i18n.language === lang.code && (
-                    <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
+                    <Icon name="checkmark-circle" size={20} color={COLORS.primary} />
                   )}
                 </TouchableOpacity>
               ))}
@@ -216,7 +268,7 @@ export default function ManagerApp() {
               style={[styles.menuItem, { justifyContent: 'center' }]}
               activeOpacity={0.7}
             >
-              <Ionicons name="close-circle-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[1] }} />
+              <Icon name="close-circle-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[1] }} />
               <Text style={[styles.menuItemText, { color: COLORS.danger }]}>{t('close')}</Text>
             </TouchableOpacity>
           </View>

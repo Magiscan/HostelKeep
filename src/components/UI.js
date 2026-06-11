@@ -7,7 +7,7 @@ import {
   Animated,
   Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from './Icon';
 import { COLORS, RADIUS, SHADOW, FONTS, FONT_SIZE, SPACING } from '../theme';
 
 // ---------- Chip (responsive pill) ----------
@@ -53,7 +53,7 @@ export function Chip({
         style,
       ]}
     >
-      {icon && <Ionicons name={icon} size={iconSize} color={textC} />}
+      {icon && <Icon name={icon} size={iconSize} color={textC} />}
       <Text
         style={{
           fontFamily: FONTS.semiBold,
@@ -141,7 +141,7 @@ export function Button({
         ]}
       >
         {icon && iconPosition === 'left' && (
-          <Ionicons name={icon} size={iconSize} color={disabled ? COLORS.textMuted : color} />
+          <Icon name={icon} size={iconSize} color={disabled ? COLORS.textMuted : color} />
         )}
         <Text
           style={{
@@ -154,7 +154,7 @@ export function Button({
           {title}
         </Text>
         {icon && iconPosition === 'right' && (
-          <Ionicons name={icon} size={iconSize} color={disabled ? COLORS.textMuted : color} />
+          <Icon name={icon} size={iconSize} color={disabled ? COLORS.textMuted : color} />
         )}
       </TouchableOpacity>
     </Animated.View>

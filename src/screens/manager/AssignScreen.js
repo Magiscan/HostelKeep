@@ -5,7 +5,7 @@ import {
   Pressable, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from '../../components/Icon';
 import { COLORS, RADIUS, FONTS, FONT_SIZE, SPACING, SHADOW } from '../../theme';
 import {
   SectionTitle, FloorHeader, EmptyState, Badge, Avatar, Chip,
@@ -134,7 +134,7 @@ export default function AssignScreen() {
         <View style={styles.headerRow}>
           <SectionTitle  title={t('assignments')} subtitle={t('tapToAssign') } />
           <TouchableOpacity onPress={clearAll} style={styles.clearBtn} activeOpacity={0.7}>
-            <Ionicons name="close-circle-outline" size={16} color={COLORS.textMuted} />
+            <Icon name="close-circle-outline" size={16} color={COLORS.textMuted} />
             <Text style={styles.clearText}>{t('clearAll')}</Text>
           </TouchableOpacity>
         </View>
@@ -223,7 +223,7 @@ export default function AssignScreen() {
                       onPress={() => setCommonOnly(!commonOnly)}
                       style={[styles.checkbox, commonOnly && styles.checkboxActive]}
                     >
-                      {commonOnly && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
+                      {commonOnly && <Icon name="checkmark" size={16} color={COLORS.white} />}
                     </TouchableOpacity>
                   </View>
                   <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginBottom: SPACING[2] }}>
@@ -297,7 +297,7 @@ export default function AssignScreen() {
                         activeOpacity={0.7}
                       >
                         <View style={[styles.checkbox, isActive && styles.checkboxActive]}>
-                          {isActive && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
+                          {isActive && <Icon name="checkmark" size={16} color={COLORS.white} />}
                         </View>
                         <Text style={styles.attributeLabel}>{attr}</Text>
                       </TouchableOpacity>

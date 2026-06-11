@@ -11,7 +11,7 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from '../../components/Icon';
 import { COLORS, FONTS, FONT_SIZE, RADIUS, SHADOW, SPACING } from '../../theme';
 import {
   SectionTitle,
@@ -161,7 +161,7 @@ function CleanerDetailModal({
               style={styles.exportBtnSmall}
               activeOpacity={0.7}
             >
-              <Ionicons name="download-outline" size={18} color={COLORS.primary} />
+              <Icon name="download-outline" size={18} color={COLORS.primary} />
               <Text style={styles.exportBtnTextSmall}>{t('exportCSV')}</Text>
             </TouchableOpacity>
           </View>
@@ -321,7 +321,7 @@ function CleanerDetailModal({
                           {Object.entries(assignmentAttributes).map(
                             ([attr]) => (
                               <View key={attr} style={styles.attributeRow}>
-                                <Ionicons
+                                <Icon
                                   name={
                                     cleaned
                                       ? 'checkmark-circle'
@@ -345,7 +345,7 @@ function CleanerDetailModal({
                       )}
                     {isCommon ? (
                       <View style={styles.commonIndicator}>
-                        <Ionicons
+                        <Icon
                           name={
                             cleaned
                               ? 'checkmark-circle'
@@ -585,7 +585,7 @@ function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose, t }) {
                   </Text>
                   {Object.entries(assignmentAttributes).map(([attr]) => (
                     <View key={attr} style={styles.attributeRow}>
-                      <Ionicons
+                      <Icon
                         name={
                           cleaned
                             ? 'checkmark-circle'
@@ -604,7 +604,7 @@ function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose, t }) {
               )}
             {isCommon ? (
               <View style={styles.commonIndicator}>
-                <Ionicons
+                <Icon
                   name={
                     cleaned ? 'checkmark-circle' : 'ellipse-outline'
                   }
@@ -825,7 +825,7 @@ export default function DashboardScreen() {
           onPress={() => setResetAllModal(true)}
           style={styles.resetAllBtn}
         >
-          <Ionicons name="refresh" size={18} color={COLORS.danger} />
+          <Icon name="refresh" size={18} color={COLORS.danger} />
           <Text style={styles.resetAllText}>{t('resetAllRooms')}</Text>
         </TouchableOpacity>
       </View>
@@ -843,7 +843,7 @@ export default function DashboardScreen() {
 
       {/* Search */}
       <View style={styles.searchContainer}>
-        <Ionicons
+        <Icon
           name="search-outline"
           size={18}
           color={COLORS.textMuted}
@@ -862,7 +862,7 @@ export default function DashboardScreen() {
             onPress={() => setSearch('')}
             style={{ padding: 4 }}
           >
-            <Ionicons
+            <Icon
               name="close-circle"
               size={18}
               color={COLORS.textMuted}
@@ -1075,7 +1075,7 @@ export default function DashboardScreen() {
               style={styles.exportBtn}
               activeOpacity={0.7}
             >
-              <Ionicons
+              <Icon
                 name="download-outline"
                 size={16}
                 color={COLORS.primary}
@@ -1167,7 +1167,7 @@ export default function DashboardScreen() {
                     activeOpacity={0.7}
                   >
                     <FloorHeader label={floor.name} />
-                    <Ionicons
+                    <Icon
                       name={
                         isExpanded
                           ? 'chevron-up'
@@ -1254,7 +1254,7 @@ export default function DashboardScreen() {
                                     setResetSingleModal(room.id)
                                   }
                                 >
-                                  <Ionicons
+                                  <Icon
                                     name="refresh-circle"
                                     size={24}
                                     color={COLORS.danger}
@@ -1346,7 +1346,7 @@ export default function DashboardScreen() {
                                         styles.attributeRow
                                       }
                                     >
-                                      <Ionicons
+                                      <Icon
                                         name={
                                           value
                                             ? 'checkmark-circle'

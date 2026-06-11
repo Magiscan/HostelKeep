@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from '../components/Icon';
 import { COLORS, RADIUS, SHADOW, FONTS, FONT_SIZE, SPACING } from '../theme';
 import { Button, Card, Label, Input } from '../components/UI';
 import { useAuth } from '../contexts/AuthContext';
@@ -71,7 +71,7 @@ export default function LoginScreen() {
               activeOpacity={0.7}
             >
               <Text style={styles.langCardText}>{currentLang.label}</Text>
-              <Ionicons name="chevron-down" size={18} color={COLORS.textSecondary} />
+              <Icon name="chevron-down" size={18} color={COLORS.textSecondary} />
             </TouchableOpacity>
 
             <Label>{t('hostelCode')}</Label>
@@ -118,7 +118,7 @@ export default function LoginScreen() {
                     {lang.label}
                   </Text>
                   {i18n.language === lang.code && (
-                    <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
+                    <Icon name="checkmark-circle" size={20} color={COLORS.primary} />
                   )}
                 </TouchableOpacity>
               ))}
@@ -129,7 +129,7 @@ export default function LoginScreen() {
               style={[styles.langOption, { justifyContent: 'center' }]}
               activeOpacity={0.7}
             >
-              <Ionicons name="close-circle-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[1] }} />
+              <Icon name="close-circle-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[1] }} />
               <Text style={[styles.langOptionText, { color: COLORS.danger }]}>{t('close')}</Text>
             </TouchableOpacity>
           </View>

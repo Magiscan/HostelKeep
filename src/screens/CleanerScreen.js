@@ -1,16 +1,17 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal, Pressable, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from '../components/Icon';
 import { COLORS, RADIUS, SHADOW, FONTS, FONT_SIZE, SPACING } from '../theme';
 import {
   Avatar, Badge, EmptyState, Label, Input, ProgressBar, FloorHeader, Button, SectionTitle, Card,
 } from '../components/UI';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
+import { Platform } from 'react-native';
 
 // ------------------------------------------------------------------
 // Constants – REASONS used for colours (no translation needed)
@@ -38,7 +39,7 @@ function KebabMenu({ onEditBeds, onUndo, t }) {
   return (
     <View>
       <TouchableOpacity onPress={() => setVisible(true)} style={styles.kebabBtn}>
-        <Ionicons name="ellipsis-vertical" size={20} color={COLORS.textMuted} />
+        <Icon name="ellipsis-vertical" size={20} color={COLORS.textMuted} />
       </TouchableOpacity>
       <Modal visible={visible} transparent animationType="fade">
         <Pressable style={{ flex: 1 }} onPress={() => setVisible(false)}>
@@ -49,14 +50,14 @@ function KebabMenu({ onEditBeds, onUndo, t }) {
             style={styles.kebabOption}
             onPress={() => { setVisible(false); onEditBeds(); }}
           >
-            <Ionicons name="create-outline" size={18} color={COLORS.text} />
+            <Icon name="create-outline" size={18} color={COLORS.text} />
             <Text style={styles.kebabOptionText}>{t('cleanerScreen.editBeds')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.kebabOption}
             onPress={() => { setVisible(false); onUndo(); }}
           >
-            <Ionicons name="refresh-circle-outline" size={18} color={COLORS.danger} />
+            <Icon name="refresh-circle-outline" size={18} color={COLORS.danger} />
             <Text style={[styles.kebabOptionText, { color: COLORS.danger }]}>{t('undoRoom')}</Text>
           </TouchableOpacity>
         </View>
@@ -257,7 +258,7 @@ function RoomCard({ room, status, onUpdate, t }) {
           </TouchableOpacity>
         ) : (
           <TouchableOpacity onPress={handleOpen} style={{ padding: 4 }}>
-            <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
+            <Icon name={open ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
           </TouchableOpacity>
         )}
       </View>
@@ -283,7 +284,7 @@ function RoomCard({ room, status, onUpdate, t }) {
           )}
           {commonOnly && cleaned && (
             <View style={[styles.commonBanner, { backgroundColor: COLORS.successLight }]}>
-              <Ionicons name="checkmark-circle" size={18} color={COLORS.success} style={{ marginRight: SPACING[2] }} />
+              <Icon name="checkmark-circle" size={18} color={COLORS.success} style={{ marginRight: SPACING[2] }} />
               <Text style={[styles.commonBannerText, { color: COLORS.success }]}>{t('commonCleaned')}</Text>
             </View>
           )}
@@ -325,7 +326,7 @@ function RoomCard({ room, status, onUpdate, t }) {
                           {b.name}
                         </Text>
                         {isEarlyLate && (
-                          <Ionicons
+                          <Icon
                             name={state.reason === 'early' ? 'alarm-outline' : 'time-outline'}
                             size={18}
                             color={isCleaned ? COLORS.success : colors.textColor}
@@ -333,7 +334,7 @@ function RoomCard({ room, status, onUpdate, t }) {
                           />
                         )}
                         {isCleaned && (
-                          <Ionicons name="checkmark-circle" size={18} color={COLORS.success} style={{ marginLeft: 4 }} />
+                          <Icon name="checkmark-circle" size={18} color={COLORS.success} style={{ marginLeft: 4 }} />
                         )}
                       </View>
                       <Text style={[styles.bedCardStatus, { color: textColor, fontFamily: (isEarlyLate && !isCleaned) ? FONTS.bold : FONTS.medium }]}>
@@ -348,7 +349,7 @@ function RoomCard({ room, status, onUpdate, t }) {
                 return assignment.status === 'clean' || assignment.status === 'early' || assignment.status === 'late';
               }) && (
                 <TouchableOpacity style={styles.cleanAllBtn} onPress={cleanAllBeds}>
-                  <Ionicons name="checkmark-done-outline" size={18} color={COLORS.white} />
+                  <Icon name="checkmark-done-outline" size={18} color={COLORS.white} />
                   <Text style={styles.cleanAllText}>{t('cleanerScreen.cleanAll')}</Text>
                 </TouchableOpacity>
               )}
@@ -363,7 +364,7 @@ function RoomCard({ room, status, onUpdate, t }) {
                 .filter(([, v]) => v)
                 .map(([attr, value]) => (
                   <View key={attr} style={styles.attributeRow}>
-                    <Ionicons
+                    <Icon
                       name={value ? 'checkmark-circle' : 'ellipse-outline'}
                       size={18}
                       color={value ? COLORS.success : COLORS.textMuted}
@@ -383,7 +384,7 @@ function RoomCard({ room, status, onUpdate, t }) {
                   onPress={() => setExtraEnabled(!extraEnabled)}
                   style={[styles.checkbox, extraEnabled && styles.checkboxActive]}
                 >
-                  {extraEnabled && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
+                  {extraEnabled && <Icon name="checkmark" size={16} color={COLORS.white} />}
                 </TouchableOpacity>
                 <Text style={{ marginLeft: SPACING[2], fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.text }}>
                   {t('extraTime')}
@@ -424,7 +425,7 @@ function RoomCard({ room, status, onUpdate, t }) {
               onPress={markCleaned}
               activeOpacity={0.9}
             >
-              <Ionicons name="checkmark-circle" size={22} color={COLORS.white} />
+              <Icon name="checkmark-circle" size={22} color={COLORS.white} />
               <Text style={styles.cleanBtnText}>
                 {canMarkCleaned ? t('markAsCleaned') : t('finishBedsFirst')}
               </Text>
@@ -500,7 +501,7 @@ function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, 
                           {room.name} ({room.type === 'private' ? t('private') : t('dormitory')})
                           {isLoading ? '  ⏳' : ''}
                         </Text>
-                        <Ionicons
+                        <Icon
                           name={isLoading ? 'hourglass-outline' : 'send-outline'}
                           size={20}
                           color={COLORS.primary}
@@ -529,6 +530,12 @@ export default function CleanerScreen() {
     hostel, floors = [], rooms = [], roomStatus = {}, updateRoomStatus,
     requestExtraRoom, cancelExtraRoomRequest, extraRequests = [],
   } = useApp();
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      document.title = 'KeepClean';
+    }
+  }, []);
 
   const myRooms = rooms.filter(r => r.assignedTo === user.uid);
 
@@ -628,11 +635,11 @@ export default function CleanerScreen() {
         <View style={styles.topBarRight}>
           {/* Language globe icon */}
           <TouchableOpacity onPress={() => setShowLangMenu(true)} style={styles.iconBtn}>
-            <Ionicons name="globe-outline" size={22} color={COLORS.textSecondary} />
+            <Icon name="globe-outline" size={22} color={COLORS.textSecondary} />
           </TouchableOpacity>
           {/* Sign out button */}
           <TouchableOpacity onPress={logout} style={styles.signOutBtn}>
-            <Ionicons name="log-out-outline" size={18} color={COLORS.textSecondary} />
+            <Icon name="log-out-outline" size={18} color={COLORS.textSecondary} />
             <Text style={styles.signOutText}>{t('signOut')}</Text>
           </TouchableOpacity>
         </View>
@@ -657,13 +664,13 @@ export default function CleanerScreen() {
               return (
                 <Card key={req.id} style={styles.pendingCard}>
                   <View style={styles.pendingRow}>
-                    <Ionicons name="time-outline" size={18} color={COLORS.amber} style={{ marginRight: SPACING[2] }} />
+                    <Icon name="time-outline" size={18} color={COLORS.amber} style={{ marginRight: SPACING[2] }} />
                     <Text style={styles.pendingText}>{room?.name || t('unknownRoom')}</Text>
                     <TouchableOpacity
                       onPress={() => setCancelRequestId(req.id)}
                       style={{ padding: 4, marginLeft: 'auto' }}
                     >
-                      <Ionicons name="close-circle-outline" size={22} color={COLORS.danger} />
+                      <Icon name="close-circle-outline" size={22} color={COLORS.danger} />
                     </TouchableOpacity>
                   </View>
                 </Card>
@@ -684,7 +691,7 @@ export default function CleanerScreen() {
                 <View key={floor.id}>
                   <TouchableOpacity onPress={() => toggleFloor(floor.id)} style={styles.floorHeaderRow} activeOpacity={0.7}>
                     <FloorHeader label={floor.name} />
-                    <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
+                    <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
                   </TouchableOpacity>
                   {isExpanded && (
                     <View style={{ gap: SPACING[4], marginBottom: SPACING[4] }}>
@@ -719,7 +726,7 @@ export default function CleanerScreen() {
                 <View key={floor.id}>
                   <TouchableOpacity onPress={() => toggleFloor(floor.id)} style={styles.floorHeaderRow} activeOpacity={0.7}>
                     <FloorHeader label={floor.name} />
-                    <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
+                    <Icon name={isExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
                   </TouchableOpacity>
                   {isExpanded && (
                     <View style={{ gap: SPACING[4], marginBottom: SPACING[4] }}>
@@ -768,7 +775,7 @@ export default function CleanerScreen() {
             style={styles.footerBtn}
             activeOpacity={0.8}
           >
-            <Ionicons name="add-circle-outline" size={20} color={COLORS.white} />
+            <Icon name="add-circle-outline" size={20} color={COLORS.white} />
             <Text style={styles.footerBtnText}>{t('extra')}</Text>
           </TouchableOpacity>
         </View>
@@ -835,7 +842,7 @@ export default function CleanerScreen() {
                     {lang.label}
                   </Text>
                   {i18n.language === lang.code && (
-                    <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
+                    <Icon name="checkmark-circle" size={20} color={COLORS.primary} />
                   )}
                 </TouchableOpacity>
               ))}
@@ -846,7 +853,7 @@ export default function CleanerScreen() {
               style={[styles.langMenuItem, { justifyContent: 'center' }]}
               activeOpacity={0.7}
             >
-              <Ionicons name="close-circle-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[1] }} />
+              <Icon name="close-circle-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[1] }} />
               <Text style={[styles.langMenuItemText, { color: COLORS.danger }]}>{t('close')}</Text>
             </TouchableOpacity>
           </View>

@@ -6,6 +6,7 @@
  */
 
 import { rs, rf } from './utils/responsive';
+import { Platform } from 'react-native';
 
 export const COLORS = {
   primary:        '#2563EB',
@@ -27,12 +28,20 @@ export const COLORS = {
   black:          '#0F172A',
 };
 
-export const FONTS = {
-  regular:  'Inter_400Regular',
-  medium:   'Inter_500Medium',
-  semiBold: 'Inter_600SemiBold',
-  bold:     'Inter_700Bold',
-};
+export const FONTS = Platform.select({
+  web: {
+    regular:  '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+    medium:   '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+    semiBold: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+    bold:     '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  },
+  default: {
+    regular:  'Inter_400Regular',
+    medium:   'Inter_500Medium',
+    semiBold: 'Inter_600SemiBold',
+    bold:     'Inter_700Bold',
+  },
+});
 
 /**
  * RADIUS values are now scaled so they look proportional on every screen.

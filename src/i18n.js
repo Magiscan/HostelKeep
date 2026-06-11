@@ -31,6 +31,7 @@ const resources = {
       note: 'Note',
       bedsNotReady: 'Beds not ready',
       hostelsubtitle: 'Hostel operations, connected',
+      selectlang: 'Select language',
 
       exportCSV: 'Export CSV', 
 
@@ -278,6 +279,7 @@ const resources = {
       bedsNotReady: 'Letti non pronti',
 
       hostelsubtitle: 'Operazioni ostello, connesse',
+      selectlang: 'Seleziona lingua',
 
       exportCSV: 'Esporta CSV',
 
@@ -521,6 +523,7 @@ const resources = {
       bedsNotReady: 'Camas no listas',
 
       hostelsubtitle: 'Operaciones de hostels, conectadas',
+      selectlang: 'Seleccionar idioma',
 
       exportCSV: 'Exportar CSV',
 

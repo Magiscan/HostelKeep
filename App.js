@@ -7,17 +7,13 @@ import i18n from './src/i18n';
 global.Buffer = Buffer;
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import {
-  useFonts,
-  Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
-} from '@expo-google-fonts/inter';
 
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { AppProvider, useApp } from './src/contexts/AppContext';
@@ -26,6 +22,9 @@ import CreateHostelScreen from './src/screens/CreateHostelScreen';
 import ManagerApp from './src/screens/manager/ManagerApp';
 import CleanerScreen from './src/screens/CleanerScreen';
 import { COLORS } from './src/theme';
+
+// Platform‑specific font loading (no Inter on web)
+import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from './src/fonts';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -71,9 +70,16 @@ function RootNavigator() {
 
 export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
-  const [fontsLoaded, fontError] = useFonts({
-    Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
-  });
+
+  // Web: no fonts to load; Native: load Inter fonts
+  const [fontsLoaded, fontError] = Platform.OS === 'web'
+    ? [true, null]
+    : useFonts({
+        Inter_400Regular,
+        Inter_500Medium,
+        Inter_600SemiBold,
+        Inter_700Bold,
+      });
 
   useEffect(() => {
     if (fontsLoaded || fontError) setAppIsReady(true);
@@ -96,7 +102,7 @@ export default function App() {
         <I18nextProvider i18n={i18n}>
           <AuthProvider>
             <AppProvider>
-              <NavigationContainer theme={NavTheme}>
+              <NavigationContainer theme={NavTheme} >
                 <RootNavigator />
               </NavigationContainer>
             </AppProvider>

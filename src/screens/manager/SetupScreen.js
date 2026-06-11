@@ -5,7 +5,7 @@ import {
   Alert, Modal, Pressable, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from '../../components/Icon';
 import { COLORS, RADIUS, SHADOW, FONTS, FONT_SIZE, SPACING, genId } from '../../theme';
 import {
   Button, Card, Label, Input, SectionTitle, FloorHeader,
@@ -161,7 +161,7 @@ function RoomFormModal({ visible, floors, room, onSave, onCancel, roomAttributes
                   activeOpacity={0.7}
                 >
                   <View style={[styles.checkbox, form.attributes?.[attr] && styles.checkboxActive]}>
-                    {form.attributes?.[attr] && <Ionicons name="checkmark" size={16} color={COLORS.white} />}
+                    {form.attributes?.[attr] && <Icon name="checkmark" size={16} color={COLORS.white} />}
                   </View>
                   <Text style={styles.attributeLabel}>{attr}</Text>
                 </TouchableOpacity>
@@ -398,7 +398,7 @@ function FloorManagementModal({ visible, floors, onAddFloor, onRemoveFloor, onCl
                 }}
                 onPress={() => setShowGenerator(true)}
               >
-                <Ionicons name="flash-outline" size={18} color={COLORS.primary} style={{ marginRight: SPACING[1] }} />
+                <Icon name="flash-outline" size={18} color={COLORS.primary} style={{ marginRight: SPACING[1] }} />
                 <Text
                   style={{
                     fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.md, color: COLORS.primary,
@@ -416,7 +416,7 @@ function FloorManagementModal({ visible, floors, onAddFloor, onRemoveFloor, onCl
                     {t('setup.autoGenerateFloors')}
                   </Text>
                   <TouchableOpacity onPress={() => setShowGenerator(false)}>
-                    <Ionicons name="close-circle" size={20} color={COLORS.primary} />
+                    <Icon name="close-circle" size={20} color={COLORS.primary} />
                   </TouchableOpacity>
                 </View>
                 <Label>{t('setup.upperFloorsQuestion')}</Label>
@@ -432,7 +432,7 @@ function FloorManagementModal({ visible, floors, onAddFloor, onRemoveFloor, onCl
                     onPress={() => setGenGarage(!genGarage)}
                     style={[styles.checkbox, genGarage && styles.checkboxActive]}
                   >
-                    {genGarage && <Ionicons name="checkmark" size={18} color={COLORS.white} />}
+                    {genGarage && <Icon name="checkmark" size={18} color={COLORS.white} />}
                   </TouchableOpacity>
                   <Text style={{ marginLeft: SPACING[2], fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.text }}>
                     {t('includeGarage')}
@@ -548,7 +548,7 @@ function KebabMenu({ onEdit, onDelete, t }) {
   return (
     <View>
       <TouchableOpacity onPress={() => setVisible(true)} style={styles.kebabBtn}>
-        <Ionicons name="ellipsis-vertical" size={20} color={COLORS.textMuted} />
+        <Icon name="ellipsis-vertical" size={20} color={COLORS.textMuted} />
       </TouchableOpacity>
       <Modal visible={visible} transparent animationType="fade" onRequestClose={() => setVisible(false)}>
         <Pressable style={{ flex: 1 }} onPress={() => setVisible(false)}>
@@ -556,11 +556,11 @@ function KebabMenu({ onEdit, onDelete, t }) {
         </Pressable>
         <View style={styles.kebabSheet}>
           <TouchableOpacity style={styles.kebabOption} onPress={handleEdit}>
-            <Ionicons name="create-outline" size={18} color={COLORS.text} />
+            <Icon name="create-outline" size={18} color={COLORS.text} />
             <Text style={styles.kebabOptionText}>{t('edit')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.kebabOption} onPress={handleDelete}>
-            <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
+            <Icon name="trash-outline" size={18} color={COLORS.danger} />
             <Text style={[styles.kebabOptionText, { color: COLORS.danger }]}>{t('delete')}</Text>
           </TouchableOpacity>
         </View>
@@ -708,7 +708,7 @@ export default function SetupScreen() {
                 onPress={() => setHasGarage(!hasGarage)}
                 style={[styles.checkbox, hasGarage && styles.checkboxActive]}
               >
-                {hasGarage && <Ionicons name="checkmark" size={18} color={COLORS.white} />}
+                {hasGarage && <Icon name="checkmark" size={18} color={COLORS.white} />}
               </TouchableOpacity>
               <Text style={{ marginLeft: SPACING[2], fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.text }}>
                 {t('includeGarage')}
@@ -774,7 +774,7 @@ export default function SetupScreen() {
             <View key={floor.id}>
               <TouchableOpacity onPress={() => toggleFloor(floor.id)} style={styles.floorHeaderRow} activeOpacity={0.7}>
                 <FloorHeader label={floor.name} />
-                <Ionicons name={isFloorExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
+                <Icon name={isFloorExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
               </TouchableOpacity>
               {isFloorExpanded && (
                 <View style={{ gap: SPACING[2], marginBottom: SPACING[4] }}>
@@ -803,7 +803,7 @@ export default function SetupScreen() {
                               {summary ? <Text style={styles.summaryText}>{summary}</Text> : null}
                             </View>
                           </View>
-                          <Ionicons name={isRoomExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
+                          <Icon name={isRoomExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
                         </TouchableOpacity>
 
                         {isRoomExpanded && (
