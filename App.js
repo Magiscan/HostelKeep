@@ -7,7 +7,13 @@ import i18n from './src/i18n';
 global.Buffer = Buffer;
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
+import {
+  View,
+  ActivityIndicator,
+  StyleSheet,
+  Platform,
+  Dimensions,
+} from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -20,10 +26,11 @@ import { AppProvider, useApp } from './src/contexts/AppContext';
 import LoginScreen from './src/screens/LoginScreen';
 import CreateHostelScreen from './src/screens/CreateHostelScreen';
 import ManagerApp from './src/screens/manager/ManagerApp';
+import ManagerLayout from './src/screens/manager/ManagerLayout'; // web‑only
 import CleanerScreen from './src/screens/CleanerScreen';
 import { COLORS } from './src/theme';
 
-// Platform‑specific font loading (no Inter on web)
+// Platform‑specific font loading
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from './src/fonts';
 
 SplashScreen.preventAutoHideAsync();
@@ -55,6 +62,18 @@ function RootNavigator() {
   const { user, loading } = useAuth();
   const { loaded } = useApp();
 
+  // Track screen width for responsive layout
+  const [screenWidth, setScreenWidth] = useState(
+    Platform.OS === 'web' ? Dimensions.get('window').width : 0
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handleChange = ({ window }) => setScreenWidth(window.width);
+    const subscription = Dimensions.addEventListener('change', handleChange);
+    return () => subscription?.remove();
+  }, []);
+
   if (!loaded || loading) {
     return (
       <View style={styles.centered}>
@@ -64,14 +83,20 @@ function RootNavigator() {
   }
 
   if (!user) return <AuthStack />;
-  if (user.role === 'manager') return <ManagerApp />;
+  // if (user.role === 'manager') return <ManagerApp />;
+  if (user.role === 'manager') {
+    // Use sidebar layout only on wide web screens (≥768px)
+    if (Platform.OS === 'web' && screenWidth >= 768) {
+      return <ManagerLayout />;
+    }
+    return <ManagerApp />;
+  }
   return <CleanerScreen />;
 }
 
 export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
 
-  // Web: no fonts to load; Native: load Inter fonts
   const [fontsLoaded, fontError] = Platform.OS === 'web'
     ? [true, null]
     : useFonts({
@@ -102,7 +127,7 @@ export default function App() {
         <I18nextProvider i18n={i18n}>
           <AuthProvider>
             <AppProvider>
-              <NavigationContainer theme={NavTheme} >
+              <NavigationContainer theme={NavTheme}>
                 <RootNavigator />
               </NavigationContainer>
             </AppProvider>
