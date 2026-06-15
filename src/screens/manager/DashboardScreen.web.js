@@ -1,8 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Modal, TextInput, Alert,
+  View,
+  Text,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  Modal,
+  TextInput,
+  Alert,
+  Image,
+  Pressable,
 } from 'react-native';
 import { COLORS, FONTS, FONT_SIZE, RADIUS, SPACING } from '../../theme';
 import { Badge, ProgressBar, EmptyState, Button } from '../../components/UI';
@@ -134,6 +142,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened }) {
 
   const [search, setSearch] = useState('');
   const [selectedRoom, setSelectedRoom] = useState(null);
+  const [imageViewer, setImageViewer] = useState(null);   // for full-screen photo
 
   const filteredRooms = useMemo(() => {
     if (!search.trim()) return rooms;
@@ -198,6 +207,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened }) {
 
       {/* Scrollable content */}
       <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
+        {/* Search bar */}
         <View style={styles.searchBar}>
           <Icon name="search-outline" size={18} color={COLORS.textMuted} style={{ marginRight: 8 }} />
           <TextInput
@@ -214,6 +224,39 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened }) {
           )}
         </View>
 
+        {/* ── Extra Room Requests (now at the top) ── */}
+        {extraRequests.length > 0 && (
+          <View style={styles.extraSection}>
+            <Text style={styles.sectionTitle}>Extra Room Requests</Text>
+            {extraRequests.map(req => {
+              const room = rooms.find(r => r.id === req.id);
+              const cleaner = cleaners.find(c => c.id === req.cleanerId);
+              return (
+                <View key={req.id} style={styles.extraRow}>
+                  <Text style={{ flex: 1 }}>
+                    {room?.name || 'Unknown'} requested by {cleaner?.username || 'Unknown'}
+                  </Text>
+                  {req.imageBase64 ? (
+                    <TouchableOpacity onPress={() => setImageViewer(`data:image/jpeg;base64,${req.imageBase64}`)}>
+                      <img
+                        src={`data:image/jpeg;base64,${req.imageBase64}`}
+                        style={{ width: 60, height: 60, borderRadius: 8, marginLeft: 8 }}
+                      />
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity style={styles.approveBtn} onPress={() => approveExtraRoom(req.id, req.cleanerId)}>
+                    <Text style={styles.approveText}>Approve</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.rejectBtn} onPress={() => rejectExtraRoom(req.id)}>
+                    <Text style={styles.rejectText}>Reject</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* ── Table ── */}
         <View style={styles.tableContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={true}>
             <View style={styles.table}>
@@ -237,29 +280,9 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened }) {
             </View>
           </ScrollView>
         </View>
-
-        {extraRequests.length > 0 && (
-          <View style={styles.extraSection}>
-            <Text style={styles.sectionTitle}>Extra Room Requests</Text>
-            {extraRequests.map(req => {
-              const room = rooms.find(r => r.id === req.id);
-              const cleaner = cleaners.find(c => c.id === req.cleanerId);
-              return (
-                <View key={req.id} style={styles.extraRow}>
-                  <Text style={{ flex: 1 }}>{room?.name || 'Unknown'} requested by {cleaner?.username || 'Unknown'}</Text>
-                  <TouchableOpacity style={styles.approveBtn} onPress={() => approveExtraRoom(req.id, req.cleanerId)}>
-                    <Text style={styles.approveText}>Approve</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.rejectBtn} onPress={() => rejectExtraRoom(req.id)}>
-                    <Text style={styles.rejectText}>Reject</Text>
-                  </TouchableOpacity>
-                </View>
-              );
-            })}
-          </View>
-        )}
       </ScrollView>
 
+      {/* Room detail modal */}
       <RoomDetailModal
         visible={!!selectedRoom}
         room={selectedRoom}
@@ -267,6 +290,13 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened }) {
         cleaners={cleaners}
         onClose={() => setSelectedRoom(null)}
       />
+
+      {/* Full-screen image viewer */}
+      <Modal visible={!!imageViewer} transparent animationType="fade">
+        <Pressable style={styles.imageModal} onPress={() => setImageViewer(null)}>
+          <img src={imageViewer} style={styles.fullImage} />
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -300,6 +330,13 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border, paddingHorizontal: SPACING[3],
   },
   searchInput: { flex: 1, fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.text, paddingVertical: SPACING[2] },
+  extraSection: { marginHorizontal: SPACING[4], marginTop: SPACING[3], marginBottom: SPACING[2] },
+  sectionTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.md, color: COLORS.text, marginBottom: SPACING[2] },
+  extraRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING[2], marginBottom: SPACING[2] },
+  approveBtn: { backgroundColor: COLORS.success, borderRadius: RADIUS.sm, paddingHorizontal: SPACING[3], paddingVertical: SPACING[1] },
+  approveText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.white },
+  rejectBtn: { backgroundColor: COLORS.danger, borderRadius: RADIUS.sm, paddingHorizontal: SPACING[3], paddingVertical: SPACING[1] },
+  rejectText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.white },
   tableContainer: {
     marginHorizontal: SPACING[4], marginBottom: SPACING[2],
     borderRadius: RADIUS.md, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border,
@@ -321,11 +358,17 @@ const styles = StyleSheet.create({
   modalTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text, marginBottom: SPACING[3] },
   modalRow: { flexDirection: 'row', marginBottom: SPACING[2], alignItems: 'center' },
   modalLabel: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, width: 80 },
-  extraSection: { marginHorizontal: SPACING[4], marginTop: SPACING[3], paddingBottom: SPACING[4] },
-  sectionTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.md, color: COLORS.text, marginBottom: SPACING[2] },
-  extraRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING[2], marginBottom: SPACING[2] },
-  approveBtn: { backgroundColor: COLORS.success, borderRadius: RADIUS.sm, paddingHorizontal: SPACING[3], paddingVertical: SPACING[1] },
-  approveText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.white },
-  rejectBtn: { backgroundColor: COLORS.danger, borderRadius: RADIUS.sm, paddingHorizontal: SPACING[3], paddingVertical: SPACING[1] },
-  rejectText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.white },
+  // Image viewer styles
+  imageModal: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullImage: {
+    maxWidth: 600,
+    maxHeight: '80%',
+    width: 'auto',
+    height: 'auto',
+  },
 });

@@ -226,6 +226,8 @@ const resources = {
         minutes: 'minutes',
         notesPlaceholder: 'e.g. missing towel, broken lock…',
         bedsNotReady: 'Beds not ready',
+        addPhoto: 'Add a photo',
+        changePhoto: 'Change photo',
       },
 
       // ---- Manager tabs & modals ----
@@ -472,6 +474,8 @@ const resources = {
         minutes: 'minuti',
         notesPlaceholder: 'es. asciugamano mancante, serratura rotta…',
         bedsNotReady: 'Letti non pronti',
+        addPhoto: 'Aggiungi una foto',
+        changePhoto: 'Cambia foto'
       },
 
       manager: {
@@ -716,6 +720,8 @@ const resources = {
         minutes: 'minutos',
         notesPlaceholder: 'ej. falta toalla, cerradura rota…',
         bedsNotReady: 'Camas no listas',
+        addPhoto: 'Añadir una foto',
+        changePhoto: 'Cambiar foto'
       },
 
       manager: {

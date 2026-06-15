@@ -5,7 +5,6 @@ node_modules/
 
 src/firebase.js
 
-src/firebase.native.js
 
 # Expo
 .expo/

@@ -12,6 +12,8 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { Platform } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'react-native';   // if not already imported
 
 // ------------------------------------------------------------------
 // Constants – REASONS used for colours (no translation needed)
@@ -442,6 +444,8 @@ function RoomCard({ room, status, onUpdate, t }) {
 // ------------------------------------------------------------------
 function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, onClose, onRequest, t }) {
   const [loadingRoomId, setLoadingRoomId] = useState(null);
+  const [imageBase64, setImageBase64] = useState(null);
+  const [imageUri, setImageUri] = useState(null);   // for preview
   const sortedFloors = useMemo(() => {
     if (!floors) return [];
     return [...floors].sort((a, b) => {
@@ -464,12 +468,32 @@ function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, 
   const handlePress = async (room) => {
     setLoadingRoomId(room.id);
     try {
-      await onRequest(room);
+      await onRequest(room, imageBase64);
+      setImageUri(null);
+      setImageBase64(null);
       onClose();
     } catch (e) {
       Alert.alert(t('error'), e.message);
     } finally {
       setLoadingRoomId(null);
+    }
+  };
+
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(t('error'), 'Camera permission is required.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.3,
+      base64: true,
+      allowsEditing: false,
+    });
+    if (!result.canceled && result.assets[0].base64) {
+      setImageBase64(result.assets[0].base64);
+      setImageUri(`data:image/jpeg;base64,${result.assets[0].base64}`);
     }
   };
 
@@ -481,6 +505,22 @@ function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, 
           <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginBottom: SPACING[3] }}>
             {t('cleanerScreen.requestExtraDescription')}
           </Text>
+          {/* Photo capture row */}
+          <TouchableOpacity style={styles.photoBtn} onPress={pickImage} activeOpacity={0.7}>
+            <Icon name="camera-outline" size={20} color={COLORS.primary} />
+            <Text style={styles.photoBtnText}>
+              {imageUri ? t('cleanerScreen.changePhoto') : t('cleanerScreen.addPhoto')}
+            </Text>
+          </TouchableOpacity>
+
+          {imageUri && (
+            <View style={styles.imagePreview}>
+              <Image source={{ uri: imageUri }} style={{ width: '100%', height: 150, borderRadius: RADIUS.sm }} />
+              <TouchableOpacity style={styles.removePhoto} onPress={() => { setImageUri(null); setImageBase64(null); }}>
+                <Icon name="close-circle" size={22} color={COLORS.danger} />
+              </TouchableOpacity>
+            </View>
+          )}
           <ScrollView style={{ maxHeight: 300 }} nestedScrollEnabled>
             {sortedFloors.map(floor => {
               const floorRooms = eligibleRooms.filter(r => r.floorId === floor.id);
@@ -599,9 +639,13 @@ export default function CleanerScreen() {
   const [cancelRequestId, setCancelRequestId] = useState(null);
   const [showLangMenu, setShowLangMenu] = useState(false);
 
-  const handleRequestExtra = async (room) => {
-    await requestExtraRoom(room.id, user.uid);
-    Alert.alert(t('requestSent'));
+  const handleRequestExtra = async (room, imageBase64) => {
+    try {
+      await requestExtraRoom(room.id, user.uid, imageBase64 || null);
+      Alert.alert(t('requestSent'));
+    } catch (e) {
+      Alert.alert(t('error'), e.message);
+    }
   };
 
   const sortedFloors = useMemo(() => {
@@ -1084,6 +1128,35 @@ const styles = StyleSheet.create({
   modalBtn: { flex: 1, paddingVertical: SPACING[3], borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   modalBtnCancel: { backgroundColor: COLORS.surface, borderColor: COLORS.border },
   modalBtnText: { fontFamily: 'System', fontWeight: '600', fontSize: 16, color: COLORS.primary },
+  photoBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING[2],
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    paddingVertical: SPACING[2],
+    paddingHorizontal: SPACING[3],
+    marginBottom: SPACING[3],
+    alignSelf: 'flex-start',
+  },
+  photoBtnText: {
+    fontFamily: FONTS.semiBold,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.primary,
+  },
+  imagePreview: {
+    position: 'relative',
+    marginBottom: SPACING[3],
+  },
+  removePhoto: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+  },
   // Language modal specific
   langMenuCard: {
     backgroundColor: COLORS.surface,

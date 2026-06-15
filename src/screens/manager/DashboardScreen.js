@@ -10,6 +10,8 @@ import {
   Modal,
   TextInput,
   Alert,
+  Image,
+  Pressable
 } from 'react-native';
 import Icon from '../../components/Icon';
 import { COLORS, FONTS, FONT_SIZE, RADIUS, SHADOW, SPACING } from '../../theme';
@@ -694,6 +696,8 @@ export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
 
   const { t } = useTranslation();
 
+  const [imageViewer, setImageViewer] = useState(null);
+
   const [search, setSearch] = useState('');
   const [selectedRoom, setSelectedRoom] = useState(null);
 
@@ -1045,6 +1049,14 @@ export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
                         name: cleaner?.username || t('unknown'),
                       })}
                     </Text>
+                    {req.imageBase64 ? (
+                      <TouchableOpacity onPress={() => setImageViewer(`data:image/jpeg;base64,${req.imageBase64}`)}>
+                        <Image
+                          source={{ uri: `data:image/jpeg;base64,${req.imageBase64}` }}
+                          style={{ width: 60, height: 60, borderRadius: RADIUS.sm, marginTop: SPACING[2] }}
+                        />
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                   <View style={styles.requestActions}>
                     <TouchableOpacity
@@ -1431,6 +1443,11 @@ export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
         onClose={() => setSelectedRoom(null)}
         t={t}
       />
+      <Modal visible={!!imageViewer} transparent animationType="fade">
+        <Pressable style={styles.imageModal} onPress={() => setImageViewer(null)}>
+          <Image source={{ uri: imageViewer }} style={styles.fullImage} resizeMode="contain" />
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }
@@ -1698,6 +1715,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
     color: COLORS.primary,
+  },
+  imageModal: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullImage: {
+    width: '100%',
+    height: '80%',
   },
 
   // ── New styles for CSV export ────────────────────────────

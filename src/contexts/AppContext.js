@@ -284,13 +284,14 @@ export function AppProvider({ children }) {
   };
 
   // Add request functions
-  const requestExtraRoom = async (roomId, cleanerUid) => {
+  const requestExtraRoom = async (roomId, cleanerUid, imageBase64 = null) => {
     if (!hostelCode) return;
     const requestRef = doc(db, 'hostels', hostelCode, 'extraRequests', roomId);
     await setDoc(requestRef, {
       cleanerId: cleanerUid,
       status: 'pending',
       requestedAt: new Date().toISOString(),
+      imageBase64: imageBase64 || null,
     });
   };
 
