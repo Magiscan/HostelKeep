@@ -13,6 +13,8 @@ import TeamScreen from './TeamScreen';
 import AssignScreen from './AssignScreen';
 import { useAuth } from '../../contexts/AuthContext';
 import { useApp } from '../../contexts/AppContext';
+import { useNotifications } from '../../contexts/NotificationContext';
+import { ScrollView } from 'react-native-gesture-handler';
 
 const LANGS = [
   { code: 'en', label: 'English' },
@@ -25,6 +27,10 @@ export default function ManagerApp() {
   const { user, logout } = useAuth();
   const { hostel, updateHostel, hostelCode } = useApp();
   const [tab, setTab] = useState('dashboard');
+  const { notifications, unreadCount, markAsRead, clearAll } = useNotifications();
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [highlightRoomId, setHighlightRoomId] = useState(null);
+
 
   // Dynamic tab list with translated labels
   const TABS = useMemo(() => [
@@ -80,17 +86,17 @@ export default function ManagerApp() {
         </View>
 
         <View style={styles.headerRight}>
-          {/* Language switcher */}
-          <TouchableOpacity onPress={() => setShowLangMenu(true)} style={styles.iconBtn}>
-            <Icon name="globe-outline" size={22} color={COLORS.textSecondary} />
+          {/* Notification bell */}
+          <TouchableOpacity onPress={() => setShowNotifications(true)} style={styles.iconBtn}>
+            <Icon name="alarm-outline" size={22} color={COLORS.textSecondary} />
+            {unreadCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{unreadCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
 
-          {/* Hostel code */}
-          <TouchableOpacity onPress={() => setShowCodeModal(true)} style={styles.codeBtn} activeOpacity={0.7}>
-            <Icon name="key-outline" size={20} color={COLORS.primary} />
-          </TouchableOpacity>
-
-          {/* Avatar */}
+          {/* Avatar (opens menu) */}
           <TouchableOpacity onPress={() => setShowUserMenu(true)} activeOpacity={0.7}>
             <Avatar name={user.username} />
           </TouchableOpacity>
@@ -99,7 +105,12 @@ export default function ManagerApp() {
 
       {/* ── Content ── */}
       <View style={styles.content}>
-        {tab === 'dashboard' && <DashboardScreen />}
+        {tab === 'dashboard' && (
+          <DashboardScreen
+            highlightRoomId={highlightRoomId}
+            onRoomOpened={() => setHighlightRoomId(null)}
+          />
+        )}
         {tab === 'setup' && <SetupScreen />}
         {tab === 'team' && <TeamScreen />}
         {tab === 'assign' && <AssignScreen />}
@@ -222,12 +233,40 @@ export default function ManagerApp() {
         </View>
       </Modal>
 
-      {/* ── User Menu Modal (sign out) ── */}
+      {/* ── User Menu Modal (now with Language & Hostel Code) ── */}
       <Modal visible={showUserMenu} transparent animationType="fade" onRequestClose={() => setShowUserMenu(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setShowUserMenu(false)}>
           <View style={styles.menuCard}>
             <Text style={styles.menuTitle}>{user.username}</Text>
             <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: SPACING[2] }} />
+
+            {/* Language item */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowUserMenu(false);
+                setTimeout(() => setShowLangMenu(true), 25);
+              }}
+              activeOpacity={0.7}
+            >
+              <Icon name="globe-outline" size={18} color={COLORS.textSecondary} style={{ marginRight: SPACING[2] }} />
+              <Text style={styles.menuItemText}>{t('manager.language')}</Text>
+            </TouchableOpacity>
+
+            {/* Hostel Code item */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowUserMenu(false);
+                setTimeout(() => setShowCodeModal(true), 25);
+              }}
+              activeOpacity={0.7}
+            >
+              <Icon name="key-outline" size={18} color={COLORS.textSecondary} style={{ marginRight: SPACING[2] }} />
+              <Text style={styles.menuItemText}>{t('manager.yourHostelCode')}</Text>
+            </TouchableOpacity>
+
+            {/* Sign Out item */}
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => { setShowUserMenu(false); logout(); }}
@@ -235,6 +274,58 @@ export default function ManagerApp() {
             >
               <Icon name="log-out-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[2] }} />
               <Text style={[styles.menuItemText, { color: COLORS.danger }]}>{t('signOut')}</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Notification Modal */}
+      <Modal visible={showNotifications} transparent animationType="fade" onRequestClose={() => setShowNotifications(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowNotifications(false)}>
+          <View style={styles.notifCard}>
+            <View style={styles.notifHeaderRow}>
+              <Text style={styles.menuTitle}>Notifications</Text>
+              {unreadCount > 0 && (
+                <TouchableOpacity onPress={clearAll}>
+                  <Text style={{ fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.primary }}>Mark all read</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {notifications.length === 0 ? (
+                <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, textAlign: 'center', marginTop: 20 }}>
+                  No notifications yet.
+                </Text>
+              ) : (
+                notifications.map(item => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[styles.notifItem, item.read && { opacity: 0.6 }]}
+                    onPress={() => {
+                      markAsRead(item.id);
+                      setShowNotifications(false);
+                      setTab('dashboard');
+                      setHighlightRoomId(item.roomId);
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.notifMessage, item.read && { color: COLORS.textMuted }]}>
+                        {item.message}
+                      </Text>
+                      <Text style={styles.notifTime}>
+                        {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                    {!item.read && <View style={styles.unreadDot} />}
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+            <TouchableOpacity
+              onPress={() => setShowNotifications(false)}
+              style={{ marginTop: SPACING[3], alignSelf: 'center', padding: SPACING[2] }}
+            >
+              <Text style={{ fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.primary }}>Close</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -284,6 +375,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: SPACING[4], paddingVertical: SPACING[3],
     backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    flexWrap: 'wrap',
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING[2] },
   logo: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.primary, letterSpacing: -0.3 },
@@ -311,6 +403,63 @@ const styles = StyleSheet.create({
   },
   codeText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xxxl, color: COLORS.primary, textAlign: 'center', marginBottom: SPACING[2] },
   codeHint: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, textAlign: 'center' },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -6,
+    backgroundColor: COLORS.danger,
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    fontFamily: FONTS.bold,
+    fontSize: 10,
+    color: COLORS.white,
+  },
+  notifCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING[4],
+    width: 320,
+    maxHeight: 400,
+    ...SHADOW.md,
+  },
+  notifHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING[3],
+  },
+  notifItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING[2],
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  notifMessage: {
+    fontFamily: FONTS.medium,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.text,
+    flex: 1,
+  },
+  notifTime: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.primary,
+    marginLeft: SPACING[2],
+  },
   // Menus
   menuCard: {
     backgroundColor: COLORS.surface,

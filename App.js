@@ -26,9 +26,10 @@ import { AppProvider, useApp } from './src/contexts/AppContext';
 import LoginScreen from './src/screens/LoginScreen';
 import CreateHostelScreen from './src/screens/CreateHostelScreen';
 import ManagerApp from './src/screens/manager/ManagerApp';
-import ManagerLayout from './src/screens/manager/ManagerLayout'; // web‑only
 import CleanerScreen from './src/screens/CleanerScreen';
 import { COLORS } from './src/theme';
+
+import { NotificationProvider } from './src/contexts/NotificationContext';
 
 // Platform‑specific font loading
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from './src/fonts';
@@ -87,6 +88,8 @@ function RootNavigator() {
   if (user.role === 'manager') {
     // Use sidebar layout only on wide web screens (≥768px)
     if (Platform.OS === 'web' && screenWidth >= 768) {
+      if (typeof document !== 'undefined') document.title = 'KeepClean';
+      const ManagerLayout = require('./src/screens/manager/ManagerLayout.web').default;
       return <ManagerLayout />;
     }
     return <ManagerApp />;
@@ -127,9 +130,11 @@ export default function App() {
         <I18nextProvider i18n={i18n}>
           <AuthProvider>
             <AppProvider>
-              <NavigationContainer theme={NavTheme}>
-                <RootNavigator />
-              </NavigationContainer>
+              <NotificationProvider>
+                <NavigationContainer theme={NavTheme}>
+                  <RootNavigator />
+                </NavigationContainer>
+              </NotificationProvider>
             </AppProvider>
           </AuthProvider>
         </I18nextProvider>

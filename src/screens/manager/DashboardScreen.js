@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View,
@@ -678,7 +678,7 @@ function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose, t }) {
 }
 
 // ─── Main Dashboard Screen ──────────────────────────────────────
-export default function DashboardScreen() {
+export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
   const {
     rooms = [],
     roomStatus = {},
@@ -786,6 +786,17 @@ export default function DashboardScreen() {
     },
     [roomStatus, cleaners, extraRequests, floors, t]
   );
+  
+  // Auto-open a room when highlightRoomId changes
+  useEffect(() => {
+    if (highlightRoomId && rooms.length > 0) {
+      const room = rooms.find(r => r.id === highlightRoomId);
+      if (room) {
+        setSelectedRoom(room);
+        if (onRoomOpened) onRoomOpened();
+      }
+    }
+  }, [highlightRoomId, rooms]);
 
   if (!hostel.name) {
     return (
