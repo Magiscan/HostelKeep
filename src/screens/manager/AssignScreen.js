@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal,
-  Pressable, KeyboardAvoidingView, Platform,
+  Pressable, KeyboardAvoidingView, Platform, TextInput, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
@@ -27,6 +27,14 @@ export default function AssignScreen() {
     rooms, cleaners, floors, assignRoomWithDetails, unassignRoom, roomStatus,
     roomAttributes,
   } = useApp();
+
+  const [search, setSearch] = useState('');
+
+  const filteredRooms = useMemo(() => {
+    if (!search.trim()) return rooms;
+    const term = search.toLowerCase();
+    return rooms.filter(r => r.name.toLowerCase().includes(term));
+  }, [rooms, search]);
 
   const sortedFloors = useMemo(() => {
     return [...floors].sort((a, b) => {
@@ -139,8 +147,30 @@ export default function AssignScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* ── Search bar ── */}
+        <View style={styles.searchContainer}>
+          <Icon name="search-outline" size={18} color={COLORS.textMuted} style={{ marginRight: SPACING[2] }} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder={t('search')}
+            placeholderTextColor={COLORS.textMuted}
+            style={styles.searchInput}
+            clearButtonMode="while-editing"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 4 }}>
+              <Icon name="close-circle" size={18} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {filteredRooms.length === 0 && search.trim() !== '' && (
+          <EmptyState icon="🔍" title={t('noResults')} subtitle="" />
+        )}
+
         {sortedFloors.map(floor => {
-          const floorRooms = rooms.filter(r => r.floorId === floor.id);
+          const floorRooms = filteredRooms.filter(r => r.floorId === floor.id);
           if (!floorRooms.length) return null;
           return (
             <View key={floor.id}>
@@ -396,6 +426,23 @@ const styles = StyleSheet.create({
     flex: 1, paddingVertical: SPACING[2], borderRadius: RADIUS.sm,
     borderWidth: 1, borderColor: COLORS.border,
     alignItems: 'center', justifyContent: 'center',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING[3],
+    marginBottom: SPACING[4],
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.text,
+    paddingVertical: SPACING[2],
   },
   flagText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary },
   modalActions: { flexDirection: 'row', gap: SPACING[2], marginTop: SPACING[4] },
