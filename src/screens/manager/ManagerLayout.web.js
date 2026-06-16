@@ -30,7 +30,7 @@ export default function ManagerLayout() {
   const [tab, setTab] = useState('dashboard');
   const { t, i18n } = useTranslation();
   const { user, logout } = useAuth();
-  const { notifications, unreadCount, markAsRead, clearAll } = useNotifications();
+  const { notifications, unreadCount, markAsRead, clearAll, deleteAllNotifications } = useNotifications();
 
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -136,11 +136,22 @@ export default function ManagerLayout() {
           <View style={styles.notifCard}>
             <View style={styles.notifHeaderRow}>
               <Text style={styles.menuTitle}>Notifications</Text>
-              {unreadCount > 0 && (
-                <TouchableOpacity onPress={clearAll}>
-                  <Text style={{ fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.primary }}>Mark all read</Text>
-                </TouchableOpacity>
-              )}
+              <View style={{ flexDirection: 'row', gap: SPACING[2] }}>
+                {unreadCount > 0 && (
+                  <TouchableOpacity onPress={clearAll}>
+                    <Text style={{ fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.primary }}>
+                      Mark all read
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {notifications.length > 0 && (
+                  <TouchableOpacity onPress={deleteAllNotifications}>
+                    <Text style={{ fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.danger }}>
+                      Delete all
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
             <ScrollView style={{ maxHeight: 300 }}>
               {notifications.length === 0 ? (
