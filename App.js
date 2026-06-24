@@ -31,6 +31,8 @@ import { COLORS } from './src/theme';
 
 import { NotificationProvider } from './src/contexts/NotificationContext';
 
+import LoginScreenWeb from './src/screens/LoginScreen.web';  // web
+
 // Platform‑specific font loading
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from './src/fonts';
 
@@ -53,7 +55,7 @@ const Stack = createNativeStackNavigator();
 function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Login" component={LoginScreen} />
+      <Stack.Screen name="Login" component={Platform.OS === 'web' ? LoginScreenWeb : LoginScreen} />
       <Stack.Screen name="CreateHostel" component={CreateHostelScreen} />
     </Stack.Navigator>
   );

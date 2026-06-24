@@ -1,31 +1,46 @@
-/**
- * theme.js  (root level, same location as current theme.js)
- *
- * All dimension values now go through the responsive helpers so the
- * UI scales correctly across small phones, mid-range Androids, and tablets.
- */
-
-import { rs, rf } from './utils/responsive';
+import { rs, rf, SCREEN } from './utils/responsive';
 import { Platform } from 'react-native';
 
+export const IS_WEB     = Platform.OS === 'web';
+export const IS_TABLET  = SCREEN.IS_TABLET;
+export const USE_SIDEBAR = IS_WEB && SCREEN.WIDTH >= 768;   // consistent with your existing 768 breakpoint
+
 export const COLORS = {
+  // Brand
   primary:        '#2563EB',
-  primaryLight:   '#EFF3FF',
+  primaryLight:   '#EFF6FF',
   primaryDark:    '#1D4ED8',
+
+  // Accent / warning
   accent:         '#F59E0B',
   accentLight:    '#FFFBEB',
+  amber:          '#D97706',
+  amberLight:     '#FEF3C7',
+
+  // Semantic
   success:        '#10B981',
   successLight:   '#ECFDF5',
   danger:         '#EF4444',
   dangerLight:    '#FEF2F2',
+  blue:           '#3B82F6',
+  blueLight:      '#EFF6FF',
+
+  // Neutrals
   text:           '#1E293B',
-  textSecondary:  '#64748B',
+  textSecondary:  '#475569',
   textMuted:      '#94A3B8',
-  background:     '#F8FAFC',
+  background:     '#F1F5F9',
   surface:        '#FFFFFF',
   border:         '#E2E8F0',
+  borderFocus:    '#93C5FD',
   white:          '#FFFFFF',
   black:          '#0F172A',
+
+  // Sidebar (web)
+  sidebar:        '#1E293B',
+  sidebarText:    '#CBD5E1',
+  sidebarActive:  '#2563EB',
+  sidebarActiveBg:'rgba(37,99,235,0.15)',
 };
 
 export const FONTS = Platform.select({
@@ -43,15 +58,11 @@ export const FONTS = Platform.select({
   },
 });
 
-/**
- * RADIUS values are now scaled so they look proportional on every screen.
- * Use rs() for horizontal radii (cards, inputs) and leave them as-is for
- * perfectly-round elements (full: 9999 always works).
- */
 export const RADIUS = {
+  xs:   rs(4),
   sm:   rs(8),
-  md:   rs(14),
-  lg:   rs(18),
+  md:   rs(12),
+  lg:   rs(16),
   xl:   rs(22),
   full: 9999,
 };
@@ -60,16 +71,23 @@ export const SHADOW = {
   sm: {
     shadowColor:   '#000',
     shadowOffset:  { width: 0, height: 1 },
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.05,
     shadowRadius:  2,
-    elevation:     1,       // Android
+    elevation:     1,
   },
   md: {
     shadowColor:   '#000',
-    shadowOffset:  { width: 0, height: 4 },
-    shadowOpacity: 0.06,
+    shadowOffset:  { width: 0, height: 3 },
+    shadowOpacity: 0.07,
     shadowRadius:  8,
     elevation:     3,
+  },
+  lg: {
+    shadowColor:   '#000',
+    shadowOffset:  { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius:  16,
+    elevation:     6,
   },
   glow: {
     shadowColor:   '#2563EB',
@@ -80,10 +98,6 @@ export const SHADOW = {
   },
 };
 
-/**
- * Responsive font sizes used app-wide.
- * Import and use like: fontSize: FONT_SIZE.md
- */
 export const FONT_SIZE = {
   xs:   rf(11),
   sm:   rf(13),
@@ -91,13 +105,9 @@ export const FONT_SIZE = {
   lg:   rf(17),
   xl:   rf(20),
   xxl:  rf(24),
-  xxxl: rf(30),
+  xxxl: rf(32),
 };
 
-/**
- * Spacing scale (multiples of 4 px, scaled).
- * Use like: padding: SPACING[4]  → ~16 dp on reference device
- */
 export const SPACING = {
   1:  rs(4),
   2:  rs(8),
@@ -105,11 +115,16 @@ export const SPACING = {
   4:  rs(16),
   5:  rs(20),
   6:  rs(24),
+  7:  rs(28),
   8:  rs(32),
   10: rs(40),
   12: rs(48),
 };
 
-/** Legacy helper – unchanged so existing code doesn't break */
+// Web layout constants
+export const WEB_SIDEBAR_WIDTH  = 240;
+export const WEB_CONTENT_MAX    = 900;
+
+/** Legacy helper */
 export const genId = () =>
   Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
