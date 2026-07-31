@@ -99,6 +99,22 @@ export default function ManagerLayout() {
             <Text style={[styles.navLabel, { marginLeft: SPACING[2], color: COLORS.danger }]}>Sign out</Text>
           </TouchableOpacity>
         </View>
+
+        {/* ── Footer inside sidebar ── */}
+        <View style={styles.sidebarFooter}>
+          <Text style={styles.footerText}>
+            © {new Date().getFullYear()} KeepClean
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              if (Platform.OS === 'web') {
+                window.open('/privacy.html', '_blank');
+              }
+            }}
+          >
+            <Text style={styles.footerLink}>Privacy Policy</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.main}>{renderScreen()}</View>
@@ -225,6 +241,24 @@ const styles = StyleSheet.create({
   langItem: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: SPACING[3], paddingHorizontal: SPACING[3], borderRadius: RADIUS.md,
+  },
+  sidebarFooter: {
+    marginTop: SPACING[4],
+    paddingTop: SPACING[3],
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    gap: SPACING[1],
+  },
+  footerText: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textMuted,
+  },
+  footerLink: {
+    fontFamily: FONTS.medium,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.primary,
+    textDecorationLine: 'underline',
   },
   langItemActive: { backgroundColor: COLORS.primaryLight },
   langItemText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.text },
