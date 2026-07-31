@@ -32,8 +32,17 @@ const resources = {
       bedsNotReady: 'Beds not ready',
       hostelsubtitle: 'Hostel operations, connected',
       selectlang: 'Select language',
-
+      recoveryEmail: 'Recovery email (optional)',
       exportCSV: 'Export CSV', 
+      recoveryEmail: 'Recovery email (optional)',
+      forgotPasswordMissingFields: 'Please enter your username and hostel code first.',
+      cannotReset: 'Cannot reset password',
+      syntheticEmailWarning: 'Your account uses a synthetic email. Please contact your hostel manager or support to reset your password.',
+      passwordResetEmailSent: 'A password reset email has been sent if that account exists.',
+      resetPassword: 'Reset password',
+      newPassword: 'New password',
+      passwordTooShort: 'Password too short',
+      passwordResetSuccess: 'Password reset successful. You can now log in with your new password.',
 
       // ---- Login ----
       username: 'Username',
@@ -282,8 +291,12 @@ const resources = {
 
       hostelsubtitle: 'Operazioni ostello, connesse',
       selectlang: 'Seleziona lingua',
-
+      recoveryEmail: 'Email di recupero (opzionale)',
       exportCSV: 'Esporta CSV',
+      forgotPasswordMissingFields: 'Per favore inserisci prima il tuo nome utente e il codice ostello.',
+      cannotReset: 'Impossibile resettare la password',
+      syntheticEmailWarning: 'Il tuo account utilizza un indirizzo email sintetico. Contatta il manager dell\'ostello o il supporto per resettare la password.',
+      passwordResetEmailSent: 'È stata inviata un\'email per resettare la password se l\'account esiste.',
 
       // ---- Login ----
       username: 'Nome utente',
@@ -528,8 +541,12 @@ const resources = {
 
       hostelsubtitle: 'Operaciones de hostels, conectadas',
       selectlang: 'Seleccionar idioma',
-
+      recoveryEmail: 'Correo de recuperación (opcional)',
       exportCSV: 'Exportar CSV',
+      forgotPasswordMissingFields: 'Por favor, ingresa primero tu nombre de usuario y el código del hostel.',
+      cannotReset: 'No se puede restablecer la contraseña',
+      syntheticEmailWarning: 'Tu cuenta utiliza un correo electrónico sintético. Por favor, contacta a tu gerente del hostel o al soporte para restablecer tu contraseña.',
+      passwordResetEmailSent: 'Se ha enviado un correo electrónico de restablecimiento de contraseña si esa cuenta existe.',
 
       // ---- Login ----
       username: 'Usuario',

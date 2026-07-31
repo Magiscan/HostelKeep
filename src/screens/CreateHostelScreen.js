@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
+  View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, RADIUS, SHADOW, FONTS, FONT_SIZE, SPACING } from '../theme';
@@ -20,6 +20,7 @@ export default function CreateHostelScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [recoveryEmail, setRecoveryEmail] = useState('');
 
   const generateCode = () => {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -46,6 +47,10 @@ export default function CreateHostelScreen() {
         name: hostelName.trim(),
         code,
       });
+
+      if (recoveryEmail.trim()) {
+        await setDoc(doc(db, 'users', userCred.user.uid), { recoveryEmail: recoveryEmail.trim() }, { merge: true });
+      }
 
       // 3. Login to load the full user object (hostelCode, role, etc.) into context
       await login(username, password, code);
@@ -92,6 +97,15 @@ export default function CreateHostelScreen() {
               placeholder="••••••••"
               secureTextEntry
               style={{ marginBottom: SPACING[4] }}
+            />
+            <Label>{t('recoveryEmail')}</Label>
+            <Input
+              value={recoveryEmail}
+              onChangeText={setRecoveryEmail}
+              placeholder="manager@example.com (optional)"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              style={{ marginBottom: SPACING[3] }}
             />
             {error ? <Text style={styles.errText}>{error}</Text> : null}
             <Button

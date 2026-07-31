@@ -5,6 +5,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   initializeAuth,
+  getAuth,
 } from 'firebase/auth';
 import {
   doc, getDoc, setDoc, query, where, getDocs, collection,
@@ -115,7 +116,7 @@ export function AuthProvider({ children }) {
     try {
       const secondaryAppName = `secondary-${Date.now()}`;
       secondaryApp = initializeApp(firebaseConfig, secondaryAppName);
-      const secondaryAuth = initializeAuth(secondaryApp);
+      const secondaryAuth = getAuth(secondaryApp);          // ← no initializeAuth
       const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
       uid = cred.user.uid;
       await firebaseSignOut(secondaryAuth);

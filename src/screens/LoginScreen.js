@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity, Modal, Pressable,
+  View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity, Modal, Pressable, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,6 +10,9 @@ import { COLORS, RADIUS, SHADOW, FONTS, FONT_SIZE, SPACING } from '../theme';
 import { Button, Card, Label, Input } from '../components/UI';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 
 const LANGS = [
   { code: 'en', label: 'English' },
@@ -39,6 +42,38 @@ export default function LoginScreen() {
       setErr(e.message || t('loginError'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!name.trim() || !hostelCode.trim()) {
+      Alert.alert('Error', 'Please enter your username and hostel code first.');
+      return;
+    }
+    try {
+      const q = query(
+        collection(db, 'users'),
+        where('username', '==', name.trim()),
+        where('hostelCode', '==', hostelCode.trim().toUpperCase())
+      );
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        Alert.alert('Error', 'User not found.');
+        return;
+      }
+      const userData = snap.docs[0].data();
+      const email = userData.recoveryEmail || userData.email;
+      if (email.endsWith('@keepclean.app')) {
+        Alert.alert(
+          'Cannot reset',
+          'Your account uses a synthetic email. Please contact your hostel manager.'
+        );
+        return;
+      }
+      await sendPasswordResetEmail(auth, email);
+      Alert.alert('Success', 'A password reset email has been sent.');
+    } catch (e) {
+      Alert.alert('Error', e.message);
     }
   };
 
@@ -87,6 +122,14 @@ export default function LoginScreen() {
             <Label>{t('password')}</Label>
             <Input value={pass} onChangeText={setPass} placeholder="••••••••" secureTextEntry style={{ marginBottom: err ? SPACING[3] : SPACING[4] }} />
             {!!err && <Text style={styles.errText}>{err}</Text>}
+            {/* Forgot password */}
+            <TouchableOpacity
+              style={styles.forgotBtn}
+              activeOpacity={0.6}
+              onPress={handleForgotPassword}
+            >
+              <Text style={styles.forgotText}>Forgot password?</Text>
+            </TouchableOpacity>
             <Button
               title={loading ? t('signingIn') : t('signIn')}
               onPress={handle}
@@ -225,5 +268,15 @@ const styles = StyleSheet.create({
   langOptionTextActive: {
     color: COLORS.primary,
     fontFamily: FONTS.bold,
+  },
+  forgotBtn: {
+    alignSelf: 'flex-end',
+    marginBottom: SPACING[3],
+  },
+  forgotText: {
+    fontFamily: FONTS.medium,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.primary,
+    opacity: 0.8,
   },
 });

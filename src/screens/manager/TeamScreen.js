@@ -17,6 +17,8 @@ export default function TeamScreen() {
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleteModal, setDeleteModal] = useState(null);
+  const [resetModal, setResetModal] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
 
   const handleAddCleaner = async () => {
     if (!name.trim() || !password.trim()) return;
@@ -78,8 +80,21 @@ export default function TeamScreen() {
       {cleaners.map(c => (
         <Card key={c.id} style={styles.cleanerCard}>
           <View style={styles.cleanerRow}>
-            <Text style={styles.cleanerName}>{c.username}</Text>
-            <Button title={t('delete')} onPress={() => setDeleteModal(c)} variant="danger" size="sm" />
+            <Text style={styles.cleanerName} numberOfLines={2}>{c.username}</Text>
+            <View style={styles.buttonGroup}>
+              <Button
+                title={t('resetPassword')}
+                onPress={() => setResetModal(c)}
+                variant="secondary"
+                size="sm"
+              />
+              <Button
+                title={t('delete')}
+                onPress={() => setDeleteModal(c)}
+                variant="danger"
+                size="sm"
+              />
+            </View>
           </View>
         </Card>
       ))}
@@ -101,6 +116,55 @@ export default function TeamScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      <Modal visible={!!resetModal} transparent animationType="fade">
+        <Pressable style={styles.modalBackdrop} onPress={() => setResetModal(null)}>
+          {/* This inner Pressable prevents the outer backdrop from closing the modal when you interact with the card */}
+          <Pressable onPress={() => {}} style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              {t('resetPassword')} {resetModal?.username}
+            </Text>
+            <Label>{t('newPassword')}</Label>
+            <Input
+              value={newPassword}
+              onChangeText={setNewPassword}
+              placeholder="••••••••"
+              secureTextEntry
+              style={{ marginBottom: SPACING[4] }}
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                onPress={() => setResetModal(null)}
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+              >
+                <Text style={styles.modalBtnText}>{t('cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={async () => {
+                  if (!newPassword || newPassword.length < 6) {
+                    alert(t('passwordTooShort'));
+                    return;
+                  }
+                  try {
+                    await deleteCleaner(resetModal.id);
+                    await registerCleaner(resetModal.username, newPassword, user.hostelCode);
+                    setResetModal(null);
+                    setNewPassword('');
+                    alert(t('passwordResetSuccess'));
+                  } catch (e) {
+                    alert(e.message);
+                  }
+                }}
+                style={[styles.modalBtn, styles.modalBtnPrimary]}
+              >
+                <Text style={[styles.modalBtnText, { color: COLORS.white }]}>
+                  {t('reset')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }
@@ -110,8 +174,25 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING[2] },
   formCard: { padding: SPACING[4], marginBottom: SPACING[4] },
   cleanerCard: { padding: SPACING[3], marginBottom: SPACING[2] },
-  cleanerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cleanerName: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.lg, color: COLORS.text },
+  cleanerRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',               // allow buttons to drop to the next line if needed
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: SPACING[2],
+  },
+  cleanerName: {
+    fontFamily: FONTS.bold,
+    fontSize: FONT_SIZE.lg,
+    color: COLORS.text,
+    flex: 1,                        // take available space
+    marginRight: SPACING[2],
+  },
+  buttonGroup: {
+    flexDirection: 'row',
+    gap: SPACING[2],                // consistent space between the two buttons
+    flexShrink: 0,                  // buttons never shrink
+  },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: SPACING[6] },
   modalCard: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING[5], width: '100%', maxWidth: 400, ...SHADOW.md },
   modalTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text, marginBottom: SPACING[3] },
@@ -120,4 +201,8 @@ const styles = StyleSheet.create({
   modalBtn: { flex: 1, paddingVertical: SPACING[3], borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   modalBtnCancel: { backgroundColor: COLORS.surface, borderColor: COLORS.border },
   modalBtnText: { fontFamily: 'System', fontWeight: '600', fontSize: 16, color: COLORS.primary },
+  modalBtnPrimary: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
 });

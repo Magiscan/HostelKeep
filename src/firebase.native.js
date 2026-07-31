@@ -3,7 +3,7 @@ import { getFirestore } from 'firebase/firestore';
 import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyAh-oZKaZipoYjXiyXM8oEYgakBYnZUJ5I",
   authDomain: "keepclean-hostel.firebaseapp.com",
   projectId: "keepclean-hostel",
