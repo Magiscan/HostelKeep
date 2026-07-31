@@ -185,8 +185,9 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened }) {
     );
   }
 
-  const overallCleaned = rooms.filter(r => roomStatus[r.id]?.cleaned).length;
-  const overallPct = rooms.length ? Math.round((overallCleaned / rooms.length) * 100) : 0;
+  const assignedRooms = rooms.filter(r => r.assignedTo != null);
+  const overallCleaned = assignedRooms.filter(r => roomStatus[r.id]?.cleaned).length;
+  const overallPct = assignedRooms.length ? Math.round((overallCleaned / assignedRooms.length) * 100) : 0;
 
   return (
     <View style={styles.container}>
@@ -195,7 +196,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened }) {
         <Text style={styles.pageTitle}>{hostel.name} – Dashboard</Text>
         <View style={styles.headerRight}>
           <View style={styles.headerStats}>
-            <Text style={styles.statText}>{overallCleaned}/{rooms.length} rooms cleaned ({overallPct}%)</Text>
+            <Text style={styles.statText}>{overallCleaned}/{assignedRooms.length} rooms cleaned ({overallPct}%)</Text>
             <ProgressBar pct={overallPct} height={6} />
           </View>
           <TouchableOpacity onPress={handleExport} style={styles.exportBtn} activeOpacity={0.7}>

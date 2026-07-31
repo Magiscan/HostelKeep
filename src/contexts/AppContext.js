@@ -1,11 +1,61 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc,
-  query, where, orderBy, getDocs, writeBatch,
+  query, where, orderBy, getDocs, writeBatch, getDoc,
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 
 const AppContext = createContext();
+
+/* ─── Push notification helpers (free Expo push) ──────────────── */
+
+async function getManagerTokens(hostelCode) {
+  const managersQuery = query(
+    collection(db, 'users'),
+    where('hostelCode', '==', hostelCode),
+    where('role', '==', 'manager')
+  );
+  const snapshot = await getDocs(managersQuery);
+  const tokenSet = new Set();
+  snapshot.forEach(doc => {
+    const manager = doc.data();
+    if (manager.pushToken) tokenSet.add(manager.pushToken);
+  });
+  return Array.from(tokenSet);
+}
+
+async function getCleanerToken(cleanerUid) {
+  const cleanerDoc = await getDoc(doc(db, 'users', cleanerUid));
+  if (!cleanerDoc.exists()) return null;
+  const data = cleanerDoc.data();
+  return data.pushToken || null;
+}
+
+async function sendPush(tokens, title, body, data) {
+  if (!tokens || tokens.length === 0) return;
+  await fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      to: tokens,
+      title,
+      body,
+      data,
+    }),
+  });
+}
+
+async function sendPushToManagers(hostelCode, title, body, data) {
+  const tokens = await getManagerTokens(hostelCode);
+  await sendPush(tokens, title, body, data);
+}
+
+async function sendPushToCleaner(cleanerUid, title, body, data) {
+  const token = await getCleanerToken(cleanerUid);
+  if (token) await sendPush([token], title, body, data);
+}
+
+/* ─── Context provider ─────────────────────────────────────────── */
 
 export function AppProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(auth?.currentUser ?? null);
@@ -39,8 +89,6 @@ export function AppProvider({ children }) {
   const [roomStatus, setRoomStatus] = useState({});
   const [cleaners, setCleaners] = useState([]);
   const [loaded, setLoaded] = useState(false);
-
-  // NEW: customisable room attributes per hostel
   const [roomAttributes, setRoomAttributes] = useState([]);
 
   // Reset on user change
@@ -116,6 +164,7 @@ export function AppProvider({ children }) {
   }, [hostelCode]);
 
   // ── Write operations ──
+
   const updateHostel = (data) => updateDoc(doc(db, 'hostels', hostelCode), data);
 
   const updateRoomAttributes = async (newAttributes) => {
@@ -147,14 +196,28 @@ export function AppProvider({ children }) {
 
   const saveRoom = async (roomData) => {
     const docRef = doc(db, 'hostels', hostelCode, 'rooms', roomData.id);
-    // Overwrite the whole document – ensures fields like 'attributes' are replaced completely
     await setDoc(docRef, roomData);
   };
 
   const deleteRoom = (roomId) => deleteDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId));
 
-  const updateRoomStatus = (roomId, newStatus) =>
-    setDoc(doc(db, 'hostels', hostelCode, 'roomStatus', roomId), newStatus, { merge: true });
+  const updateRoomStatus = (roomId, newStatus) => {
+    const promise = setDoc(doc(db, 'hostels', hostelCode, 'roomStatus', roomId), newStatus, { merge: true });
+
+    // If the room is being marked as cleaned, send push to managers
+    if (newStatus.cleaned && hostelCode) {
+      const room = rooms.find(r => r.id === roomId);
+      const roomName = room?.name || roomId;
+      sendPushToManagers(
+        hostelCode,
+        'Room Cleaned',
+        `Room ${roomName} has been marked as cleaned.`,
+        { type: 'room_cleaned', roomId }
+      ).catch(e => console.warn('Push failed:', e));
+    }
+
+    return promise;
+  };
 
   const resetAllRoomStatus = async () => {
     const statusCol = collection(db, 'hostels', hostelCode, 'roomStatus');
@@ -171,7 +234,6 @@ export function AppProvider({ children }) {
     if (!hostelCode) return;
     await updateDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId), { assignedTo: null });
 
-    // Reset room status
     const statusRef = doc(db, 'hostels', hostelCode, 'roomStatus', roomId);
     await setDoc(statusRef, {
       cleaned: false,
@@ -196,6 +258,16 @@ export function AppProvider({ children }) {
       earlyCheckIn,
       lateCheckOut,
     }, { merge: true });
+
+    // Push notification to the assigned cleaner
+    const room = rooms.find(r => r.id === roomId);
+    const roomName = room?.name || roomId;
+    sendPushToCleaner(
+      cleanerUid,
+      'New Room Assigned',
+      `You have been assigned to room ${roomName}.`,
+      { type: 'new_assignment', roomId }
+    ).catch(e => console.warn('Push failed:', e));
   };
 
   const deleteCleaner = async (cleanerId) => {
@@ -222,7 +294,6 @@ export function AppProvider({ children }) {
   const removeExtraRoomCleaning = async (roomId) => {
     if (!hostelCode) return;
     const statusRef = doc(db, 'hostels', hostelCode, 'roomStatus', roomId);
-    // Reset extra cleaning fields and cleaned state
     await setDoc(statusRef, {
       extraCleaning: false,
       extraCleaningBy: null,
@@ -238,7 +309,6 @@ export function AppProvider({ children }) {
     const statusSnap = await getDoc(statusRef);
     const existing = statusSnap.exists() ? (statusSnap.data().extraBedsCleaning || []) : [];
     
-    // Remove any previous entry for the same bed/cleaner (update)
     const filtered = existing.filter(
       entry => !(entry.bedId === bedId && entry.cleanerId === cleanerUid)
     );
@@ -269,10 +339,8 @@ export function AppProvider({ children }) {
   const selfAssignExtraRoom = async (roomId, cleanerUid) => {
     if (!hostelCode) return;
     const batch = writeBatch(db);
-    // 1. Assign the room
     const roomRef = doc(db, 'hostels', hostelCode, 'rooms', roomId);
     batch.update(roomRef, { assignedTo: cleanerUid });
-    // 2. Mark as extra cleaning
     const statusRef = doc(db, 'hostels', hostelCode, 'roomStatus', roomId);
     batch.set(statusRef, {
       extraCleaning: true,
@@ -283,7 +351,6 @@ export function AppProvider({ children }) {
     await batch.commit();
   };
 
-  // Add request functions
   const requestExtraRoom = async (roomId, cleanerUid, imageBase64 = null) => {
     if (!hostelCode) return;
     const requestRef = doc(db, 'hostels', hostelCode, 'extraRequests', roomId);
@@ -293,22 +360,24 @@ export function AppProvider({ children }) {
       requestedAt: new Date().toISOString(),
       imageBase64: imageBase64 || null,
     });
+
+    sendPushToManagers(
+      hostelCode,
+      'Extra Room Request',
+      `Room ${roomId} requested by a cleaner.`,
+      { type: 'extra_request', roomId }
+    ).catch(e => console.warn('Push failed:', e));
   };
 
   const approveExtraRoom = async (roomId, cleanerUid) => {
     if (!hostelCode) return;
-    // Assign the room
-    await updateDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId), {
-      assignedTo: cleanerUid,
-    });
-    // Mark as extra cleaning
+    await updateDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId), { assignedTo: cleanerUid });
     await setDoc(doc(db, 'hostels', hostelCode, 'roomStatus', roomId), {
       extraCleaning: true,
       extraCleaningBy: cleanerUid,
       extraCleaningTime: 0,
       extraCleaningNotes: '',
     }, { merge: true });
-    // Delete the request
     await deleteDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId));
   };
 

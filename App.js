@@ -30,7 +30,6 @@ import CleanerScreen from './src/screens/CleanerScreen';
 import { COLORS } from './src/theme';
 
 import { NotificationProvider } from './src/contexts/NotificationContext';
-
 import LoginScreenWeb from './src/screens/LoginScreen.web';  // web
 
 // Platform‑specific font loading

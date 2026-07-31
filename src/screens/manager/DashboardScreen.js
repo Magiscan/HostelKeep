@@ -814,12 +814,9 @@ export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
     );
   }
 
-  const overallCleaned = rooms.filter(
-    r => roomStatus[r.id]?.cleaned
-  ).length;
-  const overallPct = rooms.length
-    ? Math.round((overallCleaned / rooms.length) * 100)
-    : 0;
+  const assignedRooms = rooms.filter(r => r.assignedTo != null);
+  const overallCleaned = assignedRooms.filter(r => roomStatus[r.id]?.cleaned).length;
+  const overallPct = assignedRooms.length ? Math.round((overallCleaned / assignedRooms.length) * 100) : 0;
 
   return (
     <ScrollView
@@ -849,7 +846,7 @@ export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
         <Text style={styles.overviewText}>
           {t('roomsCleanedPercent', {
             cleaned: overallCleaned,
-            total: rooms.length,
+            total: assignedRooms.length,
             percent: overallPct,
           })}
         </Text>

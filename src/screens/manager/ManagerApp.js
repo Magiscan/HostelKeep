@@ -15,6 +15,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useApp } from '../../contexts/AppContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { ScrollView } from 'react-native-gesture-handler';
+import * as Notifications from 'expo-notifications';
+import { doc, setDoc } from 'firebase/firestore';
+import { db } from '../../firebase';   
 
 const LANGS = [
   { code: 'en', label: 'English' },
@@ -68,6 +71,32 @@ export default function ManagerApp() {
       document.title = 'KeepClean';
     }
   }, []);
+
+  useEffect(() => {
+    if (!user || Platform.OS === 'web') return;
+
+    async function registerPushToken() {
+      try {
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+        if (finalStatus !== 'granted') return;
+
+        const tokenData = await Notifications.getExpoPushTokenAsync();
+        const token = tokenData.data;
+
+        // Save token to manager's Firestore document
+        await setDoc(doc(db, 'users', user.uid), { pushToken: token }, { merge: true });
+      } catch (e) {
+        console.warn('Push token registration failed:', e);
+      }
+    }
+
+    registerPushToken();
+  }, [user]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

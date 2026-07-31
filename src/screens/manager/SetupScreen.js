@@ -320,12 +320,12 @@ function AttributesModal({ visible, attributes, rooms, onSave, onClose, t }) {
             <Text style={styles.modalMessage}>
               {t('setup.cannotRemoveMessage', { name: cannotRemove })}
             </Text>
-            <TouchableOpacity
+            <Button
+              title={t('setup.ok')}
               onPress={() => setCannotRemove(null)}
-              style={[styles.modalBtn, { backgroundColor: COLORS.primary }]}
-            >
-              <Text style={[styles.modalBtnText, { color: COLORS.white }]}>{t('setup.ok')}</Text>
-            </TouchableOpacity>
+              size="sm"
+              style={{ alignSelf: 'center', minWidth: 100 }}
+            />
           </View>
         </Pressable>
       </Modal>

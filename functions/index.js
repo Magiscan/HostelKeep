@@ -1,32 +1,119 @@
+const functions = require("firebase-functions");
+const admin = require("firebase-admin");
+admin.initializeApp();
+
 /**
- * Import function triggers from their respective submodules:
- *
- * const {onCall} = require("firebase-functions/v2/https");
- * const {onDocumentWritten} = require("firebase-functions/v2/firestore");
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
+ * Retrieves push tokens for all managers in a hostel.
+ * @param {string} hostelCode
+ * @return {Promise<string[]>}
  */
+async function getManagerTokens(hostelCode) {
+  const managersQuery = await admin.firestore()
+      .collection("users")
+      .where("hostelCode", "==", hostelCode)
+      .where("role", "==", "manager")
+      .get();
 
-const {setGlobalOptions} = require("firebase-functions");
-const {onRequest} = require("firebase-functions/https");
-const logger = require("firebase-functions/logger");
+  const tokens = [];
+  managersQuery.forEach((doc) => {
+    const data = doc.data();
+    if (data.pushToken) {
+      tokens.push(data.pushToken);
+    }
+  });
+  return tokens;
+}
 
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
-setGlobalOptions({ maxInstances: 10 });
+/**
+ * Triggers when a new extra room request is created.
+ */
+exports.onExtraRequest = functions.firestore
+    .document("hostels/{hostelCode}/extraRequests/{roomId}")
+    .onCreate(async (snap, context) => {
+      const {hostelCode, roomId} = context.params;
 
-// Create and deploy your first functions
-// https://firebase.google.com/docs/functions/get-started
+      const roomDoc = await admin.firestore()
+          .doc(`hostels/${hostelCode}/rooms/${roomId}`)
+          .get();
+      const roomName = roomDoc.exists ?
+          (roomDoc.data().name || roomId) :
+          roomId;
 
-// exports.helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
+      const tokens = await getManagerTokens(hostelCode);
+      if (tokens.length === 0) return;
+
+      const message = {
+        tokens,
+        notification: {
+          title: "Extra Room Request",
+          body: `Room ${roomName} requested by a cleaner.`,
+        },
+        data: {type: "extra_request", roomId},
+      };
+
+      return admin.messaging().sendMulticast(message);
+    });
+
+/**
+ * Triggers when a new notification document is created.
+ */
+exports.onNewNotification = functions.firestore
+    .document("hostels/{hostelCode}/notifications/{notifId}")
+    .onCreate(async (snap, context) => {
+      const notif = snap.data();
+      const {hostelCode} = context.params;
+
+      if (notif.read) return;
+
+      const tokens = await getManagerTokens(hostelCode);
+      if (tokens.length === 0) return;
+
+      const message = {
+        tokens,
+        notification: {
+          title: "KeepClean Update",
+          body: notif.message || "New notification",
+        },
+        data: {
+          type: notif.type || "general",
+          roomId: notif.roomId || "",
+        },
+      };
+
+      return admin.messaging().sendMulticast(message);
+    });
+
+/**
+ * Triggers when a room status is updated to cleaned.
+ */
+exports.onRoomCleaned = functions.firestore
+    .document("hostels/{hostelCode}/roomStatus/{roomId}")
+    .onUpdate(async (change, context) => {
+      const before = change.before.data();
+      const after = change.after.data();
+
+      if (!after.cleaned || before.cleaned) return;
+
+      const {hostelCode, roomId} = context.params;
+
+      const roomDoc = await admin.firestore()
+          .doc(`hostels/${hostelCode}/rooms/${roomId}`)
+          .get();
+      const roomName = roomDoc.exists ?
+          (roomDoc.data().name || roomId) :
+          roomId;
+
+      const tokens = await getManagerTokens(hostelCode);
+      if (tokens.length === 0) return;
+
+      const message = {
+        tokens,
+        notification: {
+          title: "Room Cleaned",
+          body: `Room ${roomName} has been marked as cleaned.`,
+        },
+        data: {type: "room_cleaned", roomId},
+      };
+
+      return admin.messaging().sendMulticast(message);
+    });
