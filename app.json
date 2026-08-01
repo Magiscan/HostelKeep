@@ -1,6 +1,6 @@
 {
   "expo": {
-    "version": "1.0.7",
+    "version": "1.0.8",
     "name": "KeepClean",
     "slug": "KeepCleanBlank",
     "orientation": "portrait",
@@ -22,7 +22,7 @@
     },
 
     "android": {
-      "versionCode": 7,
+      "versionCode": 8,
       "package": "com.keepclean",
       "permissions": [],
 

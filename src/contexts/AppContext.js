@@ -371,6 +371,7 @@ export function AppProvider({ children }) {
 
   const approveExtraRoom = async (roomId, cleanerUid) => {
     if (!hostelCode) return;
+    // Assign room and mark extra cleaning (unchanged)
     await updateDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId), { assignedTo: cleanerUid });
     await setDoc(doc(db, 'hostels', hostelCode, 'roomStatus', roomId), {
       extraCleaning: true,
@@ -378,17 +379,40 @@ export function AppProvider({ children }) {
       extraCleaningTime: 0,
       extraCleaningNotes: '',
     }, { merge: true });
-    await deleteDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId));
+    // Update status instead of deleting
+    await updateDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId), { status: 'approved' });
   };
 
   const rejectExtraRoom = async (roomId) => {
     if (!hostelCode) return;
-    await deleteDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId));
+    await updateDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId), { status: 'rejected' });
   };
 
   const cancelExtraRoomRequest = async (roomId) => {
     if (!hostelCode) return;
     await deleteDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId));
+  };
+
+  const cleanupOldExtraRequests = async () => {
+    if (!hostelCode) return;
+    const now = Date.now();
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+    const q = query(
+      collection(db, 'hostels', hostelCode, 'extraRequests'),
+      where('status', 'in', ['approved', 'rejected'])
+    );
+    const snap = await getDocs(q);
+    const batch = writeBatch(db);
+    snap.forEach(docSnap => {
+      const data = docSnap.data();
+      if (data.imageBase64 && data.requestedAt) {
+        const age = now - new Date(data.requestedAt).getTime();
+        if (age > twentyFourHours) {
+          batch.update(docSnap.ref, { imageBase64: null });
+        }
+      }
+    });
+    await batch.commit();
   };
 
   return (
@@ -423,6 +447,7 @@ export function AppProvider({ children }) {
       rejectExtraRoom,
       extraRequests,
       cancelExtraRoomRequest,
+      cleanupOldExtraRequests,
     }}>
       {children}
     </AppContext.Provider>
