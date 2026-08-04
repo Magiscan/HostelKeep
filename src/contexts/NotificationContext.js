@@ -123,15 +123,25 @@ export function NotificationProvider({ children }) {
     if (!hostelCode || !extraRequests) return;
 
     if (!initializedExtra.current) {
+      // First snapshot – just remember the current state, no notifications
       prevExtraRef.current = [...extraRequests];
       initializedExtra.current = true;
       return;
     }
 
     const prev = prevExtraRef.current;
+
+    // Ignore the transition from empty → filled (initial load after context populated)
+    if (prev.length === 0 && extraRequests.length > 0) {
+      prevExtraRef.current = [...extraRequests];
+      return;
+    }
+
+    // Only notify for brand‑new request IDs (ignore status changes)
     const newReqs = extraRequests.filter(
-      req => !prev.some(p => p.id === req.id && p.status === req.status)
+      req => !prev.some(p => p.id === req.id)
     );
+
     newReqs.forEach(req => {
       const room = rooms.find(r => r.id === req.id);
       const cleaner = cleaners.find(c => c.id === req.cleanerId);
@@ -141,6 +151,7 @@ export function NotificationProvider({ children }) {
         roomId: req.id,
       });
     });
+
     prevExtraRef.current = [...extraRequests];
   }, [extraRequests, rooms, cleaners, hostelCode, addNotification]);
 

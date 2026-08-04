@@ -1025,16 +1025,18 @@ export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
       )}
 
       {/* ── Extra Room Requests ───────────────────────────────── */}
-      {extraRequests.length > 0 && !search.trim() && (
+      {extraRequests.filter(r => r.status === 'pending' || !r.status).length > 0 && !search.trim() && (
         <View style={{ marginBottom: SPACING[4] }}>
           <SectionTitle
             title={t('extraRoomRequests')}
             subtitle={t('extraRequestsSubtitle')}
           />
-          {extraRequests.map(req => {
-            const room = rooms.find(r => r.id === req.id);
-            const cleaner = cleaners.find(c => c.id === req.cleanerId);
-            return (
+          {extraRequests
+            .filter(r => r.status === 'pending' || !r.status)
+            .map(req => {
+              const room = rooms.find(r => r.id === req.id);
+              const cleaner = cleaners.find(c => c.id === req.cleanerId);
+              return (
               <Card key={req.id} style={styles.requestCard}>
                 <View style={styles.requestRow}>
                   <View style={{ flex: 1 }}>

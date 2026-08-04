@@ -42,18 +42,30 @@ export default function ManagerLayout() {
     if (key === 'notifications') {
       setShowNotifications(true);
     }
-    // For other routes (extraRequests, reports) you can add modals or dedicated screens later
   };
 
   const renderScreen = () => {
+    const dashboardProps = {
+      highlightRoomId,
+      onRoomOpened: () => setHighlightRoomId(null),
+      onNavigate: handleNavigate,
+    };
+
     switch (tab) {
-      case 'dashboard': return <DashboardScreen highlightRoomId={highlightRoomId} onRoomOpened={() => setHighlightRoomId(null)} onNavigate={handleNavigate} />;
-      case 'rooms':     return <SetupScreen />; 
-      case 'team':    return <TeamScreen />;
-      case 'assign':  return <AssignScreen />;
-      case 'extraRequests': return <ExtraRequestsScreen />;
-      case 'reports': return <ReportsScreen />;
-      default:        return <DashboardScreen />;
+      case 'dashboard':
+        return <DashboardScreen {...dashboardProps} />;
+      case 'rooms':
+        return <SetupScreen />;
+      case 'assign':
+        return <AssignScreen />;
+      case 'team':
+        return <TeamScreen />;
+      case 'extraRequests':
+        return <ExtraRequestsScreen />;
+      case 'reports':
+        return <ReportsScreen />;
+      default:
+        return <DashboardScreen {...dashboardProps} />;
     }
   };
 

@@ -19,6 +19,7 @@ import { COLORS } from '../../theme/colors';
 import { SPACING } from '../../theme/spacing';
 import { FONTS, FONT_SIZE } from '../../theme/typography';
 import { Badge } from '../../components/UI';   // if Badge is available, else skip
+import Icon from '../../components/Icon';
 
 /* ─── CSV helper (local copy) ──────────────────────────────── */
 const generateCSV = (rooms, roomStatus, cleaners, extraRequests, floors) => {
@@ -272,6 +273,76 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
 
   const finishedCleaners = cleaners.length - workingCleaners;
 
+  // Build attention items (requests + flagged rooms)
+  const attentionItems = [];
+
+  // Pending extra requests
+  extraRequests
+    .filter(r => r.status === 'pending' || !r.status)
+    .forEach(req => {
+      const room = rooms.find(r => r.id === req.id);
+      const cleaner = cleaners.find(c => c.id === req.cleanerId);
+      attentionItems.push({
+        type: 'request',
+        id: req.id,
+        roomId: req.id,
+        roomName: room?.name || 'Unknown room',
+        cleanerName: cleaner?.username || 'Unknown cleaner',
+        message: `Extra room requested by ${cleaner?.username || 'Unknown cleaner'}`,
+        request: req,
+      });
+    });
+
+  // Rooms with early/late flags, notes, or extra time
+  rooms.forEach(room => {
+    const status = roomStatus[room.id] || {};
+    const cleaner = cleaners.find(c => c.id === room.assignedTo);
+
+    if (status.earlyCheckIn) {
+      attentionItems.push({
+        type: 'flag',
+        id: `early-${room.id}`,
+        roomId: room.id,
+        roomName: room.name,
+        cleanerName: cleaner?.username || 'Unassigned',
+        message: `Early check‑in for room ${room.name}`,
+      });
+    }
+
+    if (status.lateCheckOut) {
+      attentionItems.push({
+        type: 'flag',
+        id: `late-${room.id}`,
+        roomId: room.id,
+        roomName: room.name,
+        cleanerName: cleaner?.username || 'Unassigned',
+        message: `Late check‑out for room ${room.name}`,
+      });
+    }
+
+    if (status.notes && status.notes.trim()) {
+      attentionItems.push({
+        type: 'note',
+        id: `note-${room.id}`,
+        roomId: room.id,
+        roomName: room.name,
+        cleanerName: cleaner?.username || 'Unassigned',
+        message: `Note on room ${room.name}: "${status.notes.substring(0, 50)}${status.notes.length > 50 ? '…' : ''}"`,
+      });
+    }
+
+    if (status.extraTime > 0) {
+      attentionItems.push({
+        type: 'extraTime',
+        id: `extratime-${room.id}`,
+        roomId: room.id,
+        roomName: room.name,
+        cleanerName: cleaner?.username || 'Unassigned',
+        message: `Extra time requested for room ${room.name}: +${status.extraTime} min`,
+      });
+    }
+  });
+
   return (
     <View style={styles.container}>
       <Header
@@ -348,35 +419,58 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
               <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.md, color: COLORS.text, marginBottom: SPACING.sm }}>
                 Needs Attention
               </Text>
-              {extraRequests.filter(r => r.status === 'pending' || !r.status).map(req => {
-                const room = rooms.find(r => r.id === req.id);
-                const cleaner = cleaners.find(c => c.id === req.cleanerId);
-                return (
-                  <View key={req.id} style={styles.attentionRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.sm, color: COLORS.text }}>
-                        {room?.name}
-                      </Text>
-                      <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary }}>
-                        Requested by {cleaner?.username}
-                      </Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <TouchableOpacity onPress={() => approveExtraRoom(req.id, req.cleanerId)}>
-                        <Text style={{ color: COLORS.success, fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs }}>Approve</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => rejectExtraRoom(req.id)}>
-                        <Text style={{ color: COLORS.danger, fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs }}>Reject</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                );
-              })}
-              {extraRequests.length === 0 && (
+
+              {attentionItems.length === 0 && (
                 <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary }}>
                   Nothing needs attention right now.
                 </Text>
               )}
+
+              {attentionItems.map(item => {
+                if (item.type === 'request') {
+                  return (
+                    <View key={item.id} style={styles.attentionRow}>
+                      <View style={{ flex: 1 }}>
+                        <TouchableOpacity onPress={() => setSelectedRoom(rooms.find(r => r.id === item.roomId))}>
+                          <Text style={{ fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.sm, color: COLORS.text }}>
+                            {item.roomName}
+                          </Text>
+                          <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary }}>
+                            {item.message}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity onPress={() => approveExtraRoom(item.request.id, item.request.cleanerId)}>
+                          <Text style={{ color: COLORS.success, fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs }}>Approve</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => rejectExtraRoom(item.request.id)}>
+                          <Text style={{ color: COLORS.danger, fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs }}>Reject</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                }
+
+                // Flags, notes, extra time – clickable to open room detail
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.attentionRow}
+                    onPress={() => setSelectedRoom(rooms.find(r => r.id === item.roomId))}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.sm, color: COLORS.text }}>
+                        {item.roomName}
+                      </Text>
+                      <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary }}>
+                        {item.message}
+                      </Text>
+                    </View>
+                    <Icon name="chevron-forward-outline" size={16} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                );
+              })}
             </AppCard>
           </View>
         </View>
