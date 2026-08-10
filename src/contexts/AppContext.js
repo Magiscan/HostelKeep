@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   collection, doc, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc,
   query, where, orderBy, getDocs, writeBatch, getDoc,
@@ -163,25 +163,25 @@ export function AppProvider({ children }) {
     };
   }, [hostelCode]);
 
-  // ── Write operations ──
+  // ── Write operations (all wrapped in useCallback) ──
 
-  const updateHostel = (data) => updateDoc(doc(db, 'hostels', hostelCode), data);
+  const updateHostel = useCallback((data) => updateDoc(doc(db, 'hostels', hostelCode), data), [hostelCode]);
 
-  const updateRoomAttributes = async (newAttributes) => {
+  const updateRoomAttributes = useCallback(async (newAttributes) => {
     if (!hostelCode) return;
     await updateDoc(doc(db, 'hostels', hostelCode), { roomAttributes: newAttributes });
     setRoomAttributes(newAttributes);
-  };
+  }, [hostelCode]);
 
-  const addFloor = async (name) => {
+  const addFloor = useCallback(async (name) => {
     try {
       await addDoc(collection(db, 'hostels', hostelCode, 'floors'), { name });
     } catch (error) {
       throw new Error('Failed to add floor: ' + error.message);
     }
-  };
+  }, [hostelCode]);
 
-  const removeFloor = async (floorId) => {
+  const removeFloor = useCallback(async (floorId) => {
     const roomsQuery = query(collection(db, 'hostels', hostelCode, 'rooms'), where('floorId', '==', floorId));
     const roomSnap = await getDocs(roomsQuery);
     const batch = writeBatch(db);
@@ -192,16 +192,16 @@ export function AppProvider({ children }) {
     });
     await batch.commit();
     await deleteDoc(doc(db, 'hostels', hostelCode, 'floors', floorId));
-  };
+  }, [hostelCode]);
 
-  const saveRoom = async (roomData) => {
+  const saveRoom = useCallback(async (roomData) => {
     const docRef = doc(db, 'hostels', hostelCode, 'rooms', roomData.id);
     await setDoc(docRef, roomData);
-  };
+  }, [hostelCode]);
 
-  const deleteRoom = (roomId) => deleteDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId));
+  const deleteRoom = useCallback((roomId) => deleteDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId)), [hostelCode]);
 
-  const updateRoomStatus = (roomId, newStatus) => {
+  const updateRoomStatus = useCallback((roomId, newStatus) => {
     const promise = setDoc(doc(db, 'hostels', hostelCode, 'roomStatus', roomId), newStatus, { merge: true });
 
     // If the room is being marked as cleaned, send push to managers
@@ -217,20 +217,20 @@ export function AppProvider({ children }) {
     }
 
     return promise;
-  };
+  }, [hostelCode, rooms]);
 
-  const resetAllRoomStatus = async () => {
+  const resetAllRoomStatus = useCallback(async () => {
     const statusCol = collection(db, 'hostels', hostelCode, 'roomStatus');
     const snap = await getDocs(statusCol);
     const batch = writeBatch(db);
     snap.forEach(d => batch.delete(d.ref));
     await batch.commit();
-  };
+  }, [hostelCode]);
 
-  const assignRoom = (roomId, cleanerUid) =>
-    updateDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId), { assignedTo: cleanerUid });
+  const assignRoom = useCallback((roomId, cleanerUid) =>
+    updateDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId), { assignedTo: cleanerUid }), [hostelCode]);
 
-  const unassignRoom = async (roomId) => {
+  const unassignRoom = useCallback(async (roomId) => {
     if (!hostelCode) return;
     await updateDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId), { assignedTo: null });
 
@@ -244,9 +244,9 @@ export function AppProvider({ children }) {
       managerNotes: '',
       commonOnly: false,
     }, { merge: true });
-  };
+  }, [hostelCode]);
 
-  const assignRoomWithDetails = async (roomId, cleanerUid, bedAssignments, managerNotes, commonOnly = false, assignmentAttributes = {}, earlyCheckIn = false, lateCheckOut = false) => {
+  const assignRoomWithDetails = useCallback(async (roomId, cleanerUid, bedAssignments, managerNotes, commonOnly = false, assignmentAttributes = {}, earlyCheckIn = false, lateCheckOut = false) => {
     if (!hostelCode) return;
     await updateDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId), { assignedTo: cleanerUid });
     const statusRef = doc(db, 'hostels', hostelCode, 'roomStatus', roomId);
@@ -268,18 +268,18 @@ export function AppProvider({ children }) {
       `You have been assigned to room ${roomName}.`,
       { type: 'new_assignment', roomId }
     ).catch(e => console.warn('Push failed:', e));
-  };
+  }, [hostelCode, rooms]);
 
-  const deleteCleaner = async (cleanerId) => {
+  const deleteCleaner = useCallback(async (cleanerId) => {
     await deleteDoc(doc(db, 'users', cleanerId));
     const roomsQuery = query(collection(db, 'hostels', hostelCode, 'rooms'), where('assignedTo', '==', cleanerId));
     const snap = await getDocs(roomsQuery);
     const batch = writeBatch(db);
     snap.forEach(d => batch.update(d.ref, { assignedTo: null }));
     await batch.commit();
-  };
+  }, [hostelCode]);
 
-  const markExtraRoomCleaning = async (roomId, cleanerUid, extraTime, notes) => {
+  const markExtraRoomCleaning = useCallback(async (roomId, cleanerUid, extraTime, notes) => {
     if (!hostelCode) return;
     const statusRef = doc(db, 'hostels', hostelCode, 'roomStatus', roomId);
     await setDoc(statusRef, {
@@ -289,9 +289,9 @@ export function AppProvider({ children }) {
       extraCleaningNotes: notes || '',
       cleaned: true,
     }, { merge: true });
-  };
+  }, [hostelCode]);
 
-  const removeExtraRoomCleaning = async (roomId) => {
+  const removeExtraRoomCleaning = useCallback(async (roomId) => {
     if (!hostelCode) return;
     const statusRef = doc(db, 'hostels', hostelCode, 'roomStatus', roomId);
     await setDoc(statusRef, {
@@ -301,9 +301,9 @@ export function AppProvider({ children }) {
       extraCleaningNotes: '',
       cleaned: false,
     }, { merge: true });
-  };
+  }, [hostelCode]);
 
-  const markExtraBedCleaning = async (roomId, bedId, cleanerUid, extraTime, notes) => {
+  const markExtraBedCleaning = useCallback(async (roomId, bedId, cleanerUid, extraTime, notes) => {
     if (!hostelCode) return;
     const statusRef = doc(db, 'hostels', hostelCode, 'roomStatus', roomId);
     const statusSnap = await getDoc(statusRef);
@@ -322,9 +322,9 @@ export function AppProvider({ children }) {
     await setDoc(statusRef, {
       extraBedsCleaning: [...filtered, newEntry],
     }, { merge: true });
-  };
+  }, [hostelCode]);
 
-  const removeExtraBedCleaning = async (roomId, bedId, cleanerUid) => {
+  const removeExtraBedCleaning = useCallback(async (roomId, bedId, cleanerUid) => {
     if (!hostelCode) return;
     const statusRef = doc(db, 'hostels', hostelCode, 'roomStatus', roomId);
     const statusSnap = await getDoc(statusRef);
@@ -334,9 +334,9 @@ export function AppProvider({ children }) {
       entry => !(entry.bedId === bedId && entry.cleanerId === cleanerUid)
     );
     await setDoc(statusRef, { extraBedsCleaning: updated }, { merge: true });
-  };
+  }, [hostelCode]);
 
-  const selfAssignExtraRoom = async (roomId, cleanerUid) => {
+  const selfAssignExtraRoom = useCallback(async (roomId, cleanerUid) => {
     if (!hostelCode) return;
     const batch = writeBatch(db);
     const roomRef = doc(db, 'hostels', hostelCode, 'rooms', roomId);
@@ -349,9 +349,9 @@ export function AppProvider({ children }) {
       extraCleaningNotes: '',
     }, { merge: true });
     await batch.commit();
-  };
+  }, [hostelCode]);
 
-  const requestExtraRoom = async (roomId, cleanerUid, imageBase64 = null) => {
+  const requestExtraRoom = useCallback(async (roomId, cleanerUid, imageBase64 = null) => {
     if (!hostelCode) return;
     const requestRef = doc(db, 'hostels', hostelCode, 'extraRequests', roomId);
     await setDoc(requestRef, {
@@ -367,11 +367,10 @@ export function AppProvider({ children }) {
       `Room ${roomId} requested by a cleaner.`,
       { type: 'extra_request', roomId }
     ).catch(e => console.warn('Push failed:', e));
-  };
+  }, [hostelCode]);
 
-  const approveExtraRoom = async (roomId, cleanerUid) => {
+  const approveExtraRoom = useCallback(async (roomId, cleanerUid) => {
     if (!hostelCode) return;
-    // Assign room and mark extra cleaning (unchanged)
     await updateDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId), { assignedTo: cleanerUid });
     await setDoc(doc(db, 'hostels', hostelCode, 'roomStatus', roomId), {
       extraCleaning: true,
@@ -379,21 +378,20 @@ export function AppProvider({ children }) {
       extraCleaningTime: 0,
       extraCleaningNotes: '',
     }, { merge: true });
-    // Update status instead of deleting
     await updateDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId), { status: 'approved' });
-  };
+  }, [hostelCode]);
 
-  const rejectExtraRoom = async (roomId) => {
+  const rejectExtraRoom = useCallback(async (roomId) => {
     if (!hostelCode) return;
     await updateDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId), { status: 'rejected' });
-  };
+  }, [hostelCode]);
 
-  const cancelExtraRoomRequest = async (roomId) => {
+  const cancelExtraRoomRequest = useCallback(async (roomId) => {
     if (!hostelCode) return;
     await deleteDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId));
-  };
+  }, [hostelCode]);
 
-  const cleanupOldExtraRequests = async () => {
+  const cleanupOldExtraRequests = useCallback(async () => {
     if (!hostelCode) return;
     const now = Date.now();
     const twentyFourHours = 24 * 60 * 60 * 1000;
@@ -413,42 +411,77 @@ export function AppProvider({ children }) {
       }
     });
     await batch.commit();
-  };
+  }, [hostelCode]);
+
+  // ── Memoised context value ──
+  const contextValue = useMemo(() => ({
+    loaded,
+    hostel,
+    floors,
+    rooms,
+    roomStatus,
+    cleaners,
+    hostelCode,
+    roomAttributes,
+    updateHostel,
+    addFloor,
+    removeFloor,
+    saveRoom,
+    deleteRoom,
+    updateRoomStatus,
+    resetAllRoomStatus,
+    assignRoom,
+    unassignRoom,
+    assignRoomWithDetails,
+    updateRoomAttributes,
+    deleteCleaner,
+    markExtraRoomCleaning,
+    removeExtraRoomCleaning,
+    markExtraBedCleaning,
+    removeExtraBedCleaning,
+    selfAssignExtraRoom,
+    requestExtraRoom,
+    approveExtraRoom,
+    rejectExtraRoom,
+    extraRequests,
+    cancelExtraRoomRequest,
+    cleanupOldExtraRequests,
+  }), [
+    loaded,
+    hostel,
+    floors,
+    rooms,
+    roomStatus,
+    cleaners,
+    hostelCode,
+    roomAttributes,
+    updateHostel,
+    addFloor,
+    removeFloor,
+    saveRoom,
+    deleteRoom,
+    updateRoomStatus,
+    resetAllRoomStatus,
+    assignRoom,
+    unassignRoom,
+    assignRoomWithDetails,
+    updateRoomAttributes,
+    deleteCleaner,
+    markExtraRoomCleaning,
+    removeExtraRoomCleaning,
+    markExtraBedCleaning,
+    removeExtraBedCleaning,
+    selfAssignExtraRoom,
+    requestExtraRoom,
+    approveExtraRoom,
+    rejectExtraRoom,
+    extraRequests,
+    cancelExtraRoomRequest,
+    cleanupOldExtraRequests,
+  ]);
 
   return (
-    <AppContext.Provider value={{
-      loaded,
-      hostel,
-      floors,
-      rooms,
-      roomStatus,
-      cleaners,
-      hostelCode,
-      roomAttributes,
-      updateHostel,
-      addFloor,
-      removeFloor,
-      saveRoom,
-      deleteRoom,
-      updateRoomStatus,
-      resetAllRoomStatus,
-      assignRoom,
-      unassignRoom,
-      assignRoomWithDetails,
-      updateRoomAttributes,
-      deleteCleaner,
-      markExtraRoomCleaning,
-      removeExtraRoomCleaning,
-      markExtraBedCleaning,
-      removeExtraBedCleaning,
-      selfAssignExtraRoom,
-      requestExtraRoom,
-      approveExtraRoom,
-      rejectExtraRoom,
-      extraRequests,
-      cancelExtraRoomRequest,
-      cleanupOldExtraRequests,
-    }}>
+    <AppContext.Provider value={contextValue}>
       {children}
     </AppContext.Provider>
   );

@@ -1,8 +1,8 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
-  Alert, Modal, Pressable, KeyboardAvoidingView, Platform,
+  Alert, Modal, Pressable, KeyboardAvoidingView, Platform, FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
@@ -204,25 +204,25 @@ function RoomFormModal({ visible, floors, room, onSave, onCancel, roomAttributes
           )}
 
           <View style={[styles.modalActions, { flexWrap: 'wrap' }]}>
-          <TouchableOpacity
-            onPress={handleSave}
-            disabled={!isValid}
-            style={[styles.modalBtn, styles.modalBtnPrimary, !isValid && { opacity: 0.5 }, { minWidth: 100, flex: 1 }]}
-          >
-            <Text style={[styles.modalBtnText, { color: COLORS.white }]} numberOfLines={1} adjustsFontSizeToFit>
-              {t('save')}
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSave}
+              disabled={!isValid}
+              style={[styles.modalBtn, styles.modalBtnPrimary, !isValid && { opacity: 0.5 }, { minWidth: 100, flex: 1 }]}
+            >
+              <Text style={[styles.modalBtnText, { color: COLORS.white }]} numberOfLines={1} adjustsFontSizeToFit>
+                {t('save')}
+              </Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={onCancel}
-            style={[styles.modalBtn, styles.modalBtnCancel, { minWidth: 100, flex: 1 }]}
-          >
-            <Text style={styles.modalBtnText} numberOfLines={1} adjustsFontSizeToFit>
-              {t('cancel')}
-            </Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              onPress={onCancel}
+              style={[styles.modalBtn, styles.modalBtnCancel, { minWidth: 100, flex: 1 }]}
+            >
+              <Text style={styles.modalBtnText} numberOfLines={1} adjustsFontSizeToFit>
+                {t('cancel')}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
@@ -277,20 +277,20 @@ function AttributesModal({ visible, attributes, rooms, onSave, onClose, t }) {
               </ScrollView>
             )}
             <Label style={{ marginTop: SPACING[2] }}>{t('setup.newAttribute')}</Label>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2], marginBottom: SPACING[2], alignItems: 'center' }}>
-                <Input
-                  value={newAttr}
-                  onChangeText={setNewAttr}
-                  placeholder={t('setup.attributePlaceholder')}
-                  style={{ flex: 1, minWidth: 120 }}
-                />
-                <Button
-                  title={t('setup.addAttribute')}
-                  onPress={addAttr}
-                  size="sm"
-                  style={{ flexShrink: 0 }}
-                />
-              </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2], marginBottom: SPACING[2], alignItems: 'center' }}>
+              <Input
+                value={newAttr}
+                onChangeText={setNewAttr}
+                placeholder={t('setup.attributePlaceholder')}
+                style={{ flex: 1, minWidth: 120 }}
+              />
+              <Button
+                title={t('setup.addAttribute')}
+                onPress={addAttr}
+                size="sm"
+                style={{ flexShrink: 0 }}
+              />
+            </View>
             <TouchableOpacity
               onPress={onClose}
               style={{
@@ -393,7 +393,7 @@ function FloorManagementModal({ visible, floors, onAddFloor, onRemoveFloor, onCl
                   paddingVertical: SPACING[2], marginBottom: SPACING[3],
                   backgroundColor: COLORS.primaryLight, borderRadius: RADIUS.sm,
                   borderWidth: 1, borderColor: COLORS.primary,
-                  maxWidth: '100%',                   // keep inside card
+                  maxWidth: '100%',
                   alignSelf: 'stretch',
                 }}
                 onPress={() => setShowGenerator(true)}
@@ -475,7 +475,7 @@ function FloorManagementModal({ visible, floors, onAddFloor, onRemoveFloor, onCl
                 onPress={handleAdd}
                 size="sm"
                 disabled={saving}
-                style={{ flexShrink: 0 }}       // never shrink the button, wrap if needed
+                style={{ flexShrink: 0 }}
               />
             </View>
 
@@ -570,7 +570,7 @@ function KebabMenu({ onEdit, onDelete, t }) {
 }
 
 // ─── Main Setup Screen ───────────────────────────────────────────
-export default function SetupScreen() {
+function SetupScreen() {
   const {
     hostel, floors, rooms, addFloor, removeFloor, saveRoom, deleteRoom, updateHostel,
     roomAttributes, updateRoomAttributes,
@@ -592,8 +592,8 @@ export default function SetupScreen() {
   const [expandedRooms, setExpandedRooms] = useState({});
   const [deleteRoomId, setDeleteRoomId] = useState(null);
 
-  const toggleFloor = (floorId) => setExpandedFloors(prev => ({ ...prev, [floorId]: !prev[floorId] }));
-  const toggleRoom = (roomId) => setExpandedRooms(prev => ({ ...prev, [roomId]: !prev[roomId] }));
+  const toggleFloor = useCallback((floorId) => setExpandedFloors(prev => ({ ...prev, [floorId]: !prev[floorId] })), []);
+  const toggleRoom = useCallback((roomId) => setExpandedRooms(prev => ({ ...prev, [roomId]: !prev[roomId] })), []);
 
   const sortedFloors = useMemo(() => {
     return [...floors].sort((a, b) => {
@@ -608,12 +608,24 @@ export default function SetupScreen() {
     });
   }, [floors]);
 
-  const openRoomForm = (room = null) => {
+  // ── Build flat list data for rooms ────────────────────────────
+  const flatRooms = useMemo(() => {
+    const data = [];
+    sortedFloors.forEach(floor => {
+      const fr = rooms.filter(r => r.floorId === floor.id);
+      if (!fr.length) return;
+      data.push({ type: 'header', key: `header-${floor.id}`, floor });
+      fr.forEach(room => data.push({ type: 'room', key: room.id, room }));
+    });
+    return data;
+  }, [sortedFloors, rooms]);
+
+  const openRoomForm = useCallback((room = null) => {
     setEditingRoom(room);
     setShowRoom(true);
-  };
+  }, []);
 
-  const handleSaveRoom = async (form) => {
+  const handleSaveRoom = useCallback(async (form) => {
     try {
       if (editingRoom) {
         await saveRoom({ ...form, id: editingRoom.id });
@@ -626,9 +638,9 @@ export default function SetupScreen() {
       setShowRoom(false);
       setEditingRoom(null);
     }
-  };
+  }, [editingRoom, saveRoom, t]);
 
-  const handleDeleteRoom = async () => {
+  const handleDeleteRoom = useCallback(async () => {
     if (!deleteRoomId) return;
     try {
       await deleteRoom(deleteRoomId);
@@ -637,15 +649,15 @@ export default function SetupScreen() {
     } finally {
       setDeleteRoomId(null);
     }
-  };
+  }, [deleteRoomId, deleteRoom]);
 
-  const saveHostel = () => {
+  const saveHostel = useCallback(() => {
     if (!hName.trim()) return;
     updateHostel({ name: hName.trim() });
     setStep(1);
-  };
+  }, [hName, updateHostel]);
 
-  const handleGenerateFloors = async () => {
+  const handleGenerateFloors = useCallback(async () => {
     const count = parseInt(floorCount, 10);
     if (isNaN(count) || count < 0) {
       Alert.alert(t('error'), t('setup.invalidNumber'));
@@ -656,8 +668,88 @@ export default function SetupScreen() {
       await addFloor(floor.name);
     }
     setStep(2);
-  };
+  }, [floorCount, hasGarage, addFloor, t]);
 
+  const renderItem = useCallback(({ item }) => {
+    if (item.type === 'header') {
+      const isFloorExpanded = expandedFloors[item.floor.id] !== false;
+      return (
+        <TouchableOpacity onPress={() => toggleFloor(item.floor.id)} style={styles.floorHeaderRow} activeOpacity={0.7}>
+          <FloorHeader label={item.floor.name} />
+          <Icon name={isFloorExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      );
+    }
+
+    // Room card
+    const room = item.room;
+    if (expandedFloors[room.floorId] === false) return null;
+
+    const isRoomExpanded = expandedRooms[room.id] || false;
+    const bedCount = room.type === 'dorm' ? (room.beds?.length || 0) : 0;
+    const attrCount = room.type === 'private' && room.attributes
+      ? Object.keys(room.attributes).length
+      : 0;
+    const summary = room.type === 'dorm'
+      ? (bedCount > 0 ? `${bedCount} ${bedCount !== 1 ? t('beds') : t('setup.bedSingular')}` : '')
+      : (attrCount > 0 ? `${attrCount} ${attrCount !== 1 ? t('setup.attrsPlural') : t('setup.attrSingular')}` : '');
+
+    return (
+      <Card key={room.id} style={styles.roomCard}>
+        <TouchableOpacity
+          onPress={() => toggleRoom(room.id)}
+          activeOpacity={0.7}
+          style={styles.roomCardRow}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.roomCardName}>{room.name}</Text>
+            <View style={{ flexDirection: 'row', gap: SPACING[2], marginTop: 4 }}>
+              <Badge label={room.type === 'private' ? t('private') : t('dormitory')}
+                type={room.type === 'private' ? 'priv' : 'dorm'} />
+              {summary ? <Text style={styles.summaryText}>{summary}</Text> : null}
+            </View>
+          </View>
+          <Icon name={isRoomExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
+        </TouchableOpacity>
+
+        {isRoomExpanded && (
+          <View style={{ marginTop: SPACING[2] }}>
+            {room.type === 'dorm' && room.beds?.length > 0 && (
+              <View style={styles.bedTags}>
+                {room.beds.map(b => (
+                  <View key={b.id} style={styles.bedChip}>
+                    <Text style={styles.bedChipText}>{b.name}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {room.type === 'private' && room.attributes && Object.keys(room.attributes).length > 0 && (
+              <View style={styles.bedTags}>
+                {Object.entries(room.attributes).map(([attr, value]) => (
+                  <View key={attr} style={[styles.bedChip, value && { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary }]}>
+                    <Text style={[styles.bedChipText, value && { color: COLORS.primary }]}>
+                      {attr}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <View style={{ alignItems: 'flex-end', marginTop: SPACING[2] }}>
+              <KebabMenu
+                onEdit={() => openRoomForm(room)}
+                onDelete={() => setDeleteRoomId(room.id)}
+                t={t}
+              />
+            </View>
+          </View>
+        )}
+      </Card>
+    );
+  }, [expandedFloors, expandedRooms, toggleFloor, toggleRoom, openRoomForm, t]);
+
+  // ── Step 0: Hostel name ──────────────────────────────────────
   if (step === 0) {
     return (
       <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -686,6 +778,7 @@ export default function SetupScreen() {
     );
   }
 
+  // ── Step 1: Floors ───────────────────────────────────────────
   if (step === 1) {
     return (
       <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -725,137 +818,78 @@ export default function SetupScreen() {
     );
   }
 
-  // ── Step 2: Rooms ──────────────────────────────────────────────
+  // ── Step 2: Rooms (virtualised) ──────────────────────────────
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.roomsHeader}>
-          <SectionTitle title={t('rooms')} subtitle={`${rooms.length} ${rooms.length !== 1 ? t('setup.roomsPlural') : t('setup.roomSingular')}`} />
-          <View style={styles.roomsActions}>
-            <Button title={t('manageFloors')} onPress={() => setShowFloorModal(true)} variant="secondary" size="sm" icon="layers-outline" />
-            <Button title={t('attributes')} onPress={() => setShowAttrModal(true)} variant="secondary" size="sm" icon="options-outline" />
-            <Button title={t('addRoom')} onPress={() => openRoomForm()} size="sm" />
-          </View>
-        </View>
-
-        <RoomFormModal
-          visible={showRoom}
-          floors={sortedFloors}
-          room={editingRoom}
-          roomAttributes={roomAttributes}
-          onSave={handleSaveRoom}
-          onCancel={() => { setShowRoom(false); setEditingRoom(null); }}
-          t={t}
-        />
-
-        <AttributesModal
-          visible={showAttrModal}
-          attributes={roomAttributes}
-          rooms={rooms}
-          onSave={updateRoomAttributes}
-          onClose={() => setShowAttrModal(false)}
-          t={t}
-        />
-
-        <FloorManagementModal
-          visible={showFloorModal}
-          floors={floors}
-          onAddFloor={addFloor}
-          onRemoveFloor={removeFloor}
-          onClose={() => setShowFloorModal(false)}
-          t={t}
-        />
-
-        {sortedFloors.map(floor => {
-          const fr = rooms.filter(r => r.floorId === floor.id);
-          if (!fr.length) return null;
-          const isFloorExpanded = expandedFloors[floor.id] !== false;
-          return (
-            <View key={floor.id}>
-              <TouchableOpacity onPress={() => toggleFloor(floor.id)} style={styles.floorHeaderRow} activeOpacity={0.7}>
-                <FloorHeader label={floor.name} />
-                <Icon name={isFloorExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
-              </TouchableOpacity>
-              {isFloorExpanded && (
-                <View style={{ gap: SPACING[2], marginBottom: SPACING[4] }}>
-                  {fr.map(room => {
-                    const isRoomExpanded = expandedRooms[room.id] || false;
-                    const bedCount = room.type === 'dorm' ? (room.beds?.length || 0) : 0;
-                    const attrCount = room.type === 'private' && room.attributes
-                      ? Object.keys(room.attributes).length
-                      : 0;
-                    const summary = room.type === 'dorm'
-                      ? (bedCount > 0 ? `${bedCount} ${bedCount !== 1 ? t('beds') : t('setup.bedSingular')}` : '')
-                      : (attrCount > 0 ? `${attrCount} ${attrCount !== 1 ? t('setup.attrsPlural') : t('setup.attrSingular')}` : '');
-
-                    return (
-                      <Card key={room.id} style={styles.roomCard}>
-                        <TouchableOpacity
-                          onPress={() => toggleRoom(room.id)}
-                          activeOpacity={0.7}
-                          style={styles.roomCardRow}
-                        >
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.roomCardName}>{room.name}</Text>
-                            <View style={{ flexDirection: 'row', gap: SPACING[2], marginTop: 4 }}>
-                              <Badge label={room.type === 'private' ? t('private') : t('dormitory')}
-                                type={room.type === 'private' ? 'priv' : 'dorm'} />
-                              {summary ? <Text style={styles.summaryText}>{summary}</Text> : null}
-                            </View>
-                          </View>
-                          <Icon name={isRoomExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textMuted} />
-                        </TouchableOpacity>
-
-                        {isRoomExpanded && (
-                          <View style={{ marginTop: SPACING[2] }}>
-                            {room.type === 'dorm' && room.beds?.length > 0 && (
-                              <View style={styles.bedTags}>
-                                {room.beds.map(b => (
-                                  <View key={b.id} style={styles.bedChip}>
-                                    <Text style={styles.bedChipText}>{b.name}</Text>
-                                  </View>
-                                ))}
-                              </View>
-                            )}
-
-                            {room.type === 'private' && room.attributes && Object.keys(room.attributes).length > 0 && (
-                              <View style={styles.bedTags}>
-                                {Object.entries(room.attributes).map(([attr, value]) => (
-                                  <View key={attr} style={[styles.bedChip, value && { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary }]}>
-                                    <Text style={[styles.bedChipText, value && { color: COLORS.primary }]}>
-                                      {attr}
-                                    </Text>
-                                  </View>
-                                ))}
-                              </View>
-                            )}
-
-                            <View style={{ alignItems: 'flex-end', marginTop: SPACING[2] }}>
-                              <KebabMenu
-                                onEdit={() => openRoomForm(room)}
-                                onDelete={() => setDeleteRoomId(room.id)}
-                                t={t}
-                              />
-                            </View>
-                          </View>
-                        )}
-                      </Card>
-                    );
-                  })}
-                </View>
-              )}
+      <FlatList
+        data={flatRooms}
+        renderItem={renderItem}
+        keyExtractor={item => item.key}
+        contentContainerStyle={styles.scroll}
+        ListHeaderComponent={
+          <View style={styles.roomsHeader}>
+            <SectionTitle title={t('rooms')} subtitle={`${rooms.length} ${rooms.length !== 1 ? t('setup.roomsPlural') : t('setup.roomSingular')}`} />
+            <View style={styles.roomsActions}>
+              <Button title={t('manageFloors')} onPress={() => setShowFloorModal(true)} variant="secondary" size="sm" icon="layers-outline" />
+              <Button title={t('attributes')} onPress={() => setShowAttrModal(true)} variant="secondary" size="sm" icon="options-outline" />
+              <Button title={t('addRoom')} onPress={() => openRoomForm()} size="sm" />
             </View>
-          );
-        })}
+          </View>
+        }
+        maxToRenderPerBatch={10}
+        windowSize={10}
+        initialNumToRender={8}
+        updateCellsBatchingPeriod={50}
+        removeClippedSubviews={true}
+        getItemLayout={(data, index) => {
+          const item = data[index];
+          if (!item) return { length: 0, offset: 0, index };
+          const isHeader = item.type === 'header';
+          const height = isHeader ? 60 : 120;
+          let offset = 0;
+          for (let i = 0; i < index; i++) {
+            const prev = data[i];
+            offset += prev?.type === 'header' ? 60 : 120;
+          }
+          return { length: height, offset, index };
+        }}
+      />
 
-        <ConfirmModal
-          visible={!!deleteRoomId}
-          title={t('deleteRoom')}
-          message={t('deleteConfirmation')}
-          onConfirm={handleDeleteRoom}
-          onCancel={() => setDeleteRoomId(null)}
-        />
-      </ScrollView>
+      <RoomFormModal
+        visible={showRoom}
+        floors={sortedFloors}
+        room={editingRoom}
+        roomAttributes={roomAttributes}
+        onSave={handleSaveRoom}
+        onCancel={() => { setShowRoom(false); setEditingRoom(null); }}
+        t={t}
+      />
+
+      <AttributesModal
+        visible={showAttrModal}
+        attributes={roomAttributes}
+        rooms={rooms}
+        onSave={updateRoomAttributes}
+        onClose={() => setShowAttrModal(false)}
+        t={t}
+      />
+
+      <FloorManagementModal
+        visible={showFloorModal}
+        floors={floors}
+        onAddFloor={addFloor}
+        onRemoveFloor={removeFloor}
+        onClose={() => setShowFloorModal(false)}
+        t={t}
+      />
+
+      <ConfirmModal
+        visible={!!deleteRoomId}
+        title={t('deleteRoom')}
+        message={t('deleteConfirmation')}
+        onConfirm={handleDeleteRoom}
+        onCancel={() => setDeleteRoomId(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -863,13 +897,6 @@ export default function SetupScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
   scroll: { padding: SPACING[4], paddingBottom: SPACING[10] },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: SPACING[2],
-    flexWrap: 'wrap',
-  },
   checkbox: {
     width: 24, height: 24, borderRadius: 6,
     borderWidth: 2, borderColor: COLORS.border,
@@ -882,7 +909,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: SPACING[2],
     marginTop: SPACING[6],
-},
+  },
   floorRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING[3], borderTopWidth: 1, borderTopColor: COLORS.border },
   floorRowName: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.md, color: COLORS.text },
   emptyFloors: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textMuted, marginBottom: SPACING[4], textAlign: 'center' },
@@ -921,14 +948,14 @@ const styles = StyleSheet.create({
     padding: SPACING[5], width: '100%', maxWidth: 400, ...SHADOW.md,
   },
   roomsHeader: {
-  marginBottom: SPACING[4],
-  alignItems: 'center',          // centre everything horizontally
+    marginBottom: SPACING[4],
+    alignItems: 'center',
   },
   roomsActions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: SPACING[2],
-    justifyContent: 'center',      // centre buttons within the row
+    justifyContent: 'center',
     marginTop: SPACING[2],
   },
   modalMessage: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.textSecondary, marginBottom: SPACING[5] },
@@ -937,3 +964,5 @@ const styles = StyleSheet.create({
   modalBtnPrimary: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   modalBtnText: { fontFamily: 'System', fontWeight: '600', fontSize: 16, color: COLORS.primary },
 });
+
+export default React.memo(SetupScreen);

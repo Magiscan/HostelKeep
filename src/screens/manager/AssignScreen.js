@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal,
-  Pressable, KeyboardAvoidingView, Platform, TextInput, Alert,
+  View, Text, FlatList, StyleSheet, TouchableOpacity, Modal,
+  Pressable, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
@@ -28,14 +28,6 @@ export default function AssignScreen() {
     roomAttributes,
   } = useApp();
 
-  const [search, setSearch] = useState('');
-
-  const filteredRooms = useMemo(() => {
-    if (!search.trim()) return rooms;
-    const term = search.toLowerCase();
-    return rooms.filter(r => r.name.toLowerCase().includes(term));
-  }, [rooms, search]);
-
   const sortedFloors = useMemo(() => {
     return [...floors].sort((a, b) => {
       const order = (name) => {
@@ -49,6 +41,27 @@ export default function AssignScreen() {
     });
   }, [floors]);
 
+  // Build sections: each floor becomes a section with its rooms
+  const sections = useMemo(() => {
+    return sortedFloors
+      .map(floor => ({
+        type: 'floor',
+        floor,
+        rooms: rooms.filter(r => r.floorId === floor.id),
+      }))
+      .filter(sec => sec.rooms.length > 0);
+  }, [sortedFloors, rooms]);
+
+  // Flatten into data array for FlatList
+  const flatData = useMemo(() => {
+    const data = [];
+    sections.forEach(section => {
+      data.push({ type: 'header', floor: section.floor });
+      section.rooms.forEach(room => data.push({ type: 'room', room }));
+    });
+    return data;
+  }, [sections]);
+
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [selectedCleaner, setSelectedCleaner] = useState(null);
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -59,9 +72,9 @@ export default function AssignScreen() {
   const [earlyCheckIn, setEarlyCheckIn] = useState(false);
   const [lateCheckOut, setLateCheckOut] = useState(false);
 
-  const clearAll = () => rooms.forEach(room => unassignRoom(room.id));
+  const clearAll = useCallback(() => rooms.forEach(room => unassignRoom(room.id)), [rooms, unassignRoom]);
 
-  const openConfig = (room, cleaner) => {
+  const openConfig = useCallback((room, cleaner) => {
     setSelectedRoom(room);
     setSelectedCleaner(cleaner);
 
@@ -81,16 +94,13 @@ export default function AssignScreen() {
       ? existingAttrs
       : (room.attributes ? { ...room.attributes } : {});
     setAssignmentAttributes(initialAttrs);
-
-    // 👇 read back the flags
     setEarlyCheckIn(existingStatus.earlyCheckIn || false);
     setLateCheckOut(existingStatus.lateCheckOut || false);
-
     setManagerNotes(existingStatus.managerNotes || '');
     setShowConfigModal(true);
-  };
+  }, [roomStatus]);
 
-  const handleAssign = async () => {
+  const handleAssign = useCallback(async () => {
     if (!selectedRoom || !selectedCleaner) return;
 
     const finalBedAssignments = {};
@@ -118,7 +128,67 @@ export default function AssignScreen() {
     setShowConfigModal(false);
     setSelectedRoom(null);
     setSelectedCleaner(null);
-  };
+  }, [selectedRoom, selectedCleaner, bedAssignments, assignmentAttributes, managerNotes, commonOnly, earlyCheckIn, lateCheckOut, assignRoomWithDetails]);
+
+  // Render each item
+  const renderItem = useCallback(({ item }) => {
+    if (item.type === 'header') {
+      return <FloorHeader label={item.floor.name} />;
+    }
+    // room row
+    const room = item.room;
+    const currentCleaner = cleaners.find(c => c.id === room.assignedTo);
+    return (
+      <View style={styles.roomCard}>
+        <View style={styles.roomInfo}>
+          <View>
+            <Text style={styles.roomName}>{room.name}</Text>
+            <View style={{ flexDirection: 'row', gap: SPACING[2], marginTop: 4 }}>
+              <Badge label={room.type === 'private' ? t('private') : t('dormitory')} type={room.type === 'private' ? 'priv' : 'dorm'} />
+              {room.type === 'dorm' && room.beds?.length > 0 && (
+                <Text style={styles.bedCount}>{room.beds.length} {t('beds')}</Text>
+              )}
+            </View>
+          </View>
+          {currentCleaner ? (
+            <View style={styles.assignedTag}>
+              <Avatar name={currentCleaner.username} size={28} />
+              <Text style={styles.assignedName}>{currentCleaner.username}</Text>
+            </View>
+          ) : (
+            <Text style={styles.unassignedHint}>{t('noCleaner')}</Text>
+          )}
+        </View>
+
+        <View style={styles.pillsContainer}>
+          <View style={styles.pillsWrap}>
+            {cleaners.map(cleaner => {
+              const isAssigned = room.assignedTo === cleaner.id;
+              return (
+                <Chip
+                  key={cleaner.id}
+                  label={cleaner.username}
+                  selected={isAssigned}
+                  onPress={() => openConfig(room, cleaner)}
+                  icon={isAssigned ? 'checkmark' : undefined}
+                />
+              );
+            })}
+            {currentCleaner && (
+              <Chip
+                label={t('unassign')}
+                icon="close"
+                onPress={() => unassignRoom(room.id)}
+                colorBg={COLORS.dangerLight}
+                colorBorder={COLORS.dangerLight}
+                colorText={COLORS.danger}
+              />
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  }, [cleaners, openConfig, unassignRoom, t]);
 
   if (rooms.length === 0) {
     return (
@@ -138,102 +208,31 @@ export default function AssignScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.headerRow}>
-          <SectionTitle  title={t('assignments')} subtitle={t('tapToAssign') } />
-          <TouchableOpacity onPress={clearAll} style={styles.clearBtn} activeOpacity={0.7}>
-            <Icon name="close-circle-outline" size={16} color={COLORS.textMuted} />
-            <Text style={styles.clearText}>{t('clearAll')}</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── Search bar ── */}
-        <View style={styles.searchContainer}>
-          <Icon name="search-outline" size={18} color={COLORS.textMuted} style={{ marginRight: SPACING[2] }} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder={t('search')}
-            placeholderTextColor={COLORS.textMuted}
-            style={styles.searchInput}
-            clearButtonMode="while-editing"
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 4 }}>
-              <Icon name="close-circle" size={18} color={COLORS.textMuted} />
+      <FlatList
+        data={flatData}
+        renderItem={renderItem}
+        keyExtractor={(item, index) => item.type === 'header' ? `header-${item.floor.id}` : `room-${item.room.id}`}
+        contentContainerStyle={styles.scroll}
+        ListHeaderComponent={
+          <View style={styles.headerRow}>
+            <SectionTitle title={t('assignments')} subtitle={t('tapToAssign')} />
+            <TouchableOpacity onPress={clearAll} style={styles.clearBtn} activeOpacity={0.7}>
+              <Icon name="close-circle-outline" size={16} color={COLORS.textMuted} />
+              <Text style={styles.clearText}>{t('clearAll')}</Text>
             </TouchableOpacity>
-          )}
-        </View>
-
-        {filteredRooms.length === 0 && search.trim() !== '' && (
-          <EmptyState icon="🔍" title={t('noResults')} subtitle="" />
-        )}
-
-        {sortedFloors.map(floor => {
-          const floorRooms = filteredRooms.filter(r => r.floorId === floor.id);
-          if (!floorRooms.length) return null;
-          return (
-            <View key={floor.id}>
-              <FloorHeader label={floor.name} />
-              <View style={{ gap: SPACING[3] }}>
-                {floorRooms.map(room => {
-                  const currentCleaner = cleaners.find(c => c.id === room.assignedTo);
-                  return (
-                    <View key={room.id} style={styles.roomCard}>
-                      <View style={styles.roomInfo}>
-                        <View>
-                          <Text style={styles.roomName}>{room.name}</Text>
-                          <View style={{ flexDirection: 'row', gap: SPACING[2], marginTop: 4 }}>
-                            <Badge label={room.type === 'private' ? t('private') : t('dormitory')} type={room.type === 'private' ? 'priv' : 'dorm'} />
-                            {room.type === 'dorm' && room.beds?.length > 0 && (
-                              <Text style={styles.bedCount}>{room.beds.length} {t('beds')}</Text>
-                            )}
-                          </View>
-                        </View>
-                        {currentCleaner ? (
-                          <View style={styles.assignedTag}>
-                            <Avatar name={currentCleaner.username} size={28} />
-                            <Text style={styles.assignedName}>{currentCleaner.username}</Text>
-                          </View>
-                        ) : (
-                          <Text style={styles.unassignedHint}>{t('noCleaner')}</Text>
-                        )}
-                      </View>
-
-                      <View style={styles.pillsContainer}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsScroll}>
-                          {cleaners.map(cleaner => {
-                            const isAssigned = room.assignedTo === cleaner.id;
-                            return (
-                              <Chip
-                                key={cleaner.id}
-                                label={cleaner.username}
-                                selected={isAssigned}
-                                onPress={() => openConfig(room, cleaner)}
-                                icon={isAssigned ? 'checkmark' : undefined}
-                              />
-                            );
-                          })}
-                          {currentCleaner && (
-                            <Chip
-                              label={t('unassign')}
-                              icon="close"
-                              onPress={() => unassignRoom(room.id)}
-                              colorBg={COLORS.dangerLight}
-                              colorBorder={COLORS.dangerLight}
-                              colorText={COLORS.danger}
-                            />
-                          )}
-                        </ScrollView>
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          );
+          </View>
+        }
+        getItemLayout={(data, index) => ({
+          length: data[index]?.type === 'header' ? 60 : 120, // approximate heights
+          offset: data.slice(0, index).reduce((acc, item) => acc + (item.type === 'header' ? 60 : 120), 0),
+          index,
         })}
-      </ScrollView>
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+        initialNumToRender={8}
+        updateCellsBatchingPeriod={50}
+      />
 
       <Modal visible={showConfigModal} transparent animationType="fade">
         <KeyboardAvoidingView
@@ -389,7 +388,7 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING[2], flexWrap: 'wrap' },
   clearBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: SPACING[3], paddingVertical: SPACING[1], backgroundColor: COLORS.surface, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.border, marginTop: 4, alignSelf: 'flex-start' },
   clearText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.textMuted },
-  roomCard: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, padding: SPACING[3], ...SHADOW.sm },
+  roomCard: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, padding: SPACING[3], marginBottom: SPACING[3], ...SHADOW.sm },
   roomInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING[3] },
   roomName: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.lg, color: COLORS.text, marginBottom: 2 },
   bedCount: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textMuted, alignSelf: 'center' },
@@ -397,7 +396,11 @@ const styles = StyleSheet.create({
   assignedName: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.sm, color: COLORS.primary },
   unassignedHint: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.xs, color: COLORS.textMuted, fontStyle: 'italic' },
   pillsContainer: { marginTop: 4 },
-  pillsScroll: { gap: SPACING[2], paddingVertical: 2 },
+  pillsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING[2],
+  },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: SPACING[6] },
   modalCard: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING[5], width: '100%', maxWidth: 400, ...SHADOW.md },
   modalTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text, marginBottom: SPACING[2] },
@@ -426,23 +429,6 @@ const styles = StyleSheet.create({
     flex: 1, paddingVertical: SPACING[2], borderRadius: RADIUS.sm,
     borderWidth: 1, borderColor: COLORS.border,
     alignItems: 'center', justifyContent: 'center',
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: SPACING[3],
-    marginBottom: SPACING[4],
-  },
-  searchInput: {
-    flex: 1,
-    fontFamily: FONTS.regular,
-    fontSize: FONT_SIZE.md,
-    color: COLORS.text,
-    paddingVertical: SPACING[2],
   },
   flagText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary },
   modalActions: { flexDirection: 'row', gap: SPACING[2], marginTop: SPACING[4] },

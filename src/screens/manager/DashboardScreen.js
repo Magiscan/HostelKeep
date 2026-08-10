@@ -11,7 +11,8 @@ import {
   TextInput,
   Alert,
   Image,
-  Pressable
+  Pressable,
+  FlatList,
 } from 'react-native';
 import Icon from '../../components/Icon';
 import { COLORS, FONTS, FONT_SIZE, RADIUS, SHADOW, SPACING } from '../../theme';
@@ -144,7 +145,7 @@ function CleanerDetailModal({
   roomStatus,
   onClose,
   t,
-  onExport,       // <-- new prop
+  onExport,
 }) {
   if (!cleaner) return null;
   const assignedRooms = rooms.filter(r => r.assignedTo === cleaner.id);
@@ -153,7 +154,6 @@ function CleanerDetailModal({
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalBackdrop}>
         <View style={[styles.modalCard, { maxHeight: '80%' }]}>
-          {/* Title row with export button */}
           <View style={styles.modalTitleRow}>
             <Text style={[styles.modalTitle, { marginBottom: 0, flex: 1 }]}>
               {t('cleanerRooms', { name: cleaner.username })}
@@ -460,7 +460,6 @@ function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose, t }) {
     <Modal visible={visible} transparent animationType="fade">
       <View style={styles.modalBackdrop}>
         <View style={[styles.modalCard, { maxHeight: '80%' }]}>
-          {/* Room name and cleaned/pending badge on the same row */}
           <View
             style={{
               flexDirection: 'row',
@@ -481,7 +480,6 @@ function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose, t }) {
             />
           </View>
 
-          {/* Other badges – scrollable */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -680,7 +678,7 @@ function RoomDetailModal({ visible, room, roomStatus, cleaners, onClose, t }) {
 }
 
 // ─── Main Dashboard Screen ──────────────────────────────────────
-export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
+function DashboardScreen({ highlightRoomId, onRoomOpened }) {
   const {
     rooms = [],
     roomStatus = {},
@@ -697,7 +695,6 @@ export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
   const { t } = useTranslation();
 
   const [imageViewer, setImageViewer] = useState(null);
-
   const [search, setSearch] = useState('');
   const [selectedRoom, setSelectedRoom] = useState(null);
 
@@ -751,7 +748,6 @@ export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
   const toggleFloor = floorId =>
     setExpandedFloors(prev => ({ ...prev, [floorId]: !prev[floorId] }));
 
-  // ── CSV Export handler (reusable) ───────────────────────────
   const handleExport = useCallback(
     async (roomList) => {
       try {
@@ -759,7 +755,6 @@ export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
         const fileName = `keepclean_report_${new Date().toISOString().slice(0, 10)}.csv`;
 
         if (Platform.OS === 'web') {
-          // Web: create a Blob and trigger download
           const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
           const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
@@ -768,7 +763,6 @@ export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
           link.click();
           URL.revokeObjectURL(url);
         } else {
-          // Native: write file and share
           const fileUri = FileSystem.cacheDirectory + fileName;
           const encoding = FileSystem.EncodingType?.UTF8 ?? 'utf8';
           await FileSystem.writeAsStringAsync(fileUri, csv, { encoding });
@@ -790,8 +784,7 @@ export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
     },
     [roomStatus, cleaners, extraRequests, floors, t]
   );
-  
-  // Auto-open a room when highlightRoomId changes
+
   useEffect(() => {
     if (highlightRoomId && rooms.length > 0) {
       const room = rooms.find(r => r.id === highlightRoomId);
@@ -800,7 +793,117 @@ export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
         if (onRoomOpened) onRoomOpened();
       }
     }
-  }, [highlightRoomId, rooms]);
+  }, [highlightRoomId, rooms, onRoomOpened]);
+
+   // ── FlatList data for unassigned rooms ────────────────────────
+  const flatUnassigned = useMemo(() => {
+    if (search.trim()) return [];
+    const data = [];
+    sortedFloors.forEach(floor => {
+      const floorRooms = rooms.filter(r => r.floorId === floor.id && !r.assignedTo);
+      if (!floorRooms.length) return;
+      data.push({ type: 'header', key: `header-${floor.id}`, floor });
+      floorRooms.forEach(room => data.push({ type: 'room', key: room.id, room }));
+    });
+    return data;
+  }, [search, sortedFloors, rooms]);
+
+  const renderUnassignedItem = useCallback(({ item }) => {
+    if (item.type === 'header') {
+      return (
+        <TouchableOpacity
+          onPress={() => toggleFloor(item.floor.id)}
+          style={styles.floorHeaderRow}
+          activeOpacity={0.7}
+        >
+          <FloorHeader label={item.floor.name} />
+          <Icon
+            name={expandedFloors[item.floor.id] !== false ? 'chevron-up' : 'chevron-down'}
+            size={20}
+            color={COLORS.textMuted}
+          />
+        </TouchableOpacity>
+      );
+    }
+
+    const room = item.room;
+    if (expandedFloors[room.floorId] === false) return null;
+
+    const status = roomStatus[room.id] || {};
+    const cleaned = status.cleaned || false;
+    const notes = status.notes;
+    const extraTime = status.extraTime || 0;
+    const bedStatus = status.bedStatus || {};
+    const managerNotes = status.managerNotes;
+    const assignmentAttributes = status.assignmentAttributes || {};
+
+    return (
+      <Card key={room.id} style={styles.roomDetailCard}>
+        <View style={styles.roomHeader}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING[2] }}>
+              <Text style={styles.roomName}>{room.name}</Text>
+              <Badge
+                label={room.type === 'private' ? t('private') : t('dormitory')}
+                type={room.type === 'private' ? 'priv' : 'dorm'}
+              />
+            </View>
+          </ScrollView>
+          <View style={{ flexDirection: 'row', gap: SPACING[2] }}>
+            <Badge label={cleaned ? t('cleaned') : t('pending')} type={cleaned ? 'clean' : 'extra'} />
+            <TouchableOpacity onPress={() => setResetSingleModal(room.id)}>
+              <Icon name="refresh-circle" size={24} color={COLORS.danger} />
+            </TouchableOpacity>
+          </View>
+        </View>
+        {managerNotes ? (
+          <View style={styles.managerNotesBox}>
+            <Text style={styles.managerNotesText}>📋 {managerNotes}</Text>
+          </View>
+        ) : null}
+        <Text style={styles.detailLine}>{t('cleaner')}: {t('unassigned')}</Text>
+        {extraTime > 0 && <Text style={styles.detailLine}>{t('extraTimeValue', { minutes: extraTime })}</Text>}
+        {notes ? (
+          <View style={styles.notesBox}>
+            <Text style={styles.notesText}>📝 “{notes}”</Text>
+          </View>
+        ) : null}
+        {room.type === 'dorm' && room.beds?.length > 0 && (
+          <View style={styles.bedSummary}>
+            {room.beds.map(bed => {
+              const bedState = bedStatus[bed.id]?.status || 'pending';
+              const isCleaned = bedState === 'cleaned';
+              const isSkipped = bedState === 'skipped';
+              return (
+                <Chip
+                  key={bed.id}
+                  label={`${isCleaned ? '✓' : isSkipped ? '⊘' : '○'} ${bed.name}`}
+                  colorText={isCleaned ? COLORS.success : isSkipped ? COLORS.amber : COLORS.textMuted}
+                  fontSize={FONT_SIZE.xs}
+                />
+              );
+            })}
+          </View>
+        )}
+        {room.type === 'private' && Object.keys(assignmentAttributes).length > 0 && (
+          <View style={styles.attributeSection}>
+            <Text style={styles.detailLine}>{t('roomFeatures')}:</Text>
+            {Object.entries(assignmentAttributes).map(([attr, value]) => (
+              <View key={attr} style={styles.attributeRow}>
+                <Icon
+                  name={value ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={16}
+                  color={value ? COLORS.success : COLORS.textMuted}
+                  style={{ marginRight: SPACING[1] }}
+                />
+                <Text style={styles.attributeText}>{attr}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </Card>
+    );
+  }, [expandedFloors, roomStatus, t]);
 
   if (!hostel.name) {
     return (
@@ -819,594 +922,374 @@ export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
   const overallPct = assignedRooms.length ? Math.round((overallCleaned / assignedRooms.length) * 100) : 0;
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.scroll}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-      {/* Header row */}
-      <View style={styles.headRow}>
-        <View style={{ flex: 1 }}>
-          <SectionTitle
-            title={t('todaysOverview')}
-            subtitle={hostel.name}
-          />
-        </View>
-        <TouchableOpacity
-          onPress={() => setResetAllModal(true)}
-          style={styles.resetAllBtn}
-        >
-          <Icon name="refresh" size={18} color={COLORS.danger} />
-          <Text style={styles.resetAllText}>{t('resetAllRooms')}</Text>
-        </TouchableOpacity>
-      </View>
+    <>
+      <FlatList
+        data={flatUnassigned}
+        renderItem={renderUnassignedItem}
+        keyExtractor={(item, index) => item.key}
+        contentContainerStyle={styles.scroll}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        ListHeaderComponent={
+          <>
+            {/* Header row */}
+            <View style={styles.headRow}>
+              <View style={{ flex: 1 }}>
+                <SectionTitle
+                  title={t('todaysOverview')}
+                  subtitle={hostel.name}
+                />
+              </View>
+              <TouchableOpacity
+                onPress={() => setResetAllModal(true)}
+                style={styles.resetAllBtn}
+              >
+                <Icon name="refresh" size={18} color={COLORS.danger} />
+                <Text style={styles.resetAllText}>{t('resetAllRooms')}</Text>
+              </TouchableOpacity>
+            </View>
 
-      <Card style={styles.overviewCard}>
-        <Text style={styles.overviewText}>
-          {t('roomsCleanedPercent', {
-            cleaned: overallCleaned,
-            total: assignedRooms.length,
-            percent: overallPct,
-          })}
-        </Text>
-        <ProgressBar pct={overallPct} />
-      </Card>
+            <Card style={styles.overviewCard}>
+              <Text style={styles.overviewText}>
+                {t('roomsCleanedPercent', {
+                  cleaned: overallCleaned,
+                  total: assignedRooms.length,
+                  percent: overallPct,
+                })}
+              </Text>
+              <ProgressBar pct={overallPct} />
+            </Card>
 
-      {/* Search */}
-      <View style={styles.searchContainer}>
-        <Icon
-          name="search-outline"
-          size={18}
-          color={COLORS.textMuted}
-          style={{ marginRight: SPACING[2] }}
-        />
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder={t('search')}
-          placeholderTextColor={COLORS.textMuted}
-          style={styles.searchInput}
-          clearButtonMode="while-editing"
-        />
-        {search.length > 0 && (
-          <TouchableOpacity
-            onPress={() => setSearch('')}
-            style={{ padding: 4 }}
-          >
-            <Icon
-              name="close-circle"
-              size={18}
-              color={COLORS.textMuted}
-            />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* ── Search Results ───────────────────────────────────── */}
-      {filteredRooms !== null && (
-        <View style={{ marginBottom: SPACING[4] }}>
-          <SectionTitle
-            title={t('searchResults', { count: filteredRooms.length })}
-            subtitle={
-              search.trim() ? t('matching', { query: search.trim() }) : ''
-            }
-          />
-          {filteredRooms.length === 0 ? (
-            <Text style={styles.emptyText}>{t('noResults')}</Text>
-          ) : (
-            filteredRooms.map(room => {
-              const status = roomStatus[room.id] || {};
-              const cleaned = status.cleaned || false;
-              const cleaner = cleaners.find(c => c.id === room.assignedTo);
-              const isEarly = status.earlyCheckIn === true;
-              const isLate = status.lateCheckOut === true;
-              const assignmentBedStatus =
-                status.assignmentBedStatus || {};
-              const hasEarlyBed =
-                room.type === 'dorm' &&
-                room.beds?.some(
-                  b =>
-                    (assignmentBedStatus[b.id] || {}).status ===
-                    'early'
-                );
-              const hasLateBed =
-                room.type === 'dorm' &&
-                room.beds?.some(
-                  b =>
-                    (assignmentBedStatus[b.id] || {}).status ===
-                    'late'
-                );
-              const showEarly = isEarly || hasEarlyBed;
-              const showLate = isLate || hasLateBed;
-
-              return (
+            {/* Search */}
+            <View style={styles.searchContainer}>
+              <Icon
+                name="search-outline"
+                size={18}
+                color={COLORS.textMuted}
+                style={{ marginRight: SPACING[2] }}
+              />
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder={t('search')}
+                placeholderTextColor={COLORS.textMuted}
+                style={styles.searchInput}
+                clearButtonMode="while-editing"
+              />
+              {search.length > 0 && (
                 <TouchableOpacity
-                  key={room.id}
-                  onPress={() => setSelectedRoom(room)}
-                  activeOpacity={0.7}
+                  onPress={() => setSearch('')}
+                  style={{ padding: 4 }}
                 >
-                  <Card style={styles.roomDetailCard}>
-                    <View style={styles.roomHeader}>
-                      <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        style={{ flex: 1 }}
+                  <Icon
+                    name="close-circle"
+                    size={18}
+                    color={COLORS.textMuted}
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Search Results */}
+            {filteredRooms !== null && (
+              <View style={{ marginBottom: SPACING[4] }}>
+                <SectionTitle
+                  title={t('searchResults', { count: filteredRooms.length })}
+                  subtitle={
+                    search.trim() ? t('matching', { query: search.trim() }) : ''
+                  }
+                />
+                {filteredRooms.length === 0 ? (
+                  <Text style={styles.emptyText}>{t('noResults')}</Text>
+                ) : (
+                  filteredRooms.map(room => {
+                    const status = roomStatus[room.id] || {};
+                    const cleaned = status.cleaned || false;
+                    const cleaner = cleaners.find(c => c.id === room.assignedTo);
+                    const isEarly = status.earlyCheckIn === true;
+                    const isLate = status.lateCheckOut === true;
+                    const assignmentBedStatus = status.assignmentBedStatus || {};
+                    const hasEarlyBed =
+                      room.type === 'dorm' &&
+                      room.beds?.some(
+                        b => (assignmentBedStatus[b.id] || {}).status === 'early'
+                      );
+                    const hasLateBed =
+                      room.type === 'dorm' &&
+                      room.beds?.some(
+                        b => (assignmentBedStatus[b.id] || {}).status === 'late'
+                      );
+                    const showEarly = isEarly || hasEarlyBed;
+                    const showLate = isLate || hasLateBed;
+
+                    return (
+                      <TouchableOpacity
+                        key={room.id}
+                        onPress={() => setSelectedRoom(room)}
+                        activeOpacity={0.7}
                       >
+                        <Card style={styles.roomDetailCard}>
+                          <View style={styles.roomHeader}>
+                            <ScrollView
+                              horizontal
+                              showsHorizontalScrollIndicator={false}
+                              style={{ flex: 1 }}
+                            >
+                              <View
+                                style={{
+                                  flexDirection: 'row',
+                                  alignItems: 'center',
+                                  gap: SPACING[2],
+                                }}
+                              >
+                                <Text style={styles.roomName}>{room.name}</Text>
+                                <Badge
+                                  label={
+                                    room.type === 'private'
+                                      ? t('private')
+                                      : t('dormitory')
+                                  }
+                                  type={room.type === 'private' ? 'priv' : 'dorm'}
+                                />
+                                {showEarly && (
+                                  <View
+                                    style={{
+                                      backgroundColor: COLORS.blueLight,
+                                      paddingHorizontal: SPACING[2],
+                                      paddingVertical: 2,
+                                      borderRadius: RADIUS.sm,
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        fontFamily: FONTS.bold,
+                                        fontSize: FONT_SIZE.xs,
+                                        color: COLORS.blue,
+                                      }}
+                                    >
+                                      {t('earlyCheckInFlag')}
+                                    </Text>
+                                  </View>
+                                )}
+                                {showLate && (
+                                  <View
+                                    style={{
+                                      backgroundColor: COLORS.dangerLight,
+                                      paddingHorizontal: SPACING[2],
+                                      paddingVertical: 2,
+                                      borderRadius: RADIUS.sm,
+                                    }}
+                                  >
+                                    <Text
+                                      style={{
+                                        fontFamily: FONTS.bold,
+                                        fontSize: FONT_SIZE.xs,
+                                        color: COLORS.danger,
+                                      }}
+                                    >
+                                      {t('lateCheckOutFlag')}
+                                    </Text>
+                                  </View>
+                                )}
+                              </View>
+                            </ScrollView>
+                            <Badge
+                              label={cleaned ? t('cleaned') : t('pending')}
+                              type={cleaned ? 'clean' : 'extra'}
+                            />
+                          </View>
+                          <Text style={styles.detailLine}>
+                            {t('cleaner')}:{' '}
+                            {cleaner ? cleaner.username : t('unassigned')}
+                          </Text>
+                          {status.extraCleaning && (
+                            <Text
+                              style={[
+                                styles.detailLine,
+                                { color: COLORS.primary },
+                              ]}
+                            >
+                              ⭐ {t('extra')}
+                            </Text>
+                          )}
+                        </Card>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </View>
+            )}
+
+            {/* Extra Room Requests */}
+            {extraRequests.filter(r => r.status === 'pending' || !r.status).length > 0 && !search.trim() && (
+              <View style={{ marginBottom: SPACING[4] }}>
+                <SectionTitle
+                  title={t('extraRoomRequests')}
+                  subtitle={t('extraRequestsSubtitle')}
+                />
+                {extraRequests
+                  .filter(r => r.status === 'pending' || !r.status)
+                  .map(req => {
+                    const room = rooms.find(r => r.id === req.id);
+                    const cleaner = cleaners.find(c => c.id === req.cleanerId);
+                    return (
+                      <Card key={req.id} style={styles.requestCard}>
+                        <View style={styles.requestRow}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.requestRoomName}>
+                              {room?.name || t('unknownRoom')}
+                            </Text>
+                            <Text style={styles.requestCleaner}>
+                              {t('requestedBy', {
+                                name: cleaner?.username || t('unknown'),
+                              })}
+                            </Text>
+                            {req.imageBase64 ? (
+                              <TouchableOpacity onPress={() => setImageViewer(`data:image/jpeg;base64,${req.imageBase64}`)}>
+                                <Image
+                                  source={{ uri: `data:image/jpeg;base64,${req.imageBase64}` }}
+                                  style={{ width: 60, height: 60, borderRadius: RADIUS.sm, marginTop: SPACING[2] }}
+                                />
+                              </TouchableOpacity>
+                            ) : null}
+                          </View>
+                          <View style={styles.requestActions}>
+                            <TouchableOpacity
+                              style={styles.approveBtn}
+                              onPress={() =>
+                                approveExtraRoom(req.id, req.cleanerId)
+                              }
+                            >
+                              <Text style={styles.approveBtnText}>
+                                {t('approve')}
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.rejectBtn}
+                              onPress={() => rejectExtraRoom(req.id)}
+                            >
+                              <Text style={styles.rejectBtnText}>
+                                {t('reject')}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </Card>
+                    );
+                  })}
+              </View>
+            )}
+
+            {/* Cleaner Progress */}
+            {!search.trim() && cleaners.length > 0 && (
+              <>
+                <View style={styles.sectionHeaderRow}>
+                  <SectionTitle
+                    title={t('cleanerProgress')}
+                    subtitle={t('tapCleaner')}
+                  />
+                  <TouchableOpacity
+                    onPress={() => handleExport(rooms)}
+                    style={styles.exportBtn}
+                    activeOpacity={0.7}
+                  >
+                    <Icon
+                      name="download-outline"
+                      size={16}
+                      color={COLORS.primary}
+                    />
+                    <Text style={styles.exportText}>{t('exportCSV')}</Text>
+                  </TouchableOpacity>
+                </View>
+                {cleaners.map(c => {
+                  const assigned = rooms.filter(
+                    r => r.assignedTo === c.id
+                  );
+                  const done = assigned.filter(
+                    r => roomStatus[r.id]?.cleaned
+                  ).length;
+                  const pct = assigned.length
+                    ? Math.round((done / assigned.length) * 100)
+                    : 0;
+                  const extraCount = rooms.filter(r => {
+                    const status = roomStatus[r.id] || {};
+                    return (
+                      status.extraCleaning &&
+                      status.extraCleaningBy === c.id
+                    );
+                  }).length;
+
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      activeOpacity={0.7}
+                      onPress={() => setSelectedCleaner(c)}
+                    >
+                      <Card style={styles.cleanerCard}>
                         <View
                           style={{
                             flexDirection: 'row',
+                            justifyContent: 'space-between',
                             alignItems: 'center',
-                            gap: SPACING[2],
                           }}
                         >
-                          <Text style={styles.roomName}>
-                            {room.name}
-                          </Text>
-                          <Badge
-                            label={
-                              room.type === 'private'
-                                ? t('private')
-                                : t('dormitory')
-                            }
-                            type={
-                              room.type === 'private' ? 'priv' : 'dorm'
-                            }
-                          />
-                          {showEarly && (
-                            <View
-                              style={{
-                                backgroundColor: COLORS.blueLight,
-                                paddingHorizontal: SPACING[2],
-                                paddingVertical: 2,
-                                borderRadius: RADIUS.sm,
-                              }}
-                            >
-                              <Text
-                                style={{
-                                  fontFamily: FONTS.bold,
-                                  fontSize: FONT_SIZE.xs,
-                                  color: COLORS.blue,
-                                }}
-                              >
-                                {t('earlyCheckInFlag')}
-                              </Text>
-                            </View>
-                          )}
-                          {showLate && (
-                            <View
-                              style={{
-                                backgroundColor: COLORS.dangerLight,
-                                paddingHorizontal: SPACING[2],
-                                paddingVertical: 2,
-                                borderRadius: RADIUS.sm,
-                              }}
-                            >
-                              <Text
-                                style={{
-                                  fontFamily: FONTS.bold,
-                                  fontSize: FONT_SIZE.xs,
-                                  color: COLORS.danger,
-                                }}
-                              >
-                                {t('lateCheckOutFlag')}
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.cleanerName}>
+                              {c.username}
+                            </Text>
+                            <Text style={styles.cleanerStats}>
+                              {t('cleanerRoomsStats', {
+                                done,
+                                total: assigned.length,
+                              })}
+                            </Text>
+                            <ProgressBar pct={pct} />
+                          </View>
+                          {extraCount > 0 && (
+                            <View style={styles.extraBadge}>
+                              <Text style={styles.extraBadgeText}>
+                                {extraCount}
                               </Text>
                             </View>
                           )}
                         </View>
-                      </ScrollView>
-                      <Badge
-                        label={
-                          cleaned ? t('cleaned') : t('pending')
-                        }
-                        type={cleaned ? 'clean' : 'extra'}
-                      />
-                    </View>
-                    <Text style={styles.detailLine}>
-                      {t('cleaner')}:{' '}
-                      {cleaner ? cleaner.username : t('unassigned')}
-                    </Text>
-                    {status.extraCleaning && (
-                      <Text
-                        style={[
-                          styles.detailLine,
-                          { color: COLORS.primary },
-                        ]}
-                      >
-                        ⭐ {t('extra')}
-                      </Text>
-                    )}
-                  </Card>
-                </TouchableOpacity>
-              );
-            })
-          )}
-        </View>
-      )}
-
-      {/* ── Extra Room Requests ───────────────────────────────── */}
-      {extraRequests.filter(r => r.status === 'pending' || !r.status).length > 0 && !search.trim() && (
-        <View style={{ marginBottom: SPACING[4] }}>
-          <SectionTitle
-            title={t('extraRoomRequests')}
-            subtitle={t('extraRequestsSubtitle')}
-          />
-          {extraRequests
-            .filter(r => r.status === 'pending' || !r.status)
-            .map(req => {
-              const room = rooms.find(r => r.id === req.id);
-              const cleaner = cleaners.find(c => c.id === req.cleanerId);
-              return (
-              <Card key={req.id} style={styles.requestCard}>
-                <View style={styles.requestRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.requestRoomName}>
-                      {room?.name || t('unknownRoom')}
-                    </Text>
-                    <Text style={styles.requestCleaner}>
-                      {t('requestedBy', {
-                        name: cleaner?.username || t('unknown'),
-                      })}
-                    </Text>
-                    {req.imageBase64 ? (
-                      <TouchableOpacity onPress={() => setImageViewer(`data:image/jpeg;base64,${req.imageBase64}`)}>
-                        <Image
-                          source={{ uri: `data:image/jpeg;base64,${req.imageBase64}` }}
-                          style={{ width: 60, height: 60, borderRadius: RADIUS.sm, marginTop: SPACING[2] }}
-                        />
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                  <View style={styles.requestActions}>
-                    <TouchableOpacity
-                      style={styles.approveBtn}
-                      onPress={() =>
-                        approveExtraRoom(req.id, req.cleanerId)
-                      }
-                    >
-                      <Text style={styles.approveBtnText}>
-                        {t('approve')}
-                      </Text>
+                      </Card>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.rejectBtn}
-                      onPress={() => rejectExtraRoom(req.id)}
-                    >
-                      <Text style={styles.rejectBtnText}>
-                        {t('reject')}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </Card>
-            );
-          })}
-        </View>
-      )}
+                  );
+                })}
+              </>
+            )}
 
-      {/* ── Cleaner Progress (with export all) ──────────────── */}
-      {!search.trim() && cleaners.length > 0 && (
-        <>
-          <View style={styles.sectionHeaderRow}>
-            <SectionTitle
-              title={t('cleanerProgress')}
-              subtitle={t('tapCleaner')}
-            />
-            <TouchableOpacity
-              onPress={() => handleExport(rooms)} // export all rooms
-              style={styles.exportBtn}
-              activeOpacity={0.7}
-            >
-              <Icon
-                name="download-outline"
-                size={16}
-                color={COLORS.primary}
+            {/* Section title for unassigned rooms */}
+            {!search.trim() && (
+              <SectionTitle
+                title={t('unassignedRooms')}
+                subtitle={t('unassignedRoomsSubtitle')}
               />
-              <Text style={styles.exportText}>{t('exportCSV')}</Text>
-            </TouchableOpacity>
-          </View>
-          {cleaners.map(c => {
-            const assigned = rooms.filter(
-              r => r.assignedTo === c.id
-            );
-            const done = assigned.filter(
-              r => roomStatus[r.id]?.cleaned
-            ).length;
-            const pct = assigned.length
-              ? Math.round((done / assigned.length) * 100)
-              : 0;
-            const extraCount = rooms.filter(r => {
-              const status = roomStatus[r.id] || {};
-              return (
-                status.extraCleaning &&
-                status.extraCleaningBy === c.id
-              );
-            }).length;
-
-            return (
-              <TouchableOpacity
-                key={c.id}
-                activeOpacity={0.7}
-                onPress={() => setSelectedCleaner(c)}
-              >
-                <Card style={styles.cleanerCard}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.cleanerName}>
-                        {c.username}
-                      </Text>
-                      <Text style={styles.cleanerStats}>
-                        {t('cleanerRoomsStats', {
-                          done,
-                          total: assigned.length,
-                        })}
-                      </Text>
-                      <ProgressBar pct={pct} />
-                    </View>
-                    {extraCount > 0 && (
-                      <View style={styles.extraBadge}>
-                        <Text style={styles.extraBadgeText}>
-                          {extraCount}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </Card>
-              </TouchableOpacity>
-            );
-          })}
-        </>
-      )}
-
-      {/* ── Unassigned Rooms ─────────────────────────────────── */}
-      {!search.trim() && (
-        <>
-          <SectionTitle
-            title={t('unassignedRooms')}
-            subtitle={t('unassignedRoomsSubtitle')}
-          />
-          {rooms.length === 0 ? (
-            <EmptyState icon="🚪" title={t('noRoomsYet')} />
-          ) : (
-            sortedFloors.map(floor => {
-              const floorRooms = rooms.filter(
-                r => r.floorId === floor.id && !r.assignedTo
-              );
-              if (!floorRooms.length) return null;
-              const isExpanded =
-                expandedFloors[floor.id] !== false;
-              return (
-                <View key={floor.id}>
-                  <TouchableOpacity
-                    onPress={() => toggleFloor(floor.id)}
-                    style={styles.floorHeaderRow}
-                    activeOpacity={0.7}
-                  >
-                    <FloorHeader label={floor.name} />
-                    <Icon
-                      name={
-                        isExpanded
-                          ? 'chevron-up'
-                          : 'chevron-down'
-                      }
-                      size={20}
-                      color={COLORS.textMuted}
-                    />
-                  </TouchableOpacity>
-                  {isExpanded && (
-                    <View
-                      style={{
-                        gap: SPACING[2],
-                        marginBottom: SPACING[4],
-                      }}
-                    >
-                      {floorRooms.map(room => {
-                        const status = roomStatus[room.id] || {};
-                        const cleaned = status.cleaned || false;
-                        const notes = status.notes;
-                        const extraTime = status.extraTime || 0;
-                        const bedStatus =
-                          status.bedStatus || {};
-                        const managerNotes =
-                          status.managerNotes;
-                        const assignmentAttributes =
-                          status.assignmentAttributes || {};
-
-                        return (
-                          <Card
-                            key={room.id}
-                            style={styles.roomDetailCard}
-                          >
-                            <View style={styles.roomHeader}>
-                              <ScrollView
-                                horizontal
-                                showsHorizontalScrollIndicator={
-                                  false
-                                }
-                                style={{ flex: 1 }}
-                              >
-                                <View
-                                  style={{
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    gap: SPACING[2],
-                                  }}
-                                >
-                                  <Text style={styles.roomName}>
-                                    {room.name}
-                                  </Text>
-                                  <Badge
-                                    label={
-                                      room.type === 'private'
-                                        ? t('private')
-                                        : t('dormitory')
-                                    }
-                                    type={
-                                      room.type === 'private'
-                                        ? 'priv'
-                                        : 'dorm'
-                                    }
-                                  />
-                                </View>
-                              </ScrollView>
-                              <View
-                                style={{
-                                  flexDirection: 'row',
-                                  gap: SPACING[2],
-                                }}
-                              >
-                                <Badge
-                                  label={
-                                    cleaned
-                                      ? t('cleaned')
-                                      : t('pending')
-                                  }
-                                  type={
-                                    cleaned ? 'clean' : 'extra'
-                                  }
-                                />
-                                <TouchableOpacity
-                                  onPress={() =>
-                                    setResetSingleModal(room.id)
-                                  }
-                                >
-                                  <Icon
-                                    name="refresh-circle"
-                                    size={24}
-                                    color={COLORS.danger}
-                                  />
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                            {managerNotes ? (
-                              <View style={styles.managerNotesBox}>
-                                <Text
-                                  style={styles.managerNotesText}
-                                >
-                                  📋 {managerNotes}
-                                </Text>
-                              </View>
-                            ) : null}
-                            <Text style={styles.detailLine}>
-                              {t('cleaner')}: {t('unassigned')}
-                            </Text>
-                            {extraTime > 0 && (
-                              <Text style={styles.detailLine}>
-                                {t('extraTimeValue', {
-                                  minutes: extraTime,
-                                })}
-                              </Text>
-                            )}
-                            {notes ? (
-                              <View style={styles.notesBox}>
-                                <Text style={styles.notesText}>
-                                  📝 “{notes}”
-                                </Text>
-                              </View>
-                            ) : null}
-                            {room.type === 'dorm' &&
-                              room.beds?.length > 0 && (
-                                <View style={styles.bedSummary}>
-                                  {room.beds.map(bed => {
-                                    const bedState =
-                                      bedStatus[bed.id]?.status ||
-                                      'pending';
-                                    const isCleaned =
-                                      bedState === 'cleaned';
-                                    const isSkipped =
-                                      bedState === 'skipped';
-                                    return (
-                                      <Chip
-                                        key={bed.id}
-                                        label={`${
-                                          isCleaned
-                                            ? '✓'
-                                            : isSkipped
-                                            ? '⊘'
-                                            : '○'
-                                        } ${bed.name}`}
-                                        colorText={
-                                          isCleaned
-                                            ? COLORS.success
-                                            : isSkipped
-                                            ? COLORS.amber
-                                            : COLORS.textMuted
-                                        }
-                                        fontSize={FONT_SIZE.xs}
-                                      />
-                                    );
-                                  })}
-                                </View>
-                              )}
-                            {room.type === 'private' &&
-                              Object.keys(assignmentAttributes)
-                                .length > 0 && (
-                                <View
-                                  style={
-                                    styles.attributeSection
-                                  }
-                                >
-                                  <Text
-                                    style={
-                                      styles.detailLine
-                                    }
-                                  >
-                                    {t('roomFeatures')}:
-                                  </Text>
-                                  {Object.entries(
-                                    assignmentAttributes
-                                  ).map(([attr, value]) => (
-                                    <View
-                                      key={attr}
-                                      style={
-                                        styles.attributeRow
-                                      }
-                                    >
-                                      <Icon
-                                        name={
-                                          value
-                                            ? 'checkmark-circle'
-                                            : 'ellipse-outline'
-                                        }
-                                        size={16}
-                                        color={
-                                          value
-                                            ? COLORS.success
-                                            : COLORS.textMuted
-                                        }
-                                        style={{
-                                          marginRight:
-                                            SPACING[1],
-                                        }}
-                                      />
-                                      <Text
-                                        style={
-                                          styles.attributeText
-                                        }
-                                      >
-                                        {attr}
-                                      </Text>
-                                    </View>
-                                  ))}
-                                </View>
-                              )}
-                          </Card>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              );
-            })
-          )}
-        </>
-      )}
+            )}
+            {rooms.length === 0 && !search.trim() && (
+              <EmptyState icon="🚪" title={t('noRoomsYet')} />
+            )}
+          </>
+        }
+        ListEmptyComponent={!search.trim() ? undefined : null}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+        initialNumToRender={8}
+        updateCellsBatchingPeriod={50}
+        removeClippedSubviews={true}
+        getItemLayout={(data, index) => {
+          const item = data[index];
+          if (!item) return { length: 0, offset: 0, index };
+          const isHeader = item.type === 'header';
+          const height = isHeader ? 60 : 120;
+          let offset = 0;
+          for (let i = 0; i < index; i++) {
+            const prev = data[i];
+            offset += prev?.type === 'header' ? 60 : 120;
+          }
+          return { length: height, offset, index };
+        }}
+      />
 
       {/* ── Modals ─────────────────────────────────────────── */}
       <ConfirmModal
@@ -1447,7 +1330,7 @@ export default function DashboardScreen( { highlightRoomId, onRoomOpened } ) {
           <Image source={{ uri: imageViewer }} style={styles.fullImage} resizeMode="contain" />
         </Pressable>
       </Modal>
-    </ScrollView>
+    </>
   );
 }
 
@@ -1725,8 +1608,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '80%',
   },
-
-  // ── New styles for CSV export ────────────────────────────
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1775,3 +1656,5 @@ const styles = StyleSheet.create({
     marginLeft: 2,
   },
 });
+
+export default React.memo(DashboardScreen);
