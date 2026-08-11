@@ -1,15 +1,28 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert,
 } from 'react-native';
+import * as XLSX from 'xlsx';
 import Icon from '../../components/Icon';
 import { COLORS, FONTS, FONT_SIZE, RADIUS, SPACING, SHADOW } from '../../theme';
 import { Button, Label, Input, SectionTitle, EmptyState, Badge } from '../../components/UI';
 import { useApp } from '../../contexts/AppContext';
 import { useAuth } from '../../contexts/AuthContext';
 
-// ─── Generic centered overlay/dialog (matches SetupScreen.web.js) ──
+// ─── Excel helpers (same as AssignScreen.web.js) ────────────────
+const EXTRA_BLANK_ROWS = 5;
+function formatDateIT(d) {
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}/${d.getFullYear()}`;
+}
+function sanitizeSheetName(name) {
+  const cleaned = (name || 'Cleaner').replace(/[:\\/?*[\]]/g, '').trim();
+  return cleaned.slice(0, 31) || 'Cleaner';
+}
+
+// ─── Generic centered overlay/dialog ───────────────────────────
 function Overlay({ visible, onClose, children, maxWidth = 420 }) {
   if (!visible) return null;
   return (
@@ -24,7 +37,9 @@ function Overlay({ visible, onClose, children, maxWidth = 420 }) {
 
 export default function TeamScreen() {
   const { t } = useTranslation();
-  const { cleaners, rooms, roomStatus, deleteCleaner } = useApp();
+  const {
+    cleaners, rooms, roomStatus, deleteCleaner,
+  } = useApp();
   const { registerCleaner, resetCleanerPassword, user } = useAuth();
 
   const [showForm, setShowForm] = useState(false);
@@ -102,6 +117,57 @@ export default function TeamScreen() {
     }
   };
 
+  // ── Excel export (same as Assign screen) ────────────────────
+  const handleExportSheets = () => {
+    if (!cleaners.length) {
+      Alert.alert('No cleaners', 'Add cleaners before exporting.');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+    const dateStr = formatDateIT(new Date());
+    const usedSheetNames = new Set();
+
+    cleaners.forEach(cleaner => {
+      const assignedRooms = rooms
+        .filter(r => r.assignedTo === cleaner.id)
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+      const aoa = [];
+      aoa.push([`${cleaner.username} – ${dateStr}`]);
+      aoa.push(['Room', 'Beds', 'Done']);
+
+      assignedRooms.forEach(room => {
+        let beds = '';
+        if (room.type === 'dorm' && room.beds?.length) {
+          const assign = (roomStatus[room.id] || {}).assignmentBedStatus || {};
+          beds = room.beds
+            .filter(b => (assign[b.id]?.status || 'clean') !== 'noone')
+            .map(b => b.name)
+            .join('-');
+        }
+        aoa.push([room.name, beds, '']);
+      });
+
+      for (let i = 0; i < EXTRA_BLANK_ROWS; i++) aoa.push(['', '', '']);
+      aoa.push(['Signature', '', 'End Time:']);
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
+      ws['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 14 }];
+
+      let sheetName = sanitizeSheetName(cleaner.username);
+      let unique = sheetName, n = 1;
+      while (usedSheetNames.has(unique)) unique = `${sheetName.slice(0, 28)}_${n++}`;
+      usedSheetNames.add(unique);
+
+      XLSX.utils.book_append_sheet(wb, ws, unique);
+    });
+
+    const fileName = `team_sheets_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
+
   return (
     <View style={styles.safe}>
       {/* ── Toolbar ── */}
@@ -112,7 +178,13 @@ export default function TeamScreen() {
             {cleaners.length} {t('cleaner')}{cleaners.length !== 1 ? 's' : ''}
           </Text>
         </View>
-        <Button title={t('addCleaner')} onPress={() => setShowForm(true)} size="sm" icon="person-add-outline" />
+        <View style={styles.toolbarActions}>
+          <TouchableOpacity onPress={handleExportSheets} style={styles.toolBtn} activeOpacity={0.7}>
+            <Icon name="print-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.toolBtnText}>{t('printSheets') || 'Print Sheets'}</Text>
+          </TouchableOpacity>
+          <Button title={t('addCleaner')} onPress={() => setShowForm(true)} size="sm" icon="person-add-outline" />
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.mainAreaContent}>
@@ -278,6 +350,14 @@ const styles = StyleSheet.create({
   },
   title: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text },
   subtitle: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginTop: 2 },
+  toolbarActions: { flexDirection: 'row', alignItems: 'center', gap: SPACING[3] },
+  toolBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: SPACING[3], paddingVertical: SPACING[2],
+    backgroundColor: COLORS.primaryLight, borderRadius: RADIUS.sm,
+    borderWidth: 1, borderColor: COLORS.primary,
+  },
+  toolBtnText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.primary },
 
   mainAreaContent: { padding: SPACING[6] },
 
@@ -317,7 +397,7 @@ const styles = StyleSheet.create({
   roomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: SPACING[1] },
   roomName: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.text },
 
-  /* centered overlay/dialog (mirrors SetupScreen.web.js) */
+  /* centered overlay/dialog */
   overlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.4)',

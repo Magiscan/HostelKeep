@@ -43,6 +43,19 @@ const resources = {
       newPassword: 'New password',
       passwordTooShort: 'Password too short',
       passwordResetSuccess: 'Password reset successful. You can now log in with your new password.',
+      printSheets: 'Print Sheets',
+
+      moreInfo: 'More',
+      workingToday: 'Working Today',
+      assignSelected: 'Assign {{count}} room',
+      assignSelected_plural: 'Assign {{count}} rooms',
+      clearSelection: 'Clear',
+      selectedRooms: '{{count}} room selected',
+      selectedRooms_plural: '{{count}} rooms selected',
+      assignTo: 'Assign to',
+      change: 'Change',
+      noAssignments: 'No assignments',
+      noAssignmentsMsg: 'Assign rooms to cleaners before exporting.',
 
       // ---- Login ----
       username: 'Username',
@@ -297,6 +310,23 @@ const resources = {
       cannotReset: 'Impossibile resettare la password',
       syntheticEmailWarning: 'Il tuo account utilizza un indirizzo email sintetico. Contatta il manager dell\'ostello o il supporto per resettare la password.',
       passwordResetEmailSent: 'È stata inviata un\'email per resettare la password se l\'account esiste.',
+      passwordReset: 'Resetta password',
+      newPassword: 'Nuova password',
+      passwordTooShort: 'Password troppo corta',
+      passwordResetSuccess: 'Password resettata con successo. Ora puoi accedere con la nuova password.',
+
+      printSheets: 'Stampa Fogli',
+      moreInfo: 'Dettagli',
+      workingToday: 'Al lavoro oggi',
+      assignSelected: 'Assegna {{count}} stanza',
+      assignSelected_plural: 'Assegna {{count}} stanze',
+      clearSelection: 'Deseleziona',
+      selectedRooms: '{{count}} stanza selezionata',
+      selectedRooms_plural: '{{count}} stanze selezionate',
+      assignTo: 'Assegna a',
+      change: 'Cambia',
+      noAssignments: 'Nessuna assegnazione',
+      noAssignmentsMsg: 'Assegna le stanze agli addetti prima di esportare.',
 
       // ---- Login ----
       username: 'Nome utente',
@@ -547,6 +577,24 @@ const resources = {
       cannotReset: 'No se puede restablecer la contraseña',
       syntheticEmailWarning: 'Tu cuenta utiliza un correo electrónico sintético. Por favor, contacta a tu gerente del hostel o al soporte para restablecer tu contraseña.',
       passwordResetEmailSent: 'Se ha enviado un correo electrónico de restablecimiento de contraseña si esa cuenta existe.',
+      resetPassword: 'Restablecer contraseña',
+      newPassword: 'Nueva contraseña',
+      passwordTooShort: 'Contraseña demasiado corta',
+      passwordResetSuccess: 'Restablecimiento de contraseña exitoso. Ahora puedes iniciar sesión con tu nueva contraseña.',
+
+      printSheets: 'Imprimir Hojas',
+      moreInfo: 'Más info',
+      workingToday: 'Trabajando Hoy',
+      assignSelected: 'Asignar {{count}} habitación',
+      assignSelected_plural: 'Asignar {{count}} habitaciones',
+      clearSelection: 'Limpiar',
+      selectedRooms: '{{count}} habitación seleccionada',
+      selectedRooms_plural: '{{count}} habitaciones seleccionadas',
+      assignTo: 'Asignar a',
+      change: 'Cambiar',
+      noAssignments: 'Sin asignaciones',
+      noAssignmentsMsg: 'Asigne habitaciones a los limpiadores antes de exportar.',
+
 
       // ---- Login ----
       username: 'Usuario',

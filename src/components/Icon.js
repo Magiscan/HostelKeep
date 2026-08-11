@@ -48,6 +48,7 @@ const WEB_SYMBOLS = {
   'eye-off-outline':           '👁̵',
   'alert-circle':              '⚠',
   'checkmark-done-outline':    '✓✓',
+  'print-outline': '🖨',   
 };
 
 export default function Icon({ name, size = 20, color, style }) {
