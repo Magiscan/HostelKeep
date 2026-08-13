@@ -12,6 +12,8 @@ import Icon from '../../components/Icon';
 import { COLORS } from '../../theme/colors';
 import { FONTS, FONT_SIZE } from '../../theme/typography';
 import { SPACING, RADIUS } from '../../theme';
+import * as XLSX from 'xlsx';
+import { generateDailyReport } from '../../utils/dailyReport';
 
 const CLEANER_COLORS = [
   '#2563EB', '#7C3AED', '#DB2777', '#EA580C', '#0891B2', '#16A34A', '#4F46E5', '#DC2626',
@@ -43,8 +45,16 @@ const getInitials = (name) =>
     : '?';
 
 export default function HistoryScreen() {
-  const { t } = useTranslation();
-  const { hostelCode } = useApp();
+  const { t, i18n } = useTranslation();
+  const {
+    hostelCode,
+    rooms,
+    roomStatus,
+    cleaners,
+    floors,
+    extraRequests,
+    hostel,
+  } = useApp();
   const today = getToday();
 
   const [selectedDate, setSelectedDate] = useState(today);
@@ -93,7 +103,7 @@ export default function HistoryScreen() {
     setSearch('');
   };
 
-  const cleaners = useMemo(() => {
+  const cleanerStats = useMemo(() => {
     if (!history?.cleaners) return [];
     return Object.entries(history.cleaners).map(([cleanerId, cleaner], index) => {
       const rooms = cleaner.rooms || [];
@@ -116,8 +126,8 @@ export default function HistoryScreen() {
 
   const visibleCleaners = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return cleaners;
-    return cleaners.map(cleaner => {
+    if (!query) return cleanerStats;
+    return cleanerStats.map(cleaner => {
       const cleanerMatches = cleaner.name.toLowerCase().includes(query);
       if (cleanerMatches) return cleaner;
       const matchingRooms = cleaner.rooms.filter(r =>
@@ -126,12 +136,12 @@ export default function HistoryScreen() {
       if (!matchingRooms.length) return null;
       return { ...cleaner, rooms: matchingRooms };
     }).filter(Boolean);
-  }, [cleaners, search]);
+  }, [cleanerStats, search]);
 
   const stats = useMemo(() => {
-    const total = cleaners.reduce((sum, c) => sum + c.total, 0);
-    const cleaned = cleaners.reduce((sum, c) => sum + c.cleaned, 0);
-    const extraTime = cleaners.reduce((sum, c) => sum + c.extraTime, 0);
+    const total = cleanerStats.reduce((sum, c) => sum + c.total, 0);
+    const cleaned = cleanerStats.reduce((sum, c) => sum + c.cleaned, 0);
+    const extraTime = cleanerStats.reduce((sum, c) => sum + c.extraTime, 0);
     return {
       total,
       cleaned,
@@ -139,7 +149,7 @@ export default function HistoryScreen() {
       extraTime,
       percentage: total > 0 ? Math.round((cleaned / total) * 100) : 0,
     };
-  }, [cleaners]);
+  }, [cleanerStats]);
 
   const toggleCleaner = (id) => {
     setExpandedCleaners(prev => {
@@ -150,33 +160,82 @@ export default function HistoryScreen() {
   };
 
   const exportCSV = () => {
-    if (!history?.cleaners) return;
+    if (!history) return;
     try {
-      const rows = [['Cleaner', 'Room', 'Status', 'Notes', 'Extra Time']];
-      Object.entries(history.cleaners).forEach(([cleanerId, cleaner]) => {
-        const cleanerName = cleaner.cleanerName || cleaner.name || cleanerId;
-        (cleaner.rooms || []).forEach(room => {
-          rows.push([
-            cleanerName,
-            room.roomName || '',
-            room.cleaned ? 'Cleaned' : 'Pending',
-            room.notes || '',
-            room.extraTime ? `+${room.extraTime}m` : '',
-          ]);
+      let reportData;
+
+      if (history.roomsSnapshot && history.roomStatusSnapshot && history.cleanersSnapshot) {
+        // New logs: use the full snapshot
+        reportData = {
+          date: selectedDate,
+          hostelName: history.hostelName || hostel?.name || 'KeepClean',
+          rooms: history.roomsSnapshot,
+          roomStatus: history.roomStatusSnapshot,
+          cleaners: history.cleanersSnapshot,
+          floors: history.floorsSnapshot || [],
+          extraRequests: history.extraRequestsSnapshot || [],
+          lang: i18n.language.startsWith('it') ? 'it' : 'en',
+        };
+      } else {
+        // Old logs: reconstruct minimal data from the stored cleaner summary
+        const reconstructedCleaners = [];
+        const reconstructedRooms = [];
+        const reconstructedRoomStatus = {};
+
+        Object.entries(history.cleaners || {}).forEach(([cleanerId, cleaner]) => {
+          const cleanerName = cleaner.cleanerName || cleanerId;
+          reconstructedCleaners.push({
+            id: cleanerId,
+            username: cleanerName,
+          });
+
+          (cleaner.rooms || []).forEach(room => {
+            reconstructedRooms.push({
+              id: room.roomId,
+              name: room.roomName || 'Unknown',
+              floorId: null,
+              type: room.type || 'private',
+              beds: [],
+              assignedTo: cleanerId,
+            });
+
+            reconstructedRoomStatus[room.roomId] = {
+              cleaned: room.cleaned || false,
+              notes: room.notes || '',
+              extraTime: room.extraTime || 0,
+              managerNotes: room.managerNotes || '',
+              commonOnly: room.commonOnly || false,
+              assignmentAttributes: room.assignmentAttributes || {},
+              assignmentBedStatus: room.assignmentBedStatus || {},
+              bedStatus: room.bedStatus || {},
+              earlyCheckIn: false,
+              lateCheckOut: false,
+              extraCleaning: room.extraCleaning || false,
+            };
+          });
         });
-      });
-      const csv = rows.map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `KeepClean-History-${selectedDate}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+
+        reportData = {
+          date: selectedDate,
+          hostelName: history.hostelName || hostel?.name || 'KeepClean',
+          rooms: reconstructedRooms,
+          roomStatus: reconstructedRoomStatus,
+          cleaners: reconstructedCleaners,
+          floors: [],
+          extraRequests: [],
+          lang: i18n.language.startsWith('it') ? 'it' : 'en',
+        };
+      }
+
+      const wb = generateDailyReport(reportData);
+      const fileName = `KeepClean_Report_${selectedDate}.xlsx`;
+      XLSX.writeFile(wb, fileName);
     } catch (error) {
-      Alert.alert(text('error', 'Error'), text('exportFailed', 'Could not export the history.'));
+      console.error('Export error:', error);
+      Alert.alert(
+        text('error', 'Error'),
+        text('exportFailed', 'Could not export the history.')
+      );
     }
   };
 
@@ -196,7 +255,7 @@ export default function HistoryScreen() {
         >
           <Icon name="download-outline" size={17} color={history ? '#FFFFFF' : COLORS.textMuted} />
           <Text style={[styles.exportButtonText, !history && styles.disabledButtonText]}>
-            {text('downloadCSV', 'Export CSV')}
+            {text('downloadCSV', 'Download Report')}
           </Text>
         </TouchableOpacity>
       </View>

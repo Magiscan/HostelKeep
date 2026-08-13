@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { key: 'team', label: 'Team', icon: 'people-outline' },
   { key: 'extraRequests', label: 'Extra Requests', icon: 'flag-outline' },
   { key: 'notifications', label: 'Notifications', icon: 'notifications-outline', badgeKey: 'notifications' },
-  { key: 'reports', label: 'Live Reports', icon: 'document-text-outline' },
+  { key: 'reports', label: 'Live Activities', icon: 'document-text-outline' },
   { key: 'history', label: 'History', icon: 'calendar-outline' },
 ];
 

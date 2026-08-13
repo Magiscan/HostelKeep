@@ -20,6 +20,8 @@ import { SPACING } from '../../theme/spacing';
 import { FONTS, FONT_SIZE } from '../../theme/typography';
 import { Badge } from '../../components/UI';   // if Badge is available, else skip
 import Icon from '../../components/Icon';
+import { generateDailyReport } from '../../utils/dailyReport';
+import * as XLSX from 'xlsx';
 
 /* ─── CSV helper (local copy) ──────────────────────────────── */
 const generateCSV = (rooms, roomStatus, cleaners, extraRequests, floors) => {
@@ -208,7 +210,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
     extraRequests = [], floors = [],
     approveExtraRoom, rejectExtraRoom, hostelCode, saveDailyLog, dailyLogExists,
   } = useApp();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { notifications, unreadCount, markAsRead, clearAll, deleteAllNotifications } = useNotifications();
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -243,29 +245,37 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
     }
   }, [saveDailyLog]);
 
+  const handleDailyReport = useCallback(() => {
+    const wb = generateDailyReport({
+      date: new Date().toISOString().slice(0, 10),
+      hostelName: hostel.name,
+      rooms,
+      roomStatus,
+      cleaners,
+      floors,
+      extraRequests,
+      lang: i18n.language.startsWith('it') ? 'it' : 'en',
+    });
+    XLSX.writeFile(wb, `KeepClean_Report_${new Date().toISOString().slice(0, 10)}_${hostel.name}.xlsx`);
+  }, [hostel.name, rooms, roomStatus, cleaners, floors, extraRequests, i18n.language]);
+
   useEffect(() => {
-    if (!hostelCode) return;
+    if (!hostelCode || autoSaveRef.current) return;
 
-    const tryAutoSaveYesterday = async () => {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const dateStr = yesterday.toISOString().slice(0, 10);
-      const exists = await dailyLogExists(dateStr);
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yyyy = yesterday.getFullYear();
+    const mm = String(yesterday.getMonth() + 1).padStart(2, '0');
+    const dd = String(yesterday.getDate()).padStart(2, '0');
+    const yesterdayStr = `${yyyy}-${mm}-${dd}`;
+
+    dailyLogExists(yesterdayStr).then(exists => {
       if (!exists) {
-        await saveDailyLog();
+        saveDailyLog(yesterdayStr);   // ← pass yesterday’s date
       }
-    };
+    });
 
-    // Run immediately on first mount (if not already done)
-    if (!autoSaveRef.current) {
-      tryAutoSaveYesterday();
-      autoSaveRef.current = true;
-    }
-
-    // Then check every 60 minutes
-    const interval = setInterval(tryAutoSaveYesterday, 60 * 60 * 1000);
-
-    return () => clearInterval(interval);
+    autoSaveRef.current = true;
   }, [hostelCode, dailyLogExists, saveDailyLog]);
 
   // Notification highlight effect
@@ -387,8 +397,9 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
         hostelName={hostel.name}
         unreadCount={unreadCount}
         onNotificationsPress={() => setShowNotifications(true)}
-        onSaveDay={handleSaveDay} 
+        onSaveDay={handleSaveDay}
         saveDaySuccess={saveDaySuccess}
+        onDailyReport={handleDailyReport}
       />
 
       <ScrollView style={styles.scrollArea}>

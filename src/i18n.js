@@ -46,6 +46,7 @@ const resources = {
       printSheets: 'Print Sheets',
       saveDay: 'Save Day',
       saved: 'Saved ✓',
+      dailyReport: 'Daily Report',
 
       moreInfo: 'More',
       workingToday: 'Working Today',
@@ -329,6 +330,10 @@ const resources = {
       change: 'Cambia',
       noAssignments: 'Nessuna assegnazione',
       noAssignmentsMsg: 'Assegna le stanze agli addetti prima di esportare.',
+      saveDay: 'Salva giornata',
+      saved: 'Salvato ✓',
+      dailyReport: 'Report giornaliero',
+
 
       // ---- Login ----
       username: 'Nome utente',
@@ -596,7 +601,9 @@ const resources = {
       change: 'Cambiar',
       noAssignments: 'Sin asignaciones',
       noAssignmentsMsg: 'Asigne habitaciones a los limpiadores antes de exportar.',
-
+      saveDay: 'Guardar Día',
+      saved: 'Guardado ✓',
+      dailyReport: 'Informe Diario',
 
       // ---- Login ----
       username: 'Usuario',

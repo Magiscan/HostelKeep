@@ -14,6 +14,7 @@ export default function Header({
   onExportPress,         
   onSaveDay,       
   saveDaySuccess,        
+  onDailyReport, 
 }) {
   const { t } = useTranslation();
   const today = new Date();
@@ -32,6 +33,12 @@ export default function Header({
       </View>
 
       <View style={styles.actions}>
+        {/* {onDailyReport && (
+          <TouchableOpacity onPress={onDailyReport} style={styles.exportBtn}>
+            <Icon name="document-text-outline" size={18} color={COLORS.primary} />
+            <Text style={styles.exportLabel}>{t('dailyReport') || 'Report'}</Text>
+          </TouchableOpacity>
+        )} */}
         {onSaveDay && (
           <TouchableOpacity
             onPress={onSaveDay}

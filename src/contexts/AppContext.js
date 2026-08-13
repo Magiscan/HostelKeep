@@ -421,24 +421,39 @@ export function AppProvider({ children }) {
   };
 
   // Save a snapshot of today’s work
-  const saveDailyLog = useCallback(async () => {
+  const saveDailyLog = useCallback(async (dateOverride = null) => {
     if (!hostelCode) return;
 
-    const today = new Date().toISOString().slice(0, 10);
-    const cleanerNameMap = {};
-    cleaners.forEach(c => { cleanerNameMap[c.id] = c.username; });
+    // Use the override date if provided, otherwise today (local time)
+    let dateStr = dateOverride;
+    if (!dateStr) {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      dateStr = `${yyyy}-${mm}-${dd}`;
+    }
 
+    // Build cleaner name map
+    const cleanerNameMap = {};
+    cleaners.forEach((c) => {
+      cleanerNameMap[c.id] = c.username;
+    });
+
+    // Build cleaner -> rooms snapshot
     const cleanerMap = {};
-    rooms.forEach(room => {
+    rooms.forEach((room) => {
       if (!room.assignedTo) return;
       const status = roomStatus[room.id] || {};
       const cleanerId = room.assignedTo;
+
       if (!cleanerMap[cleanerId]) {
         cleanerMap[cleanerId] = {
           cleanerName: cleanerNameMap[cleanerId] || cleanerId,
           rooms: [],
         };
       }
+
       cleanerMap[cleanerId].rooms.push({
         roomId: room.id,
         roomName: room.name,
@@ -454,12 +469,21 @@ export function AppProvider({ children }) {
       });
     });
 
-    await setDoc(doc(db, 'hostels', hostelCode, 'dailyLogs', today), {
-      date: today,
+    // Write the daily log document
+    await setDoc(doc(db, 'hostels', hostelCode, 'dailyLogs', dateStr), {
+      date: dateStr,
+      hostelName: hostel.name,
       cleaners: cleanerMap,
       savedAt: new Date().toISOString(),
+
+      // Full snapshots for rich report generation later
+      roomsSnapshot: rooms,
+      floorsSnapshot: floors,
+      cleanersSnapshot: cleaners,
+      extraRequestsSnapshot: extraRequests,
+      roomStatusSnapshot: roomStatus,
     });
-  }, [hostelCode, rooms, roomStatus, cleaners]);
+  }, [hostelCode, rooms, roomStatus, cleaners, floors, extraRequests, hostel.name]);
 
   // ── Memoised context value ──
   const contextValue = useMemo(() => ({
