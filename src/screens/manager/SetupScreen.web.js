@@ -584,7 +584,7 @@ export default function SetupScreen() {
         <View style={styles.toolbarActions}>
           <Button title={t('manageFloors')} onPress={() => setShowFloorModal(true)} variant="secondary" size="sm" icon="layers-outline" />
           <Button title={t('attributes')} onPress={() => setShowAttrModal(true)} variant="secondary" size="sm" icon="options-outline" />
-          <Button title={t('addRoom')} onPress={() => openRoomForm()} size="sm" icon="add" />
+          <Button title={t('addRoom')} onPress={() => openRoomForm()} size="sm" />
         </View>
       </View>
 

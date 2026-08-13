@@ -14,28 +14,28 @@ import { useApp } from '../../contexts/AppContext';
 import Icon from '../../components/Icon';
 import { COLORS, FONTS, FONT_SIZE, SPACING, RADIUS, SHADOW } from '../../theme';
 import ExtraRequestsScreen from './ExtraRequestsScreen';
-import ReportsScreen from './ReportsScreen.web';  
+import ReportsScreen from './ReportsScreen.web';
 import HistoryScreen from './HistoryScreen.web';
-
-const LANGS = [
-  { code: 'en', label: 'English' },
-  { code: 'it', label: 'Italiano' },
-  { code: 'es', label: 'Español' },
-];
 
 export default function ManagerLayout() {
   const [tab, setTab] = useState('dashboard');
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
-  const { notifications, unreadCount, markAsRead, clearAll, deleteAllNotifications } = useNotifications();
+  const {
+    notifications,
+    unreadCount,
+    markAsRead,
+    clearAll,
+    deleteAllNotifications,
+  } = useNotifications();
   const { extraRequests } = useApp();
   const [highlightRoomId, setHighlightRoomId] = useState(null);
-
-  const [showLangMenu, setShowLangMenu] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
   useEffect(() => {
-    if (Platform.OS === 'web') document.title = 'KeepClean';
+    if (Platform.OS === 'web') {
+      document.title = 'KeepClean';
+    }
   }, []);
 
   const handleNavigate = (key) => {
@@ -65,7 +65,7 @@ export default function ManagerLayout() {
         return <ExtraRequestsScreen />;
       case 'reports':
         return <ReportsScreen />;
-      case 'history': 
+      case 'history':
         return <HistoryScreen />;
       default:
         return <DashboardScreen {...dashboardProps} />;
@@ -79,78 +79,81 @@ export default function ManagerLayout() {
         onNavigate={handleNavigate}
         badges={{
           notifications: unreadCount,
-          extraRequests: extraRequests.filter(r => r.status === 'pending' || !r.status).length,
+          extraRequests: extraRequests.filter(
+            (r) => r.status === 'pending' || !r.status
+          ).length,
         }}
         user={{ name: user.username, role: user.role }}
-        onLanguagePress={() => setShowLangMenu(true)}
         onSignOut={logout}
       />
 
-      <View style={styles.main}>
-        {renderScreen()}
-      </View>
-
-      {/* ── Language Modal ── */}
-      <Modal visible={showLangMenu} transparent animationType="fade" onRequestClose={() => setShowLangMenu(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setShowLangMenu(false)}>
-          <View style={styles.langCard}>
-            <Text style={styles.langTitle}>{t('manager.language')}</Text>
-            <View style={{ gap: SPACING[2] }}>
-              {LANGS.map(lang => (
-                <TouchableOpacity
-                  key={lang.code}
-                  style={[styles.langItem, i18n.language === lang.code && styles.langItemActive]}
-                  onPress={() => { i18n.changeLanguage(lang.code); setShowLangMenu(false); }}
-                >
-                  <Text style={[styles.langItemText, i18n.language === lang.code && styles.langItemTextActive]}>
-                    {lang.label}
-                  </Text>
-                  {i18n.language === lang.code && (
-                    <Icon name="checkmark-circle" size={20} color={COLORS.primary} />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity
-              onPress={() => setShowLangMenu(false)}
-              style={{ marginTop: SPACING[3], alignSelf: 'center' }}
-            >
-              <Icon name="close-circle-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[1] }} />
-              <Text style={{ color: COLORS.danger }}>{t('close')}</Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Modal>
+      <View style={styles.main}>{renderScreen()}</View>
 
       {/* ── Notification Modal ── */}
-      <Modal visible={showNotifications} transparent animationType="fade" onRequestClose={() => setShowNotifications(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setShowNotifications(false)}>
+      <Modal
+        visible={showNotifications}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowNotifications(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setShowNotifications(false)}
+        >
           <View style={styles.notifCard}>
             <View style={styles.notifHeaderRow}>
               <Text style={styles.menuTitle}>Notifications</Text>
               <View style={{ flexDirection: 'row', gap: SPACING[2] }}>
                 {unreadCount > 0 && (
                   <TouchableOpacity onPress={clearAll}>
-                    <Text style={{ fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.primary }}>Mark all read</Text>
+                    <Text
+                      style={{
+                        fontFamily: FONTS.medium,
+                        fontSize: FONT_SIZE.sm,
+                        color: COLORS.primary,
+                      }}
+                    >
+                      Mark all read
+                    </Text>
                   </TouchableOpacity>
                 )}
                 {notifications.length > 0 && (
                   <TouchableOpacity onPress={deleteAllNotifications}>
-                    <Text style={{ fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.danger }}>Delete all</Text>
+                    <Text
+                      style={{
+                        fontFamily: FONTS.medium,
+                        fontSize: FONT_SIZE.sm,
+                        color: COLORS.danger,
+                      }}
+                    >
+                      Delete all
+                    </Text>
                   </TouchableOpacity>
                 )}
               </View>
             </View>
+
             <ScrollView style={{ maxHeight: 300 }}>
               {notifications.length === 0 ? (
-                <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, textAlign: 'center', marginTop: 20 }}>
+                <Text
+                  style={{
+                    fontFamily: FONTS.regular,
+                    fontSize: FONT_SIZE.sm,
+                    color: COLORS.textSecondary,
+                    textAlign: 'center',
+                    marginTop: 20,
+                  }}
+                >
                   No notifications yet.
                 </Text>
               ) : (
-                notifications.map(item => (
+                notifications.map((item) => (
                   <TouchableOpacity
                     key={item.id}
-                    style={[styles.notifItem, item.read && { opacity: 0.6 }]}
+                    style={[
+                      styles.notifItem,
+                      item.read && { opacity: 0.6 },
+                    ]}
                     onPress={() => {
                       markAsRead(item.id);
                       setShowNotifications(false);
@@ -159,11 +162,19 @@ export default function ManagerLayout() {
                     }}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.notifMessage, item.read && { color: COLORS.textMuted }]}>
+                      <Text
+                        style={[
+                          styles.notifMessage,
+                          item.read && { color: COLORS.textMuted },
+                        ]}
+                      >
                         {item.message}
                       </Text>
                       <Text style={styles.notifTime}>
-                        {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(item.timestamp).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
                       </Text>
                     </View>
                     {!item.read && <View style={styles.unreadDot} />}
@@ -171,11 +182,24 @@ export default function ManagerLayout() {
                 ))
               )}
             </ScrollView>
+
             <TouchableOpacity
               onPress={() => setShowNotifications(false)}
-              style={{ marginTop: SPACING[3], alignSelf: 'center', padding: SPACING[2] }}
+              style={{
+                marginTop: SPACING[3],
+                alignSelf: 'center',
+                padding: SPACING[2],
+              }}
             >
-              <Text style={{ fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.primary }}>Close</Text>
+              <Text
+                style={{
+                  fontFamily: FONTS.medium,
+                  fontSize: FONT_SIZE.md,
+                  color: COLORS.primary,
+                }}
+              >
+                Close
+              </Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -185,34 +209,21 @@ export default function ManagerLayout() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, flexDirection: 'row', height: '100vh' },
-  main: { flex: 1, backgroundColor: '#F8FAFC' },
-  // Modal styles (from original)
+  container: {
+    flex: 1,
+    flexDirection: 'row',
+    height: '100vh',
+  },
+  main: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  langCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
-    padding: SPACING[4],
-    width: 260,
-    ...SHADOW.md,
-  },
-  langTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text, marginBottom: SPACING[3] },
-  langItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: SPACING[3],
-    paddingHorizontal: SPACING[3],
-    borderRadius: RADIUS.md,
-  },
-  langItemActive: { backgroundColor: COLORS.primaryLight },
-  langItemText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.text },
-  langItemTextActive: { color: COLORS.primary, fontFamily: FONTS.bold },
   notifCard: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.lg,
@@ -227,7 +238,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING[3],
   },
-  menuTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.lg, color: COLORS.text },
+  menuTitle: {
+    fontFamily: FONTS.bold,
+    fontSize: FONT_SIZE.lg,
+    color: COLORS.text,
+  },
   notifItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -235,7 +250,23 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  notifMessage: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.text, flex: 1 },
-  notifTime: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginTop: 2 },
-  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary, marginLeft: SPACING[2] },
+  notifMessage: {
+    fontFamily: FONTS.medium,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.text,
+    flex: 1,
+  },
+  notifTime: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.primary,
+    marginLeft: SPACING[2],
+  },
 });
