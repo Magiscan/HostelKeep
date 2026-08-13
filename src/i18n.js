@@ -44,6 +44,8 @@ const resources = {
       passwordTooShort: 'Password too short',
       passwordResetSuccess: 'Password reset successful. You can now log in with your new password.',
       printSheets: 'Print Sheets',
+      saveDay: 'Save Day',
+      saved: 'Saved ✓',
 
       moreInfo: 'More',
       workingToday: 'Working Today',

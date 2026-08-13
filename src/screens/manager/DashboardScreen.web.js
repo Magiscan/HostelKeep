@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View, ScrollView, StyleSheet, Alert, TouchableOpacity, Text, Modal, Pressable, Image,
@@ -206,7 +206,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
   const {
     rooms = [], roomStatus = {}, hostel = {}, cleaners = [],
     extraRequests = [], floors = [],
-    approveExtraRoom, rejectExtraRoom,
+    approveExtraRoom, rejectExtraRoom, hostelCode, saveDailyLog, dailyLogExists,
   } = useApp();
   const { t } = useTranslation();
   const { notifications, unreadCount, markAsRead, clearAll, deleteAllNotifications } = useNotifications();
@@ -229,6 +229,44 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
     const term = search.toLowerCase();
     return rooms.filter(r => r.name.toLowerCase().includes(term));
   }, [rooms, search]);
+
+  const autoSaveRef = useRef(false);
+  const [saveDaySuccess, setSaveDaySuccess] = useState(false);
+
+  const handleSaveDay = useCallback(async () => {
+    try {
+      await saveDailyLog();
+      setSaveDaySuccess(true);
+      setTimeout(() => setSaveDaySuccess(false), 2000);
+    } catch (e) {
+      Alert.alert('Save failed', e.message);
+    }
+  }, [saveDailyLog]);
+
+  useEffect(() => {
+    if (!hostelCode) return;
+
+    const tryAutoSaveYesterday = async () => {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const dateStr = yesterday.toISOString().slice(0, 10);
+      const exists = await dailyLogExists(dateStr);
+      if (!exists) {
+        await saveDailyLog();
+      }
+    };
+
+    // Run immediately on first mount (if not already done)
+    if (!autoSaveRef.current) {
+      tryAutoSaveYesterday();
+      autoSaveRef.current = true;
+    }
+
+    // Then check every 60 minutes
+    const interval = setInterval(tryAutoSaveYesterday, 60 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [hostelCode, dailyLogExists, saveDailyLog]);
 
   // Notification highlight effect
   useEffect(() => {
@@ -349,7 +387,8 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
         hostelName={hostel.name}
         unreadCount={unreadCount}
         onNotificationsPress={() => setShowNotifications(true)}
-        onExportPress={handleExport}
+        onSaveDay={handleSaveDay} 
+        saveDaySuccess={saveDaySuccess}
       />
 
       <ScrollView style={styles.scrollArea}>

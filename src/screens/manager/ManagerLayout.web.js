@@ -15,6 +15,7 @@ import Icon from '../../components/Icon';
 import { COLORS, FONTS, FONT_SIZE, SPACING, RADIUS, SHADOW } from '../../theme';
 import ExtraRequestsScreen from './ExtraRequestsScreen';
 import ReportsScreen from './ReportsScreen.web';  
+import HistoryScreen from './HistoryScreen.web';
 
 const LANGS = [
   { code: 'en', label: 'English' },
@@ -64,6 +65,8 @@ export default function ManagerLayout() {
         return <ExtraRequestsScreen />;
       case 'reports':
         return <ReportsScreen />;
+      case 'history': 
+        return <HistoryScreen />;
       default:
         return <DashboardScreen {...dashboardProps} />;
     }

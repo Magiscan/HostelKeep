@@ -11,7 +11,9 @@ export default function Header({
   hostelName,
   unreadCount,
   onNotificationsPress,
-  onExportPress,
+  onExportPress,         
+  onSaveDay,       
+  saveDaySuccess,        
 }) {
   const { t } = useTranslation();
   const today = new Date();
@@ -30,15 +32,25 @@ export default function Header({
       </View>
 
       <View style={styles.actions}>
-        {/* Export button with label */}
-        <TouchableOpacity
-          onPress={onExportPress}
-          style={styles.exportBtn}
-          activeOpacity={0.7}
-        >
-          <Icon name="download-outline" size={18} color={COLORS.primary} />
-          <Text style={styles.exportLabel}>{t('exportCSV')}</Text>
-        </TouchableOpacity>
+        {onSaveDay && (
+          <TouchableOpacity
+            onPress={onSaveDay}
+            style={[
+              styles.exportBtn,
+              { borderColor: saveDaySuccess ? COLORS.success : COLORS.primary },
+            ]}
+            activeOpacity={0.7}
+          >
+            <Icon
+              name={saveDaySuccess ? 'checkmark-circle' : 'calendar-outline'}
+              size={18}
+              color={saveDaySuccess ? COLORS.success : COLORS.primary}
+            />
+            <Text style={[styles.exportLabel, { color: saveDaySuccess ? COLORS.success : COLORS.primary }]}>
+              {saveDaySuccess ? (t('saved') || 'Saved ✓') : (t('saveDay') || 'Save Day')}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* Notification bell */}
         <TouchableOpacity

@@ -413,6 +413,54 @@ export function AppProvider({ children }) {
     await batch.commit();
   }, [hostelCode]);
 
+  // Check if a daily log already exists for a given date
+  const dailyLogExists = async (date) => {
+    if (!hostelCode) return false;
+    const snap = await getDoc(doc(db, 'hostels', hostelCode, 'dailyLogs', date));
+    return snap.exists();
+  };
+
+  // Save a snapshot of today’s work
+  const saveDailyLog = useCallback(async () => {
+    if (!hostelCode) return;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const cleanerNameMap = {};
+    cleaners.forEach(c => { cleanerNameMap[c.id] = c.username; });
+
+    const cleanerMap = {};
+    rooms.forEach(room => {
+      if (!room.assignedTo) return;
+      const status = roomStatus[room.id] || {};
+      const cleanerId = room.assignedTo;
+      if (!cleanerMap[cleanerId]) {
+        cleanerMap[cleanerId] = {
+          cleanerName: cleanerNameMap[cleanerId] || cleanerId,
+          rooms: [],
+        };
+      }
+      cleanerMap[cleanerId].rooms.push({
+        roomId: room.id,
+        roomName: room.name,
+        cleaned: status.cleaned || false,
+        notes: status.notes || '',
+        extraTime: status.extraTime || 0,
+        bedStatus: status.bedStatus || {},
+        assignmentBedStatus: status.assignmentBedStatus || {},
+        managerNotes: status.managerNotes || '',
+        commonOnly: status.commonOnly || false,
+        assignmentAttributes: status.assignmentAttributes || {},
+        extraCleaning: status.extraCleaning || false,
+      });
+    });
+
+    await setDoc(doc(db, 'hostels', hostelCode, 'dailyLogs', today), {
+      date: today,
+      cleaners: cleanerMap,
+      savedAt: new Date().toISOString(),
+    });
+  }, [hostelCode, rooms, roomStatus, cleaners]);
+
   // ── Memoised context value ──
   const contextValue = useMemo(() => ({
     loaded,
@@ -446,6 +494,8 @@ export function AppProvider({ children }) {
     extraRequests,
     cancelExtraRoomRequest,
     cleanupOldExtraRequests,
+    dailyLogExists,
+    saveDailyLog,
   }), [
     loaded,
     hostel,

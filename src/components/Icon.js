@@ -49,6 +49,8 @@ const WEB_SYMBOLS = {
   'alert-circle':              '⚠',
   'checkmark-done-outline':    '✓✓',
   'print-outline': '🖨',   
+  'arrow-back': '←',
+  'arrow-forward': '→',
 };
 
 export default function Icon({ name, size = 20, color, style }) {
