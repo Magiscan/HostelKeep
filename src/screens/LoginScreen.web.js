@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform,
-  ScrollView, TouchableOpacity, Modal, Pressable, TextInput, Alert,
+  ScrollView, TouchableOpacity, Modal, Pressable, TextInput, Alert, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
@@ -13,6 +13,8 @@ import { useNavigation } from '@react-navigation/native';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+
+const logo = require('../../assets/logo.png');
 
 const LANGS = [
   { code: 'en', label: 'English' },
@@ -100,7 +102,7 @@ export default function LoginScreenWeb() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.logoRow}>
-            <Text style={styles.logo}>✦</Text>
+            <Text style={styles.logo}> <Image source={logo} style={styles.logoMark} /> </Text>
             <Text style={styles.logoName}>{t('appName')}</Text>
           </View>
           <Text style={styles.tagline}>Hostel operations, simplified</Text>
@@ -279,4 +281,18 @@ const styles = StyleSheet.create({
   langOptionActive: { backgroundColor: COLORS.primaryLight },
   langOptionText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.text },
   langOptionTextActive: { color: COLORS.primary, fontFamily: FONTS.bold },
+   logoImage: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,   // optional if you want rounded corners
+  },
+  logoMark: {
+      width: 42,
+      height: 42,
+      borderRadius: 12,
+      backgroundColor: COLORS.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
 });

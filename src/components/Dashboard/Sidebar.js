@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal, Pressable, ScrollView, Image } from 'react-native';
 import Icon from '../Icon';
 import { COLORS } from '../../theme/colors';
 import { FONTS, FONT_SIZE } from '../../theme/typography';
 import { SPACING } from '../../theme/spacing';
 import { RADIUS } from '../../theme/radius';
 import { useTranslation } from 'react-i18next';
+
+const logo = require('../../../assets/logo.png');
 
 const NAV_SECTIONS = [
   {
@@ -60,11 +62,9 @@ export default function Sidebar({
     <View style={styles.sidebar}>
       {/* ── Logo ── */}
       <View style={styles.logoRow}>
-        <View style={styles.logoMark}>
-          <Icon name="flash-outline" size={16} color="#FFFFFF" />
-        </View>
+          <Image source={logo} style={styles.logoMark} />
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.logoText} numberOfLines={1}>KeepClean</Text>
+          <Text style={styles.logoText} numberOfLines={1}>HostelKeep</Text>
           <Text style={styles.logoSubtext} numberOfLines={1}>Housekeeping Manager</Text>
         </View>
       </View>
@@ -210,9 +210,9 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   logoMark: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -473,4 +473,9 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontFamily: FONTS.bold,
   },
+  logoImage: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,   // optional if you want rounded corners
+  }
 });

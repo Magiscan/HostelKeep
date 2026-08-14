@@ -7,15 +7,15 @@ import { SPACING } from '../../theme/spacing';
 export default function Footer() {
   return (
     <View style={styles.footer}>
-      <Text style={styles.text}>© 2026 KeepClean</Text>
+      <Text style={styles.text}>© 2026 HostelKeep</Text>
       <View style={styles.links}>
         <TouchableOpacity onPress={() => window.open('/privacy.html', '_blank')}>
           <Text style={styles.link}>Privacy Policy</Text>
         </TouchableOpacity>
         <Text style={styles.text}>·</Text>
-        <TouchableOpacity>
+        {/* <TouchableOpacity>
           <Text style={styles.link}>Terms</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
         <Text style={styles.text}>·</Text>
         <Text style={styles.text}>v2.0</Text>
       </View>

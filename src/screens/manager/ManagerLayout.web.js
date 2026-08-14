@@ -34,7 +34,7 @@ export default function ManagerLayout() {
 
   useEffect(() => {
     if (Platform.OS === 'web') {
-      document.title = 'KeepClean';
+      document.title = 'HostelKeep';
     }
   }, []);
 

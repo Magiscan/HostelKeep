@@ -5,7 +5,7 @@ const resources = {
   en: {
     translation: {
       // ---- Generic ----
-      appName: 'KeepClean',
+      appName: 'HostelKeep',
       signIn: 'Sign in',
       signingIn: 'Signing in…',
       signOut: 'Sign out',
@@ -279,7 +279,7 @@ const resources = {
   it: {
     translation: {
       // ---- Generic ----
-      appName: 'KeepClean',
+      appName: 'HostelKeep',
       signIn: 'Accedi',
       signingIn: 'Accesso in corso…',
       signOut: 'Esci',
@@ -550,7 +550,7 @@ const resources = {
   es: {
     translation: {
       // ---- Generic ----
-      appName: 'KeepClean',
+      appName: 'HostelKeep',
       signIn: 'Iniciar sesión',
       signingIn: 'Iniciando sesión…',
       signOut: 'Cerrar sesión',
