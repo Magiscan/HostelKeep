@@ -89,7 +89,7 @@ function RootNavigator() {
   if (user.role === 'manager') {
     // Use sidebar layout only on wide web screens (≥768px)
     if (Platform.OS === 'web' && screenWidth >= 768) {
-      if (typeof document !== 'undefined') document.title = 'KeepClean';
+      if (typeof document !== 'undefined') document.title = 'HostelKeep';
       const ManagerLayout = require('./src/screens/manager/ManagerLayout.web').default;
       return <ManagerLayout />;
     }
