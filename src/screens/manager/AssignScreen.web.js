@@ -12,11 +12,11 @@ import {
 import { useApp } from '../../contexts/AppContext';
 
 const BED_STATES = [
-  { key: 'clean',    label: 'Clean',      color: COLORS.success, bg: COLORS.successLight },
-  { key: 'stayover', label: 'Stay‑over',  color: COLORS.amber,   bg: COLORS.amberLight },
-  { key: 'late',     label: 'Late c/out', color: COLORS.danger,  bg: COLORS.dangerLight },
-  { key: 'early',    label: 'Early c/in', color: '#D97706',      bg: '#FFFBEB' },
-  { key: 'noone',    label: 'No one',     color: COLORS.blue,    bg: COLORS.blueLight },
+  { key: 'clean',    label: 'To clean',   color: '#3B82F6', bg: '#EFF6FF' },    // Blue
+  { key: 'stayover', label: 'Stay‑over',  color: '#94A3B8', bg: '#F8FAFC' },    // Grey
+  { key: 'late',     label: 'Late c/out', color: '#8B5CF6', bg: '#F5F3FF' },    // Violet
+  { key: 'early',    label: 'Early c/in', color: '#F97316', bg: '#FFF7ED' },    // Orange
+  { key: 'noone',    label: 'Inspected',  color: '#22C55E', bg: '#F0FDF4' },    // Green
 ];
 const BED_CYCLE = ['clean', 'stayover', 'late', 'early', 'noone'];
 
@@ -80,11 +80,16 @@ export default function AssignScreen() {
   const toggleBedState = useCallback(async (roomId, bedId) => {
     const status = roomStatus[roomId] || {};
     const assignments = status.assignmentBedStatus || {};
-    const current = assignments[bedId]?.status || 'clean';
-    const nextIdx = (BED_CYCLE.indexOf(current) + 1) % BED_CYCLE.length;
-    const nextStatus = BED_CYCLE[nextIdx];
+    // Default to inspected if no assignment exists yet
+    const current = assignments[bedId]?.status || 'noone';
+    // Toggle only between 'clean' (To clean) and 'noone' (Inspected)
+    const nextStatus = current === 'clean' ? 'noone' : 'clean';
+
     await updateRoomStatus(roomId, {
-      assignmentBedStatus: { ...assignments, [bedId]: { status: nextStatus, reason: nextStatus } },
+      assignmentBedStatus: {
+        ...assignments,
+        [bedId]: { status: nextStatus, reason: nextStatus },
+      },
     });
   }, [roomStatus, updateRoomStatus]);
 
@@ -128,6 +133,25 @@ export default function AssignScreen() {
 
   const clearAll = () => rooms.forEach(room => unassignRoom(room.id));
 
+  const resetBedStates = useCallback(async () => {
+    const updates = [];
+    rooms.forEach(room => {
+      if (room.type !== 'dorm' || !room.beds?.length) return;
+
+      const defaultAssignments = {};
+      room.beds.forEach(bed => {
+        // Default state = Inspected (noone)
+        defaultAssignments[bed.id] = { status: 'noone', reason: 'noone' };
+      });
+
+      updates.push(
+        updateRoomStatus(room.id, { assignmentBedStatus: defaultAssignments })
+      );
+    });
+
+    await Promise.all(updates);
+  }, [rooms, updateRoomStatus]);
+
   const handleExportSheets = () => {
     const assignedCleanerIds = [...new Set(rooms.filter(r => r.assignedTo).map(r => r.assignedTo))];
     if (!assignedCleanerIds.length) {
@@ -145,11 +169,23 @@ export default function AssignScreen() {
       aoa.push([`${cleaner.username} – ${dateStr}`]);
       aoa.push(['Room', 'Beds', 'Done']);
       assigned.forEach(room => {
+        const status = roomStatus[room.id] || {};
         let beds = '';
-        if (room.type === 'dorm' && room.beds?.length) {
-          const assign = (roomStatus[room.id] || {}).assignmentBedStatus || {};
-          beds = room.beds.filter(b => (assign[b.id]?.status || 'clean') !== 'noone').map(b => b.name).join('-');
+
+        if (status.commonOnly) {
+          beds = 'Refresh';
+        } else if (room.type === 'dorm' && room.beds?.length) {
+          const assign = status.assignmentBedStatus || {};
+          beds = room.beds
+            .filter(b => (assign[b.id]?.status || 'noone') !== 'noone')
+            .map(b => b.name)
+            .join('-');
+        } else if (room.type === 'private') {
+          const attrs = status.assignmentAttributes || {};
+          const selected = Object.keys(attrs).filter(key => attrs[key]);
+          beds = selected.join('-');
         }
+
         aoa.push([room.name, beds, '']);
       });
       for (let i = 0; i < EXTRA_BLANK_ROWS; i++) aoa.push(['', '', '']);
@@ -174,7 +210,7 @@ export default function AssignScreen() {
     const beds = {};
     if (room.type === 'dorm' && room.beds) {
         room.beds.forEach(b => {
-        beds[b.id] = (existing.assignmentBedStatus || {})[b.id] || { status: 'clean', reason: 'clean' };
+        beds[b.id] = (existing.assignmentBedStatus || {})[b.id] || { status: 'noone', reason: 'noone' };
         });
     }
     setBedAssignments(beds);
@@ -196,7 +232,7 @@ export default function AssignScreen() {
     if (!selectedRoom || !selectedCleaner) return;
     const finalBeds = {};
     if (selectedRoom.type === 'dorm' && selectedRoom.beds) {
-      selectedRoom.beds.forEach(b => { finalBeds[b.id] = bedAssignments[b.id] || { status: 'clean', reason: 'clean' }; });
+      selectedRoom.beds.forEach(b => { finalBeds[b.id] = bedAssignments[b.id] || { status: 'noone', reason: 'noone' }; });
     }
     const attrs = {};
     Object.entries(assignmentAttributes).forEach(([k, v]) => { if (v) attrs[k] = true; });
@@ -233,6 +269,16 @@ export default function AssignScreen() {
           <TouchableOpacity onPress={handleExportSheets} style={styles.toolBtn}>
             <Icon name="print-outline" size={16} color={COLORS.primary} />
             <Text style={styles.toolBtnText}>{t('printSheets') || 'Print'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={resetBedStates}
+            style={[styles.toolBtn, { backgroundColor: COLORS.background, borderColor: COLORS.border }]}
+            activeOpacity={0.7}
+          >
+            <Icon name="refresh" size={16} color={COLORS.textSecondary} />
+            <Text style={[styles.toolBtnText, { color: COLORS.textSecondary }]}>
+              {t('resetBeds') || 'Reset Beds'}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={clearAll} style={[styles.toolBtn, { backgroundColor: COLORS.dangerLight, borderColor: COLORS.danger }]}>
             <Icon name="close-circle-outline" size={16} color={COLORS.danger} />
@@ -332,7 +378,7 @@ export default function AssignScreen() {
                           {room.type === 'dorm' && beds.length > 0 && (
                             <View style={styles.bedList}>
                               {beds.map(bed => {
-                                const state = bedAssigns[bed.id]?.status || 'clean';
+                                const state = bedAssigns[bed.id]?.status || 'noone';
                                 const st = BED_STATES.find(s => s.key === state) || BED_STATES[0];
                                 return (
                                   <TouchableOpacity
@@ -346,8 +392,20 @@ export default function AssignScreen() {
                                     disabled={isFrozen}
                                     activeOpacity={isFrozen ? 1 : 0.7}
                                   >
-                                    <Text style={[styles.bedChipName, { color: isFrozen ? COLORS.textMuted : st.color }]}>{bed.name}</Text>
-                                    <Text style={[styles.bedChipState, { color: isFrozen ? COLORS.textMuted : st.color }]}>{t('bedState_' + state)}</Text>
+                                    <Text
+                                      style={[styles.bedChipName, { color: isFrozen ? COLORS.textMuted : st.color }]}
+                                      numberOfLines={1}
+                                      ellipsizeMode="tail"
+                                    >
+                                      {bed.name}
+                                    </Text>
+                                    <Text
+                                      style={[styles.bedChipState, { color: isFrozen ? COLORS.textMuted : st.color }]}
+                                      numberOfLines={1}
+                                      ellipsizeMode="tail"
+                                    >
+                                      {t('bedState_' + state)}
+                                    </Text>
                                   </TouchableOpacity>
                                 );
                               })}
@@ -535,7 +593,7 @@ export default function AssignScreen() {
                 {!commonOnly && (
                     <View style={{ marginTop: SPACING[3], gap: SPACING[4] }}>
                     {selectedRoom.beds.map(bed => {
-                        const current = bedAssignments[bed.id] || { status: 'clean', reason: 'clean' };
+                        const current = bedAssignments[bed.id] || { status: 'noone', reason: 'noone' };
                         return (
                         <View key={bed.id} style={styles.bedGroup}>
                             <Text style={styles.bedName}>{bed.name}</Text>
@@ -717,9 +775,15 @@ const styles = StyleSheet.create({
 
   bedList: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2], marginBottom: SPACING[3] },
   bedChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingVertical: 4, paddingHorizontal: 8,
-    borderRadius: RADIUS.sm, borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    minWidth: 110,          // fixed enough for longest state text
   },
   bedChipFrozen: {
     backgroundColor: COLORS.border,

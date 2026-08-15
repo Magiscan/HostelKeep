@@ -25,7 +25,7 @@ const LANGS = [
 ];
 
 const FEATURES = [
-  { icon: 'flash-outline', text: 'Assign rooms in seconds, not minutes' },
+  { icon: 'flash-outline', text: 'Assign rooms in seconds' },
   { icon: 'bar-chart-outline', text: 'Track progress across every floor, live' },
   { icon: 'document-text-outline', text: 'Export daily reports with one click' },
 ];

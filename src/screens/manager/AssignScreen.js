@@ -14,11 +14,11 @@ import {
 import { useApp } from '../../contexts/AppContext';
 
 const BED_STATES = [
-  { key: 'clean',    label: 'Clean',      color: COLORS.success, bg: COLORS.successLight },
-  { key: 'stayover', label: 'Stay‑over',  color: COLORS.amber,   bg: COLORS.amberLight },
-  { key: 'late',     label: 'Late c/out', color: COLORS.danger,  bg: COLORS.dangerLight },
-  { key: 'early',    label: 'Early c/in', color: '#D97706',      bg: '#FFFBEB' },
-  { key: 'noone',    label: 'No one',     color: COLORS.blue,    bg: COLORS.blueLight },
+  { key: 'clean',    label: 'To clean',   color: '#3B82F6', bg: '#EFF6FF' },    // Blue
+  { key: 'stayover', label: 'Stay‑over',  color: '#94A3B8', bg: '#F8FAFC' },    // Grey
+  { key: 'late',     label: 'Late c/out', color: '#8B5CF6', bg: '#F5F3FF' },    // Violet
+  { key: 'early',    label: 'Early c/in', color: '#F97316', bg: '#FFF7ED' },    // Orange
+  { key: 'noone',    label: 'Inspected',  color: '#22C55E', bg: '#F0FDF4' },    // Green
 ];
 
 export default function AssignScreen() {

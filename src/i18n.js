@@ -47,6 +47,7 @@ const resources = {
       saveDay: 'Save Day',
       saved: 'Saved ✓',
       dailyReport: 'Daily Report',
+      resetBeds: 'Reset Beds',
 
       moreInfo: 'More',
       workingToday: 'Working Today',
@@ -168,7 +169,7 @@ const resources = {
       stayOver: 'Stay‑over',
       lateCheckOut: 'Late c/out',
       earlyCheckIn: 'Early c/in',
-      noOne: 'No one',
+      noOne: 'Inspected',
       commonOnly: 'Clean common areas only',
       notesPlaceholder1: 'Notes for cleaners',
       notesPlaceholder2: 'e.g. Only change sheets, skip bed C',
@@ -273,7 +274,7 @@ const resources = {
       bedState_stayover: 'Stay‑over',
       bedState_late: 'Late c/out',
       bedState_early: 'Early c/in',
-      bedState_noone: 'No one',
+      bedState_noone: 'Inspected',
     },
   },
   it: {
@@ -333,6 +334,7 @@ const resources = {
       saveDay: 'Salva giornata',
       saved: 'Salvato ✓',
       dailyReport: 'Report giornaliero',
+      resetBeds: 'Resetta letti',
 
 
       // ---- Login ----
@@ -604,6 +606,7 @@ const resources = {
       saveDay: 'Guardar Día',
       saved: 'Guardado ✓',
       dailyReport: 'Informe Diario',
+      resetBeds: 'Restablecer Camas',
 
       // ---- Login ----
       username: 'Usuario',
