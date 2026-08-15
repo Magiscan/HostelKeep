@@ -234,13 +234,16 @@ export function AppProvider({ children }) {
     if (!hostelCode) return;
     await updateDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId), { assignedTo: null });
 
+    // NOTE: intentionally does NOT touch `assignmentBedStatus` — unassigning a
+    // room should only clear who's cleaning it, not the bed states/notes the
+    // manager already configured for it. Those are preserved so the manager
+    // can re-assign to someone else without having to redo them.
     const statusRef = doc(db, 'hostels', hostelCode, 'roomStatus', roomId);
     await setDoc(statusRef, {
       cleaned: false,
       notes: '',
       extraTime: 0,
       bedStatus: {},
-      assignmentBedStatus: {},
       managerNotes: '',
       commonOnly: false,
     }, { merge: true });

@@ -27,10 +27,25 @@ function generateFloors(count, hasGarage) {
   return floors;
 }
 
-// ─── Helper to generate beds ─────────────────────────────────────
+// ─── Helper to generate beds from scratch (used when the naming scheme is
+//     explicitly changed, or a brand-new room is being created) ──────────
 function generateBeds(count, scheme) {
   const beds = [];
   for (let i = 0; i < count; i++) {
+    const name = scheme === 'letters'
+      ? String.fromCharCode(65 + (i % 26))
+      : String(i + 1);
+    beds.push({ id: genId(), name });
+  }
+  return beds;
+}
+
+// ─── Helper to resize the bed list WITHOUT clobbering names the manager has
+//     already customized. Beds are kept/truncated from the front; any newly
+//     added beds get a default name based on the naming scheme. ───────────
+function resizeBeds(existingBeds, count, scheme) {
+  const beds = (existingBeds || []).slice(0, count).map(b => ({ ...b }));
+  for (let i = beds.length; i < count; i++) {
     const name = scheme === 'letters'
       ? String.fromCharCode(65 + (i % 26))
       : String(i + 1);
@@ -88,12 +103,30 @@ function RoomFormPanel({ visible, floors, room, onSave, onCancel, roomAttributes
     }
   }, [room]);
 
+  // Adding/removing beds only touches the beds at the edges — it never
+  // overwrites names you've already customized on the beds that remain.
   useEffect(() => {
     if (form.type === 'dorm') {
-      const newBeds = generateBeds(bedCount, namingScheme);
-      setForm(f => ({ ...f, beds: newBeds }));
+      setForm(f => ({ ...f, beds: resizeBeds(f.beds, bedCount, namingScheme) }));
     }
-  }, [bedCount, namingScheme, form.type]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bedCount, form.type]);
+
+  // Explicitly switching Letters/Numbers is a deliberate "start over" action,
+  // so it regenerates every bed name from scratch.
+  const handleSchemeChange = (v) => {
+    setNamingScheme(v);
+    if (form.type === 'dorm') {
+      setForm(f => ({ ...f, beds: generateBeds(bedCount, v) }));
+    }
+  };
+
+  const renameBed = (bedId, newName) => {
+    setForm(f => ({
+      ...f,
+      beds: (f.beds || []).map(b => (b.id === bedId ? { ...b, name: newName } : b)),
+    }));
+  };
 
   const toggleAttribute = (attr) => {
     setForm(prev => ({
@@ -185,8 +218,11 @@ function RoomFormPanel({ visible, floors, room, onSave, onCancel, roomAttributes
               <ToggleGroup
                 options={[{ label: t('letters'), value: 'letters' }, { label: t('numbers'), value: 'numbers' }]}
                 value={namingScheme}
-                onChange={v => setNamingScheme(v)}
+                onChange={handleSchemeChange}
               />
+              <Text style={styles.bedNamingHint}>
+                {t('setup.bedNamingHint', "Tap any bed below to rename it — handy if beds aren't lettered in order (e.g. A, B, D, F) or your hostel uses its own naming.")}
+              </Text>
               <Label style={{ marginTop: SPACING[4] }}>{t('numberOfBeds')}</Label>
               <Input
                 value={bedCount.toString()}
@@ -201,9 +237,13 @@ function RoomFormPanel({ visible, floors, room, onSave, onCancel, roomAttributes
               {bedCount > 0 && (
                 <View style={styles.bedTags}>
                   {form.beds?.map(b => (
-                    <View key={b.id} style={styles.bedChip}>
-                      <Text style={styles.bedChipText}>{b.name}</Text>
-                    </View>
+                    <Input
+                      key={b.id}
+                      value={b.name}
+                      onChangeText={v => renameBed(b.id, v)}
+                      style={styles.bedNameInput}
+                      maxLength={12}
+                    />
                   ))}
                 </View>
               )}
@@ -747,6 +787,15 @@ const styles = StyleSheet.create({
   bedTags: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2], marginTop: SPACING[3] },
   bedChip: { paddingHorizontal: SPACING[3], paddingVertical: SPACING[1], backgroundColor: COLORS.background, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.border },
   bedChipText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary },
+
+  /* editable bed name input (replaces the read-only bed chip in the room form) */
+  bedNameInput: {
+    minWidth: 56, maxWidth: 90,
+    textAlign: 'center',
+    paddingVertical: 6, paddingHorizontal: 8,
+    fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm,
+  },
+  bedNamingHint: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginTop: SPACING[2] },
 
   /* shared checkbox / attribute rows */
   checkbox: {

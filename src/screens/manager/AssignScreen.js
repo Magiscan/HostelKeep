@@ -89,11 +89,22 @@ export default function AssignScreen() {
     setBedAssignments(defaultsBeds);
     setCommonOnly(existingStatus.commonOnly || false);
 
-    const existingAttrs = existingStatus.assignmentAttributes || {};
-    const initialAttrs = Object.keys(existingAttrs).length > 0
-      ? existingAttrs
-      : (room.attributes ? { ...room.attributes } : {});
-    setAssignmentAttributes(initialAttrs);
+    // Reconcile with the room's CURRENT attribute configuration (Rooms/Setup is the
+    // source of truth for which attributes apply to this room). We only reuse a
+    // true/false choice from a previous assignment for attributes that still exist
+    // on the room today; anything new or changed since then defaults to selected.
+    const roomOwnAttrs = room.attributes
+      ? Object.keys(room.attributes).filter(k => room.attributes[k])
+      : [];
+    const savedAttrs = existingStatus.assignmentAttributes || {};
+    const reconciledAttrs = {};
+    roomOwnAttrs.forEach(key => {
+      reconciledAttrs[key] = Object.prototype.hasOwnProperty.call(savedAttrs, key)
+        ? !!savedAttrs[key]
+        : true;
+    });
+    setAssignmentAttributes(reconciledAttrs);
+
     setEarlyCheckIn(existingStatus.earlyCheckIn || false);
     setLateCheckOut(existingStatus.lateCheckOut || false);
     setManagerNotes(existingStatus.managerNotes || '');

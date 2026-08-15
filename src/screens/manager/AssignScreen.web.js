@@ -3,7 +3,11 @@ import { useTranslation } from 'react-i18next';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert,
 } from 'react-native';
-import * as XLSX from 'xlsx';
+// NOTE: switched from the plain 'xlsx' package to 'xlsx-js-style'. Same API
+// (utils.book_new, aoa_to_sheet, writeFile, etc.) but it actually WRITES cell
+// styles (bold, borders, fills) into the .xlsx file — the vanilla community
+// 'xlsx' package silently drops styling on write. Run `npm install xlsx-js-style`.
+import XLSX from 'xlsx-js-style';
 import Icon from '../../components/Icon';
 import { COLORS, RADIUS, FONTS, FONT_SIZE, SPACING, SHADOW } from '../../theme';
 import {
@@ -19,12 +23,13 @@ const BED_STATES = [
   { key: 'noone',    label: 'Inspected',  color: '#22C55E', bg: '#F0FDF4' },    // Green
 ];
 const BED_CYCLE = ['clean', 'stayover', 'late', 'early', 'noone'];
+const BED_STATE_LABELS = Object.fromEntries(BED_STATES.map(s => [s.key, s.label]));
 
 const CLEANER_COLORS = [
   '#2563EB', '#7C3AED', '#DB2777', '#EA580C', '#65A30D', '#0891B2', '#4F46E5', '#BE123C',
 ];
 
-const EXTRA_BLANK_ROWS = 5;
+const EXTRA_BLANK_ROWS = 4;
 function formatDateIT(d) {
   const day = String(d.getDate()).padStart(2, '0');
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -34,6 +39,109 @@ function sanitizeSheetName(name) {
   const cleaned = (name || 'Cleaner').replace(/[:\\/?*[\]]/g, '').trim();
   return cleaned.slice(0, 31) || 'Cleaner';
 }
+
+/* ─── Excel export styling ─────────────────────────────────────── */
+const XLS_BORDER_THIN = { style: 'thin', color: { rgb: 'FFCBD5E1' } };
+const XLS_BORDER_ALL = { top: XLS_BORDER_THIN, bottom: XLS_BORDER_THIN, left: XLS_BORDER_THIN, right: XLS_BORDER_THIN };
+const XLS_BORDER_BOTTOM_THICK = { bottom: { style: 'medium', color: { rgb: 'FF334155' } } };
+
+const xlsStyles = {
+  title: {
+    font: { bold: true, sz: 14, color: { rgb: 'FFFFFFFF' } },
+    fill: { fgColor: { rgb: 'FF1E3A5F' } },
+    alignment: { horizontal: 'center', vertical: 'center' },
+  },
+  header: {
+    font: { bold: true, sz: 11, color: { rgb: 'FFFFFFFF' } },
+    fill: { fgColor: { rgb: 'FF334155' } },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+    border: XLS_BORDER_ALL,
+  },
+  roomCell: (shaded) => ({
+    font: { bold: true, sz: 11 },
+    fill: shaded ? { fgColor: { rgb: 'FFF8FAFC' } } : undefined,
+    alignment: { horizontal: 'left', vertical: 'top', wrapText: true },
+    border: XLS_BORDER_ALL,
+  }),
+  dataCell: (shaded) => ({
+    font: { sz: 10 },
+    fill: shaded ? { fgColor: { rgb: 'FFF8FAFC' } } : undefined,
+    alignment: { horizontal: 'left', vertical: 'top', wrapText: true },
+    border: XLS_BORDER_ALL,
+  }),
+  commonOnlyCell: (shaded) => ({
+    font: { bold: true, sz: 10, italic: true, color: { rgb: 'FF1E3A5F' } },
+    fill: { fgColor: { rgb: 'FFDCEAFB' } },
+    alignment: { horizontal: 'left', vertical: 'top', wrapText: true },
+    border: XLS_BORDER_ALL,
+  }),
+  flagsCell: (shaded) => ({
+    font: { bold: true, sz: 10, color: { rgb: 'FFB45309' } },
+    fill: shaded ? { fgColor: { rgb: 'FFF8FAFC' } } : undefined,
+    alignment: { horizontal: 'left', vertical: 'top', wrapText: true },
+    border: XLS_BORDER_ALL,
+  }),
+  doneCell: (shaded) => ({
+    font: { sz: 11 },
+    fill: shaded ? { fgColor: { rgb: 'FFF8FAFC' } } : undefined,
+    alignment: { horizontal: 'center', vertical: 'middle' },
+    border: XLS_BORDER_ALL,
+  }),
+  signatureLabel: {
+    font: { bold: true, sz: 10 },
+    alignment: { horizontal: 'left', vertical: 'bottom' },
+  },
+  signatureLine: {
+    border: XLS_BORDER_BOTTOM_THICK,
+  },
+  blankRow: {
+    border: XLS_BORDER_ALL,
+  },
+};
+
+
+// ─── Simple "are you sure?" confirmation dialog ──────────────────
+function ConfirmDialog({ visible, title, message, confirmLabel, onConfirm, onCancel }) {
+  if (!visible) return null;
+  return (
+    <View style={confirmStyles.overlay}>
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onCancel} />
+      <View style={confirmStyles.card}>
+        <Text style={confirmStyles.title}>{title}</Text>
+        <Text style={confirmStyles.message}>{message}</Text>
+        <View style={confirmStyles.actions}>
+          <TouchableOpacity onPress={onCancel} style={[confirmStyles.btn, confirmStyles.btnCancel]}>
+            <Text style={confirmStyles.btnText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onConfirm} style={[confirmStyles.btn, confirmStyles.btnDanger]}>
+            <Text style={[confirmStyles.btnText, { color: COLORS.white }]}>{confirmLabel || 'Confirm'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const confirmStyles = StyleSheet.create({
+  overlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center', justifyContent: 'center',
+    padding: SPACING[6], zIndex: 60,
+  },
+  card: {
+    width: '100%', maxWidth: 400,
+    backgroundColor: COLORS.surface, borderRadius: RADIUS.lg,
+    padding: SPACING[5], ...SHADOW.md,
+  },
+  title: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text, marginBottom: SPACING[2] },
+  message: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.textSecondary, marginBottom: SPACING[5] },
+  actions: { flexDirection: 'row', gap: SPACING[3] },
+  btn: { flex: 1, paddingVertical: SPACING[3], borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  btnCancel: { backgroundColor: COLORS.surface, borderColor: COLORS.border },
+  btnDanger: { backgroundColor: COLORS.danger, borderColor: COLORS.danger },
+  btnText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.md, color: COLORS.text },
+});
 
 export default function AssignScreen() {
   const { t } = useTranslation();
@@ -55,6 +163,13 @@ export default function AssignScreen() {
   const [assignmentAttributes, setAssignmentAttributes] = useState({});
   const [earlyCheckIn, setEarlyCheckIn] = useState(false);
   const [lateCheckOut, setLateCheckOut] = useState(false);
+
+  // Pending cleaner chosen for a bulk (multi-room) assignment — not applied until
+  // the manager taps "Confirm" in the selection bar.
+  const [bulkCleanerId, setBulkCleanerId] = useState(null);
+
+  // Which "are you sure?" dialog is open: null | 'clearAll' | 'resetBeds'
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   const filteredRooms = useMemo(() => {
     if (!search.trim()) return rooms;
@@ -112,6 +227,7 @@ export default function AssignScreen() {
         status.earlyCheckIn || false, status.lateCheckOut || false);
     }
     setSelectedRoomIds(new Set());
+    setBulkCleanerId(null);
   }, [selectedRoomIds, assignRoomWithDetails, roomStatus]);
 
   const handleUnassign = useCallback((roomId) => {
@@ -161,38 +277,147 @@ export default function AssignScreen() {
     const wb = XLSX.utils.book_new();
     const dateStr = formatDateIT(new Date());
     const usedSheetNames = new Set();
+    const COLS = ['Room', 'Beds', 'Flags', 'Notes', 'Done'];
+    const COL_COUNT = COLS.length;
+
     assignedCleanerIds.forEach(cleanerId => {
       const cleaner = cleaners.find(c => c.id === cleanerId);
       if (!cleaner) return;
       const assigned = rooms.filter(r => r.assignedTo === cleanerId).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+      // Build plain values first; we'll style cell-by-cell afterwards.
       const aoa = [];
       aoa.push([`${cleaner.username} – ${dateStr}`]);
-      aoa.push(['Room', 'Beds', 'Done']);
+      aoa.push(COLS);
+
+      // Track per-row metadata needed for styling/row-height (kept in the
+      // same order as aoa data rows).
+      const rowMeta = [];
+
       assigned.forEach(room => {
         const status = roomStatus[room.id] || {};
-        let beds = '';
+        let bedsText = '';
+        let isCommonOnly = false;
 
         if (status.commonOnly) {
-          beds = 'Refresh';
+          isCommonOnly = true;
+          bedsText = 'Common areas only';
         } else if (room.type === 'dorm' && room.beds?.length) {
           const assign = status.assignmentBedStatus || {};
-          beds = room.beds
+          const lines = room.beds
             .filter(b => (assign[b.id]?.status || 'noone') !== 'noone')
-            .map(b => b.name)
-            .join('-');
+            .map(b => {
+              const bedState = assign[b.id]?.status || 'clean';
+              // "To clean" is the default expected action, so just the bed
+              // name is enough; anything else (stay-over, late, early) gets
+              // its state spelled out right next to the bed.
+              return bedState === 'clean' ? b.name : `${b.name} — ${BED_STATE_LABELS[bedState]}`;
+            });
+          bedsText = lines.length ? lines.join('\n') : 'All beds inspected ✓';
         } else if (room.type === 'private') {
           const attrs = status.assignmentAttributes || {};
           const selected = Object.keys(attrs).filter(key => attrs[key]);
-          beds = selected.join('-');
+          bedsText = selected.length ? selected.join(', ') : '';
         }
 
-        aoa.push([room.name, beds, '']);
+        const flagParts = [];
+        if (status.earlyCheckIn) flagParts.push('Early check-in');
+        if (status.lateCheckOut) flagParts.push('Late check-out');
+        const flagsText = flagParts.join('\n');
+
+        const notesText = status.managerNotes || '';
+
+        aoa.push([room.name, bedsText, flagsText, notesText, '']);
+        rowMeta.push({
+          isCommonOnly,
+          lineCount: Math.max(
+            1,
+            bedsText.split('\n').length,
+            flagsText.split('\n').length,
+            notesText.split('\n').length
+          ),
+        });
       });
-      for (let i = 0; i < EXTRA_BLANK_ROWS; i++) aoa.push(['', '', '']);
-      aoa.push(['Signature', '', 'End Time:']);
+
+      const dataStartRow = 2; // 0-indexed: row 0 = title, row 1 = header
+      const dataEndRow = dataStartRow + assigned.length - 1;
+
+      for (let i = 0; i < EXTRA_BLANK_ROWS; i++) aoa.push(['', '', '', '', '']);
+      const blankStartRow = dataEndRow + 1;
+      const blankEndRow = blankStartRow + EXTRA_BLANK_ROWS - 1;
+
+      const signatureRow = blankEndRow + 1;
+      aoa.push(['Signature:', '', '', 'End Time:', '']);
+
       const ws = XLSX.utils.aoa_to_sheet(aoa);
-      ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
-      ws['!cols'] = [{ wch: 12 }, { wch: 22 }, { wch: 14 }];
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: COL_COUNT - 1 } },
+        { s: { r: signatureRow, c: 1 }, e: { r: signatureRow, c: 2 } },
+      ];
+      ws['!cols'] = [{ wch: 12 }, { wch: 32 }, { wch: 16 }, { wch: 32 }, { wch: 9 }];
+
+      // ── Title row ──
+      for (let c = 0; c < COL_COUNT; c++) {
+        const addr = XLSX.utils.encode_cell({ r: 0, c });
+        if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+        ws[addr].s = xlsStyles.title;
+      }
+      ws['!rows'] = ws['!rows'] || [];
+      ws['!rows'][0] = { hpt: 24 };
+
+      // ── Header row ──
+      for (let c = 0; c < COL_COUNT; c++) {
+        const addr = XLSX.utils.encode_cell({ r: 1, c });
+        ws[addr].s = xlsStyles.header;
+      }
+      ws['!rows'][1] = { hpt: 20 };
+
+      // ── Data rows ──
+      assigned.forEach((room, i) => {
+        const r = dataStartRow + i;
+        const meta = rowMeta[i];
+        const shaded = i % 2 === 1;
+        for (let c = 0; c < COL_COUNT; c++) {
+          const addr = XLSX.utils.encode_cell({ r, c });
+          if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+          if (c === 0) ws[addr].s = xlsStyles.roomCell(shaded);
+          else if (c === 1) ws[addr].s = meta.isCommonOnly ? xlsStyles.commonOnlyCell(shaded) : xlsStyles.dataCell(shaded);
+          else if (c === 2) ws[addr].s = xlsStyles.flagsCell(shaded);
+          else if (c === 3) ws[addr].s = xlsStyles.dataCell(shaded);
+          else ws[addr].s = xlsStyles.doneCell(shaded);
+        }
+        ws['!rows'][r] = { hpt: Math.max(18, meta.lineCount * 14) };
+      });
+
+      // ── Blank spacer rows (still gridded, so managers/cleaners can jot
+      //     down extra notes by hand if needed) ──
+      for (let r = blankStartRow; r <= blankEndRow; r++) {
+        for (let c = 0; c < COL_COUNT; c++) {
+          const addr = XLSX.utils.encode_cell({ r, c });
+          if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+          ws[addr].s = xlsStyles.blankRow;
+        }
+      }
+
+      // ── Signature / end-time row ──
+      {
+        const addrSigLabel = XLSX.utils.encode_cell({ r: signatureRow, c: 0 });
+        const addrSigLine = XLSX.utils.encode_cell({ r: signatureRow, c: 1 });
+        const addrEndLabel = XLSX.utils.encode_cell({ r: signatureRow, c: 3 });
+        const addrEndLine = XLSX.utils.encode_cell({ r: signatureRow, c: 4 });
+        if (!ws[addrSigLine]) ws[addrSigLine] = { t: 's', v: '' };
+        if (!ws[addrEndLine]) ws[addrEndLine] = { t: 's', v: '' };
+        ws[addrSigLabel].s = xlsStyles.signatureLabel;
+        ws[addrSigLine].s = xlsStyles.signatureLine;
+        ws[addrEndLabel].s = xlsStyles.signatureLabel;
+        ws[addrEndLine].s = xlsStyles.signatureLine;
+        ws['!rows'][signatureRow] = { hpt: 26 };
+      }
+
+      // ── Print setup: one page wide, landscape, small margins ──
+      ws['!pageSetup'] = { orientation: 'landscape', fitToWidth: 1, fitToHeight: 0, scale: 95 };
+      ws['!margins'] = { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 };
+
       let name = sanitizeSheetName(cleaner.username);
       let unique = name, n = 1;
       while (usedSheetNames.has(unique)) unique = `${name.slice(0, 28)}_${n++}`;
@@ -201,6 +426,7 @@ export default function AssignScreen() {
     });
     XLSX.writeFile(wb, `assignment_sheets_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
+
 
   const openDetail = (room) => {
     const currentCleaner = cleaners.find(c => c.id === room.assignedTo);
@@ -215,7 +441,23 @@ export default function AssignScreen() {
     }
     setBedAssignments(beds);
     setCommonOnly(existing.commonOnly || false);
-    setAssignmentAttributes(existing.assignmentAttributes || (room.attributes ? { ...room.attributes } : {}));
+
+    // Reconcile with the room's CURRENT attribute configuration (Rooms/Setup is the
+    // source of truth for which attributes apply to this room). We only reuse a
+    // true/false choice from a previous assignment for attributes that still exist
+    // on the room today; anything new or changed since then defaults to selected.
+    const roomOwnAttrs = room.attributes
+      ? Object.keys(room.attributes).filter(k => room.attributes[k])
+      : [];
+    const savedAttrs = existing.assignmentAttributes || {};
+    const reconciledAttrs = {};
+    roomOwnAttrs.forEach(key => {
+      reconciledAttrs[key] = Object.prototype.hasOwnProperty.call(savedAttrs, key)
+        ? !!savedAttrs[key]
+        : true;
+    });
+    setAssignmentAttributes(reconciledAttrs);
+
     setEarlyCheckIn(existing.earlyCheckIn || false);
     setLateCheckOut(existing.lateCheckOut || false);
     setManagerNotes(existing.managerNotes || '');
@@ -240,6 +482,35 @@ export default function AssignScreen() {
     closePanel();
   };
 
+  // Lets the manager save the bed/attribute state for a room WITHOUT assigning
+  // it to a cleaner yet — useful for prepping several rooms' bed states first
+  // and deciding who cleans what afterwards.
+  // Safety net: if a cleaner IS already selected (e.g. the manager picked one
+  // and then tapped this button by mistake, expecting it to assign), treat it
+  // as a real assign instead of silently leaving the room unassigned.
+  const handleSaveStateFromPanel = async () => {
+    if (!selectedRoom) return;
+    if (selectedCleaner) {
+      await handleAssignFromPanel();
+      return;
+    }
+    const finalBeds = {};
+    if (selectedRoom.type === 'dorm' && selectedRoom.beds) {
+      selectedRoom.beds.forEach(b => { finalBeds[b.id] = bedAssignments[b.id] || { status: 'noone', reason: 'noone' }; });
+    }
+    const attrs = {};
+    Object.entries(assignmentAttributes).forEach(([k, v]) => { if (v) attrs[k] = true; });
+    await updateRoomStatus(selectedRoom.id, {
+      assignmentBedStatus: finalBeds,
+      commonOnly,
+      assignmentAttributes: attrs,
+      earlyCheckIn,
+      lateCheckOut,
+      managerNotes,
+    });
+    closePanel();
+  };
+
   if (!rooms.length) return <EmptyState icon="📋" title={t('noRoomsToAssign')} subtitle={t('addRoomsFirst')} />;
   if (!cleaners.length) return <EmptyState icon="👤" title={t('noCleaners')} subtitle={t('addCleanersFirst')} />;
 
@@ -247,6 +518,28 @@ export default function AssignScreen() {
     () => rooms.filter(r => selectedRoomIds.has(r.id)),
     [rooms, selectedRoomIds]
   );
+
+  // If every currently-selected room already happens to be assigned to the
+  // same cleaner (e.g. the manager assigned them one-by-one via the side
+  // panel), pre-fill that as the bulk cleaner so Confirm works right away.
+  const autoDetectedCleanerId = (() => {
+    if (!selectedRoomsList.length) return null;
+    const assignedIds = selectedRoomsList.map(r => r.assignedTo).filter(Boolean);
+    if (assignedIds.length !== selectedRoomsList.length) return null;
+    return assignedIds.every(id => id === assignedIds[0]) ? assignedIds[0] : null;
+  })();
+  const displayCleanerId = bulkCleanerId || autoDetectedCleanerId;
+  const displayCleaner = cleaners.find(c => c.id === displayCleanerId) || null;
+
+  const handleConfirmBulkAssign = async () => {
+    if (!displayCleanerId) return;
+    await bulkAssign(displayCleanerId);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedRoomIds(new Set());
+    setBulkCleanerId(null);
+  };
 
   return (
     <View style={styles.container}>
@@ -271,16 +564,16 @@ export default function AssignScreen() {
             <Text style={styles.toolBtnText}>{t('printSheets') || 'Print'}</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={resetBedStates}
+            onPress={() => setConfirmDialog('resetBeds')}
             style={[styles.toolBtn, { backgroundColor: COLORS.background, borderColor: COLORS.border }]}
             activeOpacity={0.7}
           >
-            <Icon name="refresh" size={16} color={COLORS.textSecondary} />
+            <Icon name="Cartellino" size={16} color={COLORS.textSecondary} />
             <Text style={[styles.toolBtnText, { color: COLORS.textSecondary }]}>
               {t('resetBeds') || 'Reset Beds'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={clearAll} style={[styles.toolBtn, { backgroundColor: COLORS.dangerLight, borderColor: COLORS.danger }]}>
+          <TouchableOpacity onPress={() => setConfirmDialog('clearAll')} style={[styles.toolBtn, { backgroundColor: COLORS.dangerLight, borderColor: COLORS.danger }]}>
             <Icon name="close-circle-outline" size={16} color={COLORS.danger} />
             <Text style={[styles.toolBtnText, { color: COLORS.danger }]}>{t('clearAll')}</Text>
           </TouchableOpacity>
@@ -301,14 +594,38 @@ export default function AssignScreen() {
                   </Text>
                 </View>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectionScroll}>
-                  {selectedRoomsList.map(room => (
-                    <TouchableOpacity key={room.id} style={styles.selectionChip} onPress={() => toggleRoomSelection(room.id)}>
-                      <Text style={styles.selectionChipText}>{room.name}</Text>
-                      <Icon name="close" size={12} color={COLORS.primary} style={{ marginLeft: 4 }} />
-                    </TouchableOpacity>
-                  ))}
+                  {selectedRoomsList.map(room => {
+                    const roomCleaner = cleaners.find(c => c.id === room.assignedTo);
+                    return (
+                      <TouchableOpacity key={room.id} style={styles.selectionChip} onPress={() => toggleRoomSelection(room.id)}>
+                        <Text style={styles.selectionChipText}>
+                          {room.name}{roomCleaner ? ` · ${roomCleaner.username}` : ''}
+                        </Text>
+                        <Icon name="close" size={12} color={COLORS.primary} style={{ marginLeft: 4 }} />
+                      </TouchableOpacity>
+                    );
+                  })}
                 </ScrollView>
-                <TouchableOpacity style={styles.clearSelectionBtn} onPress={() => setSelectedRoomIds(new Set())}>
+                {displayCleaner && (
+                  <View style={styles.pendingCleanerTag}>
+                    <View style={[styles.cleanerDot, { backgroundColor: CLEANER_COLORS[cleaners.findIndex(c => c.id === displayCleaner.id) % CLEANER_COLORS.length] }]} />
+                    <Text style={styles.pendingCleanerText}>
+                      {(t('assigningTo') || 'Assigning to') + ': ' + displayCleaner.username}
+                    </Text>
+                  </View>
+                )}
+                <TouchableOpacity
+                  style={[styles.confirmSelectionBtn, !displayCleanerId && styles.confirmSelectionBtnDisabled]}
+                  onPress={handleConfirmBulkAssign}
+                  disabled={!displayCleanerId}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="checkmark-circle-outline" size={16} color={displayCleanerId ? COLORS.white : COLORS.textMuted} />
+                  <Text style={[styles.confirmSelectionText, !displayCleanerId && { color: COLORS.textMuted }]}>
+                    {t('confirm') || 'Confirm'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.clearSelectionBtn} onPress={handleClearSelection}>
                   <Text style={styles.clearSelectionText}>{t('clearSelection') || 'Clear'}</Text>
                 </TouchableOpacity>
               </View>
@@ -412,33 +729,43 @@ export default function AssignScreen() {
                             </View>
                           )}
 
-                          {/* Private room attributes – clickable toggles */}
-                          {room.type === 'private' && roomAttributes.length > 0 && (
-                            <View style={styles.attributeList}>
-                              {roomAttributes.map(attr => {
-                                const isActive = (status.assignmentAttributes || {})[attr] || false;
-                                return (
-                                  <TouchableOpacity
-                                    key={attr}
-                                    style={[styles.attrChip, isActive && styles.attrChipActive]}
-                                    onPress={() => toggleRoomAttribute(room.id, attr)}
-                                    disabled={isFrozen}
-                                    activeOpacity={0.7}
-                                  >
-                                    <Icon
-                                      name={isActive ? 'checkmark-circle' : 'ellipse-outline'}
-                                      size={14}
-                                      color={isActive ? COLORS.primary : (isFrozen ? COLORS.textMuted : COLORS.textSecondary)}
-                                      style={{ marginRight: 4 }}
-                                    />
-                                    <Text style={[styles.attrChipText, isActive && { color: COLORS.primary }, isFrozen && { color: COLORS.textMuted }]}>
-                                      {attr}
-                                    </Text>
-                                  </TouchableOpacity>
-                                );
-                              })}
-                            </View>
-                          )}
+                          {/* Private room attributes – clickable toggles (ONLY the ones
+                              actually configured for THIS room in Setup → Rooms) */}
+                          {room.type === 'private' && (() => {
+                            const roomOwnAttrs = room.attributes
+                              ? Object.keys(room.attributes).filter(a => room.attributes[a])
+                              : [];
+                            if (roomOwnAttrs.length === 0) return null;
+                            const savedAttrs = status.assignmentAttributes;
+                            return (
+                              <View style={styles.attributeList}>
+                                {roomOwnAttrs.map(attr => {
+                                  const isActive = savedAttrs && Object.prototype.hasOwnProperty.call(savedAttrs, attr)
+                                    ? !!savedAttrs[attr]
+                                    : true;
+                                  return (
+                                    <TouchableOpacity
+                                      key={attr}
+                                      style={[styles.attrChip, isActive && styles.attrChipActive]}
+                                      onPress={() => toggleRoomAttribute(room.id, attr)}
+                                      disabled={isFrozen}
+                                      activeOpacity={0.7}
+                                    >
+                                      <Icon
+                                        name={isActive ? 'checkmark-circle' : 'ellipse-outline'}
+                                        size={14}
+                                        color={isActive ? COLORS.primary : (isFrozen ? COLORS.textMuted : COLORS.textSecondary)}
+                                        style={{ marginRight: 4 }}
+                                      />
+                                      <Text style={[styles.attrChipText, isActive && { color: COLORS.primary }, isFrozen && { color: COLORS.textMuted }]}>
+                                        {attr}
+                                      </Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            );
+                          })()}
 
                           {/* Common areas checkbox – always active */}
                           <View style={styles.commonRow}>
@@ -490,10 +817,56 @@ export default function AssignScreen() {
           </ScrollView>
         </View>
 
-        {/* Sidebar unchanged */}
+        {/* Sidebar — the cleaner picker for bulk-assign is pinned at the top so it's
+            visible the instant you select rooms; the full roster scrolls below it */}
         <View style={styles.sidebar}>
+          {selectedRoomIds.size > 0 && (
+            <View style={styles.bulkSection}>
+              <Text style={styles.bulkLabel}>{t('assignSelected', { count: selectedRoomIds.size }) || `Assign ${selectedRoomIds.size} rooms`}</Text>
+              <Text style={styles.bulkHint}>
+                {t('bulkPickHint') || 'Pick a cleaner, then hit Confirm in the bar above.'}
+              </Text>
+              <ScrollView style={styles.bulkCleanerScroll} nestedScrollEnabled>
+                <View style={styles.bulkCleanerCard}>
+                  {[...activeCleaners]
+                    .sort((a, b) => a.username.localeCompare(b.username))
+                    .map((cleaner, i, arr) => {
+                      const isPicked = displayCleanerId === cleaner.id;
+                      const colorIdx = cleaners.findIndex(c => c.id === cleaner.id);
+                      const color = CLEANER_COLORS[colorIdx % CLEANER_COLORS.length];
+                      const isLast = i === arr.length - 1;
+                      return (
+                        <TouchableOpacity
+                          key={cleaner.id}
+                          style={[
+                            styles.bulkCleanerRow,
+                            isLast && { borderBottomWidth: 0 },
+                            isPicked && styles.bulkCleanerRowActive,
+                          ]}
+                          onPress={() => setBulkCleanerId(cleaner.id)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={[styles.bulkCleanerAvatar, { backgroundColor: color }]}>
+                            <Text style={styles.bulkCleanerAvatarText}>
+                              {cleaner.username.charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                          <Text style={[styles.bulkCleanerRowText, isPicked && styles.bulkCleanerRowTextActive]}>
+                            {cleaner.username}
+                          </Text>
+                          <View style={[styles.radioOuter, isPicked && styles.radioOuterActive]}>
+                            {isPicked && <View style={styles.radioInner} />}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                </View>
+              </ScrollView>
+            </View>
+          )}
+
           <Text style={styles.sidebarTitle}>{t('workingToday') || 'Working Today'}</Text>
-          <ScrollView style={{ flex: 1 }}>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.sidebarScrollContent}>
             {cleaners.map((cleaner, idx) => {
               const isActive = activeCleanerIds.has(cleaner.id);
               const color = CLEANER_COLORS[idx % CLEANER_COLORS.length];
@@ -519,24 +892,14 @@ export default function AssignScreen() {
               );
             })}
           </ScrollView>
-          {selectedRoomIds.size > 0 && (
-            <View style={styles.bulkSection}>
-              <Text style={styles.bulkLabel}>{t('assignSelected', { count: selectedRoomIds.size }) || `Assign ${selectedRoomIds.size} rooms`}</Text>
-              <View style={styles.bulkCleanerList}>
-                {activeCleaners.map(cleaner => (
-                  <TouchableOpacity key={cleaner.id} style={styles.bulkCleanerBtn} onPress={() => bulkAssign(cleaner.id)}>
-                    <Text style={styles.bulkCleanerText}>{cleaner.username}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
         </View>
       </View>
 
-      {/* Side panel unchanged */}
+      {/* Side panel — now blocks interaction with the rest of the screen while open */}
       {panelOpen && (
-        <View style={styles.panel}>
+        <View style={styles.panelOverlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closePanel} />
+          <View style={styles.panel}>
             <View style={styles.panelHeader}>
             <View style={{ flex: 1 }}>
                 <Text style={styles.panelTitle}>{t('assign')} {selectedRoom?.name}</Text>
@@ -652,10 +1015,18 @@ export default function AssignScreen() {
             <Input value={managerNotes} onChangeText={setManagerNotes} placeholder={t('notesPlaceholder2')} multiline style={{ marginBottom: SPACING[2] }} />
             </ScrollView>
 
-            <View style={styles.panelFooter}>
+            <View style={[styles.panelFooter, { flexWrap: 'wrap' }]}>
             <TouchableOpacity onPress={closePanel} style={[styles.panelBtn, styles.panelBtnCancel]}>
                 <Text style={styles.panelBtnText}>{t('cancel')}</Text>
             </TouchableOpacity>
+            {!selectedCleaner && (
+              <TouchableOpacity
+                  onPress={handleSaveStateFromPanel}
+                  style={[styles.panelBtn, styles.panelBtnSecondary]}
+              >
+                  <Text style={[styles.panelBtnText, { color: COLORS.primary }]}>{t('saveState') || 'Save state'}</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
                 onPress={handleAssignFromPanel}
                 disabled={!selectedCleaner}
@@ -664,8 +1035,35 @@ export default function AssignScreen() {
                 <Text style={[styles.panelBtnText, { color: COLORS.white }]}>{t('assign')}</Text>
             </TouchableOpacity>
             </View>
+            {!selectedCleaner && (
+              <Text style={styles.panelFooterHint}>
+                {t('saveStateHint') || "No cleaner picked yet — \"Save state\" keeps your bed setup without assigning anyone."}
+              </Text>
+            )}
+        </View>
         </View>
         )}
+
+        <ConfirmDialog
+          visible={!!confirmDialog}
+          title={
+            confirmDialog === 'clearAll'
+              ? (t('clearAllConfirmTitle') || 'Clear all assignments?')
+              : (t('resetBedsConfirmTitle') || 'Reset all bed states?')
+          }
+          message={
+            confirmDialog === 'clearAll'
+              ? (t('clearAllConfirmMsg') || "This will unassign every room from its cleaner. This can't be undone.")
+              : (t('resetBedsConfirmMsg') || "This will reset every dorm bed back to Inspected for all rooms. This can't be undone.")
+          }
+          confirmLabel={t('confirm') || 'Confirm'}
+          onCancel={() => setConfirmDialog(null)}
+          onConfirm={async () => {
+            if (confirmDialog === 'clearAll') clearAll();
+            else if (confirmDialog === 'resetBeds') await resetBedStates();
+            setConfirmDialog(null);
+          }}
+        />
     </View>
   );
 }
@@ -739,6 +1137,24 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.primary,
   },
   selectionChipText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.xs, color: COLORS.primary },
+  pendingCleanerTag: {
+    flexDirection: 'row', alignItems: 'center',
+    marginLeft: SPACING[2],
+    paddingHorizontal: SPACING[2], paddingVertical: 2,
+    gap: 4,
+  },
+  pendingCleanerText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.text },
+  confirmSelectionBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    marginLeft: SPACING[2],
+    paddingHorizontal: SPACING[3], paddingVertical: SPACING[1],
+    borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary,
+  },
+  confirmSelectionBtnDisabled: {
+    backgroundColor: COLORS.surface, borderColor: COLORS.border,
+  },
+  confirmSelectionText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.white },
   clearSelectionBtn: {
     marginLeft: SPACING[2],
     paddingHorizontal: SPACING[3], paddingVertical: SPACING[1],
@@ -825,10 +1241,11 @@ const styles = StyleSheet.create({
 
   /* Sidebar narrower */
   sidebar: {
-    width: 220, backgroundColor: COLORS.surface,
+    width: 260, backgroundColor: COLORS.surface,
     borderLeftWidth: 1, borderLeftColor: COLORS.border,
     padding: SPACING[4],
   },
+  sidebarScrollContent: { paddingBottom: SPACING[6] },
   sidebarTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.md, color: COLORS.text, marginBottom: SPACING[3] },
   cleanerItem: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING[2],
@@ -844,23 +1261,50 @@ const styles = StyleSheet.create({
   },
   checkboxMiniActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
 
-  bulkSection: { borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: SPACING[3], marginTop: SPACING[2] },
-  bulkLabel: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.sm, color: COLORS.text, marginBottom: SPACING[2] },
-  bulkCleanerList: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2] },
-  bulkCleanerBtn: {
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: SPACING[3], paddingVertical: SPACING[2],
-    borderWidth: 1, borderColor: COLORS.primary,
+  bulkSection: { borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingBottom: SPACING[3], marginBottom: SPACING[3] },
+  bulkLabel: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.sm, color: COLORS.text, marginBottom: SPACING[1] },
+  bulkHint: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginBottom: SPACING[2] },
+
+  /* Cleaner picker for bulk assign — a clean, sorted, avatar-based list
+     instead of a loose wrap of pill buttons. Height is capped with its own
+     scroll so a long roster never pushes the rest of the sidebar out of view. */
+  bulkCleanerScroll: { maxHeight: 240 },
+  bulkCleanerCard: {
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surface, overflow: 'hidden',
   },
-  bulkCleanerText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.sm, color: COLORS.primary },
+  bulkCleanerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING[2],
+    paddingVertical: SPACING[2], paddingHorizontal: SPACING[3],
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  },
+  bulkCleanerRowActive: { backgroundColor: COLORS.primaryLight },
+  bulkCleanerAvatar: {
+    width: 26, height: 26, borderRadius: 13,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  bulkCleanerAvatarText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.white },
+  bulkCleanerRowText: { flex: 1, fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.text },
+  bulkCleanerRowTextActive: { fontFamily: FONTS.bold, color: COLORS.primary },
+  radioOuter: {
+    width: 18, height: 18, borderRadius: 9,
+    borderWidth: 2, borderColor: COLORS.border,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  radioOuterActive: { borderColor: COLORS.primary },
+  radioInner: { width: 9, height: 9, borderRadius: 5, backgroundColor: COLORS.primary },
 
   /* Side panel */
+  panelOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    flexDirection: 'row', justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    zIndex: 20,
+  },
   panel: {
-    position: 'absolute', right: 0, top: 0, bottom: 0,
     width: 440, backgroundColor: COLORS.surface,
     borderLeftWidth: 1, borderLeftColor: COLORS.border,
-    ...SHADOW.lg, zIndex: 20,
+    ...SHADOW.lg,
   },
   panelHeader: {
     flexDirection: 'row', alignItems: 'flex-start',
@@ -875,10 +1319,15 @@ const styles = StyleSheet.create({
     padding: SPACING[5],
     borderTopWidth: 1, borderTopColor: COLORS.border,
   },
-  panelBtn: { flex: 1, paddingVertical: SPACING[3], borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  panelBtn: { flex: 1, minWidth: 100, paddingVertical: SPACING[3], borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   panelBtnCancel: { backgroundColor: COLORS.surface, borderColor: COLORS.border },
+  panelBtnSecondary: { backgroundColor: COLORS.surface, borderColor: COLORS.primary },
   panelBtnPrimary: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
   panelBtnText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.md, color: COLORS.primary },
+  panelFooterHint: {
+    fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textMuted,
+    textAlign: 'center', paddingHorizontal: SPACING[5], paddingBottom: SPACING[4],
+  },
 
   helperText: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textMuted },
   bedGroup: { paddingBottom: SPACING[3], borderBottomWidth: 1, borderBottomColor: COLORS.border },

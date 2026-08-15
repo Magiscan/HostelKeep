@@ -48,6 +48,10 @@ const resources = {
       saved: 'Saved ✓',
       dailyReport: 'Daily Report',
       resetBeds: 'Reset Beds',
+      assigningTo: 'Assigning To',
+      saveState: 'Save',
+      saveStateHint: 'No cleaner picked yet — \"Save\" keeps your bed setup without assigning anyone.',
+      bulkPickHint: 'Pick a cleaner, then hit Confirm in the bar above.',
 
       moreInfo: 'More',
       workingToday: 'Working Today',
