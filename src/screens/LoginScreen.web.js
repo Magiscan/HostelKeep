@@ -11,9 +11,6 @@ import { COLORS, RADIUS, SHADOW, FONTS, FONT_SIZE, SPACING } from '../theme';
 import { Button, Card, Label, Input } from '../components/UI';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
-import { sendPasswordResetEmail } from 'firebase/auth';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { auth, db } from '../firebase';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const logo = require('../../assets/logo.png');
@@ -32,7 +29,7 @@ const FEATURES = [
 
 export default function LoginScreenWeb() {
   const { t, i18n } = useTranslation();
-  const { login } = useAuth();
+  const { login, requestPasswordReset } = useAuth();
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
   const showPanel = width >= 900;
@@ -66,30 +63,10 @@ export default function LoginScreenWeb() {
       alert('Please enter your username and hostel code first.');
       return;
     }
-    try {
-      const q = query(
-        collection(db, 'users'),
-        where('username', '==', name.trim()),
-        where('hostelCode', '==', hostelCode.trim().toUpperCase())
-      );
-      const snap = await getDocs(q);
-      if (snap.empty) {
-        alert('User not found.');
-        return;
-      }
-      const userData = snap.docs[0].data();
-      const email = userData.recoveryEmail || userData.email;
-      if (email.endsWith('@keepclean.app')) {
-        alert('Your account uses a synthetic email. Please contact your hostel manager.');
-        return;
-      }
-      await sendPasswordResetEmail(auth, email);
-      alert('A password reset email has been sent.');
-    } catch (e) {
-      alert(e.message);
-    }
+    // FIXED: no more unauthenticated query against `users`.
+    const message = await requestPasswordReset(name, hostelCode);
+    alert(message);
   };
-
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       {/* ── Top bar ── */}

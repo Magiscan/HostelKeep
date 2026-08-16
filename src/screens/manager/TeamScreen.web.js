@@ -65,8 +65,8 @@ export default function TeamScreen() {
 
   const handleAddCleaner = async () => {
     if (!name.trim() || !password.trim()) return;
-    if (password.length < 6) {
-      setFormError(t('passwordTooShort') || 'Password must be at least 6 characters.');
+    if (password.length < 8) {
+      setFormError(t('passwordTooShort') || 'Password must be at least 8 characters.');
       return;
     }
     setSaving(true);
@@ -100,14 +100,14 @@ export default function TeamScreen() {
 
   const handleReset = async () => {
     if (!resetModal) return;
-    if (newPassword.length < 6) {
-      setResetError(t('passwordTooShort') || 'Password must be at least 6 characters.');
+    if (newPassword.length < 8) {
+      setResetError(t('passwordTooShort') || 'Password must be at least 8 characters.');
       return;
     }
     setResetSaving(true);
     setResetError('');
     try {
-      await resetCleanerPassword(resetModal.id, newPassword);
+      await resetCleanerPassword(resetModal.id, newPassword, user.hostelCode);
       setResetModal(null);
       setNewPassword('');
     } catch (e) {

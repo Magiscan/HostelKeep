@@ -132,6 +132,7 @@ export function AppProvider({ children }) {
     const roomsQuery = query(collection(db, 'hostels', hostelCode, 'rooms'), orderBy('name'));
     const unsubRooms = onSnapshot(roomsQuery, (snap) => {
       setRooms(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoaded(true);   // FIXED: was fired before any data arrived
     });
 
     const statusQuery = collection(db, 'hostels', hostelCode, 'roomStatus');
@@ -150,8 +151,6 @@ export function AppProvider({ children }) {
     const unsubExtraReq = onSnapshot(extraReqQuery, (snap) => {
       setExtraRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
-
-    setLoaded(true);
 
     return () => {
       unsubHostel();
@@ -274,12 +273,28 @@ export function AppProvider({ children }) {
   }, [hostelCode, rooms]);
 
   const deleteCleaner = useCallback(async (cleanerId) => {
-    await deleteDoc(doc(db, 'users', cleanerId));
-    const roomsQuery = query(collection(db, 'hostels', hostelCode, 'rooms'), where('assignedTo', '==', cleanerId));
+    // Read the profile BEFORE deleting it — we need the username to build the
+    // loginLookup key. Without this the name stays permanently taken.
+    const profile = await getDoc(doc(db, 'users', cleanerId));
+    const username = profile.exists() ? profile.data().username : null;
+
+    const roomsQuery = query(
+      collection(db, 'hostels', hostelCode, 'rooms'),
+      where('assignedTo', '==', cleanerId),
+    );
     const snap = await getDocs(roomsQuery);
     const batch = writeBatch(db);
     snap.forEach(d => batch.update(d.ref, { assignedTo: null }));
+    batch.delete(doc(db, 'users', cleanerId));
+    if (username) {
+      batch.delete(doc(db, 'loginLookup', `${hostelCode}_${username}`));
+    }
     await batch.commit();
+
+    // NOTE: on the Spark plan the Firebase Auth account itself cannot be
+    // deleted from the client. It survives, but is inert — every security rule
+    // begins by reading users/{uid}, and that document is now gone, so the
+    // account can read and write nothing.
   }, [hostelCode]);
 
   const markExtraRoomCleaning = useCallback(async (roomId, cleanerUid, extraTime, notes) => {
@@ -356,6 +371,10 @@ export function AppProvider({ children }) {
 
   const requestExtraRoom = useCallback(async (roomId, cleanerUid, imageBase64 = null) => {
     if (!hostelCode) return;
+    // Firestore caps a document at 1 MiB; the rules reject over 700 KB.
+    if (imageBase64 && imageBase64.length > 700000) {
+      throw new Error('That photo is too large. Please retake it.');
+    }
     const requestRef = doc(db, 'hostels', hostelCode, 'extraRequests', roomId);
     await setDoc(requestRef, {
       cleanerId: cleanerUid,
@@ -381,12 +400,18 @@ export function AppProvider({ children }) {
       extraCleaningTime: 0,
       extraCleaningNotes: '',
     }, { merge: true });
-    await updateDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId), { status: 'approved' });
+    await updateDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId), {
+      status: 'approved',
+      imageBase64: null,   // privacy.html promises deletion on resolve
+    });
   }, [hostelCode]);
 
   const rejectExtraRoom = useCallback(async (roomId) => {
     if (!hostelCode) return;
-    await updateDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId), { status: 'rejected' });
+    await updateDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId), {
+      status: 'rejected',
+      imageBase64: null,   // privacy.html promises deletion on resolve
+    });
   }, [hostelCode]);
 
   const cancelExtraRoomRequest = useCallback(async (roomId) => {
@@ -417,11 +442,11 @@ export function AppProvider({ children }) {
   }, [hostelCode]);
 
   // Check if a daily log already exists for a given date
-  const dailyLogExists = async (date) => {
+  const dailyLogExists = useCallback(async (date) => {
     if (!hostelCode) return false;
     const snap = await getDoc(doc(db, 'hostels', hostelCode, 'dailyLogs', date));
     return snap.exists();
-  };
+  }, [hostelCode]);
 
   // Save a snapshot of today’s work
   const saveDailyLog = useCallback(async (dateOverride = null) => {
@@ -555,6 +580,10 @@ export function AppProvider({ children }) {
     extraRequests,
     cancelExtraRoomRequest,
     cleanupOldExtraRequests,
+    // FIXED: these were in the returned object but missing from the deps, so
+    // consumers were handed stale closures.
+    dailyLogExists,
+    saveDailyLog,
   ]);
 
   return (

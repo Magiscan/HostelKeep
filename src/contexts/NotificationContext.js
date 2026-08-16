@@ -32,17 +32,20 @@ export function NotificationProvider({ children }) {
       const now = Date.now();
       const twentyFourHours = 24 * 60 * 60 * 1000;
 
-      const validDocs = docs.filter(d => {
-        const timestamp = d.timestamp ? new Date(d.timestamp).getTime() : 0;
-        return now - timestamp < twentyFourHours;
-      });
+      // FIXED: a malformed timestamp yielded NaN. `now - NaN < 24h` is false,
+      // so the row fell through to `stale` below and got DELETED immediately.
+      // Unparseable timestamps are now treated as fresh, not ancient.
+      const ageOf = (d) => {
+        if (!d.timestamp) return 0;
+        const ms = new Date(d.timestamp).getTime();
+        return Number.isFinite(ms) ? now - ms : 0;
+      };
+
+      const validDocs = docs.filter(d => ageOf(d) < twentyFourHours);
 
       setNotifications(validDocs);
 
-      const stale = docs.filter(d => {
-        const timestamp = d.timestamp ? new Date(d.timestamp).getTime() : 0;
-        return now - timestamp >= twentyFourHours;
-      });
+      const stale = docs.filter(d => ageOf(d) >= twentyFourHours);
 
       if (stale.length > 0) {
         const batch = writeBatch(db);

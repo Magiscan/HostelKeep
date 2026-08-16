@@ -10,9 +10,6 @@ import { COLORS, RADIUS, SHADOW, FONTS, FONT_SIZE, SPACING } from '../theme';
 import { Button, Card, Label, Input } from '../components/UI';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
-import { sendPasswordResetEmail } from 'firebase/auth';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { auth, db } from '../firebase';
 
 const LANGS = [
   { code: 'en', label: 'English' },
@@ -22,7 +19,7 @@ const LANGS = [
 
 export default function LoginScreen() {
   const { t, i18n } = useTranslation();
-  const { login } = useAuth();
+  const { login, requestPasswordReset } = useAuth();
   const navigation = useNavigation();
   const [hostelCode, setHostelCode] = useState('');
   const [name, setName] = useState('');
@@ -50,31 +47,12 @@ export default function LoginScreen() {
       Alert.alert('Error', 'Please enter your username and hostel code first.');
       return;
     }
-    try {
-      const q = query(
-        collection(db, 'users'),
-        where('username', '==', name.trim()),
-        where('hostelCode', '==', hostelCode.trim().toUpperCase())
-      );
-      const snap = await getDocs(q);
-      if (snap.empty) {
-        Alert.alert('Error', 'User not found.');
-        return;
-      }
-      const userData = snap.docs[0].data();
-      const email = userData.recoveryEmail || userData.email;
-      if (email.endsWith('@keepclean.app')) {
-        Alert.alert(
-          'Cannot reset',
-          'Your account uses a synthetic email. Please contact your hostel manager.'
-        );
-        return;
-      }
-      await sendPasswordResetEmail(auth, email);
-      Alert.alert('Success', 'A password reset email has been sent.');
-    } catch (e) {
-      Alert.alert('Error', e.message);
-    }
+    // FIXED: used to query the `users` collection unauthenticated — the reason
+    // that collection had to be world-readable. It also returned different
+    // messages for "user not found" vs "synthetic email", which let anyone
+    // test whether a username existed. Now the answer is always the same.
+    const message = await requestPasswordReset(name, hostelCode);
+    Alert.alert('Password reset', message);
   };
 
   return (

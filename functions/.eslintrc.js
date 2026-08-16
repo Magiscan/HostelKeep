@@ -1,28 +1,15 @@
+// NOTE: this file must itself satisfy the rules it defines, since `eslint .`
+// lints the config too. Hence double quotes and no space inside braces.
 module.exports = {
-  env: {
-    es6: true,
-    node: true,
-  },
-  parserOptions: {
-    "ecmaVersion": 2018,
-  },
-  extends: [
-    "eslint:recommended",
-    "google",
-  ],
+  root: true,
+  env: {es2022: true, node: true},
+  parserOptions: {ecmaVersion: 2022, sourceType: "script"},
+  extends: ["eslint:recommended", "google"],
   rules: {
-    "no-restricted-globals": ["error", "name", "length"],
-    "prefer-arrow-callback": "error",
-    "quotes": ["error", "double", {"allowTemplateLiterals": true}],
+    "quotes": ["error", "double", {allowTemplateLiterals: true}],
+    "object-curly-spacing": ["error", "never"],
+    "max-len": ["warn", {code: 100}],
+    "require-jsdoc": "off",
+    "valid-jsdoc": "off",
   },
-  overrides: [
-    {
-      files: ["**/*.spec.*"],
-      env: {
-        mocha: true,
-      },
-      rules: {},
-    },
-  ],
-  globals: {},
 };

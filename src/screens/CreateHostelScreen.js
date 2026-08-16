@@ -8,12 +8,10 @@ import { COLORS, RADIUS, SHADOW, FONTS, FONT_SIZE, SPACING } from '../theme';
 import { Button, Card, Label, Input } from '../components/UI';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
-import { db } from '../firebase';
-import { doc, setDoc } from 'firebase/firestore';
 
 export default function CreateHostelScreen() {
   const { t } = useTranslation();
-  const { registerManager, login } = useAuth();
+  const { createHostel } = useAuth();
   const navigation = useNavigation();
   const [hostelName, setHostelName] = useState('');
   const [username, setUsername] = useState('');
@@ -22,39 +20,33 @@ export default function CreateHostelScreen() {
   const [error, setError] = useState('');
   const [recoveryEmail, setRecoveryEmail] = useState('');
 
-  const generateCode = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let result = '';
-    for (let i = 0; i < 6; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-  };
-
   const handleCreate = async () => {
     if (!hostelName.trim() || !username.trim() || !password.trim()) return;
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
     setLoading(true);
     setError('');
 
     try {
-      const code = generateCode();
-
-      // 1. Create the manager's Firebase Auth account (this signs them in)
-      await registerManager(username.trim(), password, code);
-
-      // 2. Now that the user is authenticated, create the hostel document
-      await setDoc(doc(db, 'hostels', code), {
-        name: hostelName.trim(),
-        code,
+      // FIXED: the old flow referenced an undefined `userCred` — a
+      // ReferenceError for anyone who filled in a recovery email, AFTER the
+      // hostel had already been created. createHostel writes the user doc,
+      // the login lookup and the hostel document in the order the security
+      // rules require. Navigation is driven by AuthContext.
+      const code = await createHostel({
+        hostelName: hostelName.trim(),
+        username: username.trim(),
+        password,
+        recoveryEmail: recoveryEmail.trim(),
       });
 
-      if (recoveryEmail.trim()) {
-        await setDoc(doc(db, 'users', userCred.user.uid), { recoveryEmail: recoveryEmail.trim() }, { merge: true });
-      }
-
-      // 3. Login to load the full user object (hostelCode, role, etc.) into context
-      await login(username, password, code);
-      // navigation is handled automatically by AuthContext – no need to navigate
+      Alert.alert(
+        'Hostel created',
+        `Your hostel code is ${code}\n\n` +
+        'Write this down — your cleaners need it to sign in.',
+      );
     } catch (e) {
       setError(e.message);
     } finally {

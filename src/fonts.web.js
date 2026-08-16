@@ -1,5 +1,8 @@
-export const useFonts = () => [true, null];
-export const Inter_400Regular = undefined;
-export const Inter_500Medium = undefined;
-export const Inter_600SemiBold = undefined;
-export const Inter_700Bold = undefined;
+// Web build uses the system font stack (see theme/typography.js), so there is
+// nothing to download. Same signature as expo-font's useFonts, letting App.js
+// call the hook unconditionally instead of wrapping it in a Platform ternary.
+export const INTER_FONTS = {};
+
+export function useFonts() {
+  return [true, null];
+}
