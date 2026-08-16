@@ -122,7 +122,6 @@ src/
 ├── utils/               # Helper functions (responsive scaling)
 └── firebase.js          # Firebase config
 🔒 Security
-Passwords are hashed with bcryptjs (client‑side) and stored in Firestore.
 
 Session tokens are managed by Firebase Authentication.
 

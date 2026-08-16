@@ -4,7 +4,9 @@
 node_modules/
 
 src/firebase.js
-
+src/firebase.config.js
+functions/node_modules/
+.firebase/
 
 # Expo
 .expo/

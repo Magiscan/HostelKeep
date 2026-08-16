@@ -52,6 +52,10 @@ const resources = {
       saveState: 'Save',
       saveStateHint: 'No cleaner picked yet — \"Save\" keeps your bed setup without assigning anyone.',
       bulkPickHint: 'Pick a cleaner, then hit Confirm in the bar above.',
+      resetBedsConfirmTitle: 'Reset Beds',
+      resetBedsConfirmMsg: 'Are you sure you want to reset all beds in this room? This will remove any bed instructions and mark all beds as "To clean".',
+      clearAllConfirmTitle: 'Clear All Assignments',
+      clearAllConfirmMsg: 'Are you sure you want to clear all assignments? This will unassign all rooms from cleaners.',
 
       moreInfo: 'More',
       workingToday: 'Working Today',
