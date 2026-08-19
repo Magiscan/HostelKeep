@@ -10,7 +10,6 @@ import {
   Modal,
   TextInput,
   Alert,
-  Image,
   Pressable,
   FlatList,
 } from 'react-native';
@@ -688,13 +687,14 @@ function DashboardScreen({ highlightRoomId, onRoomOpened }) {
     updateRoomStatus,
     resetAllRoomStatus,
     extraRequests = [],
-    approveExtraRoom,
-    rejectExtraRoom,
   } = useApp();
+  // NOTE: approveExtraRoom / rejectExtraRoom removed from the destructure —
+  // this screen no longer shows extra requests (that now lives only in
+  // ExtraRequestsScreen, reached from its own tab). extraRequests itself
+  // stays, since the CSV export still includes it.
 
   const { t } = useTranslation();
 
-  const [imageViewer, setImageViewer] = useState(null);
   const [search, setSearch] = useState('');
   const [selectedRoom, setSelectedRoom] = useState(null);
 
@@ -1119,66 +1119,6 @@ function DashboardScreen({ highlightRoomId, onRoomOpened }) {
               </View>
             )}
 
-            {/* Extra Room Requests */}
-            {extraRequests.filter(r => r.status === 'pending' || !r.status).length > 0 && !search.trim() && (
-              <View style={{ marginBottom: SPACING[4] }}>
-                <SectionTitle
-                  title={t('extraRoomRequests')}
-                  subtitle={t('extraRequestsSubtitle')}
-                />
-                {extraRequests
-                  .filter(r => r.status === 'pending' || !r.status)
-                  .map(req => {
-                    const room = rooms.find(r => r.id === req.id);
-                    const cleaner = cleaners.find(c => c.id === req.cleanerId);
-                    return (
-                      <Card key={req.id} style={styles.requestCard}>
-                        <View style={styles.requestRow}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.requestRoomName}>
-                              {room?.name || t('unknownRoom')}
-                            </Text>
-                            <Text style={styles.requestCleaner}>
-                              {t('requestedBy', {
-                                name: cleaner?.username || t('unknown'),
-                              })}
-                            </Text>
-                            {req.imageBase64 ? (
-                              <TouchableOpacity onPress={() => setImageViewer(`data:image/jpeg;base64,${req.imageBase64}`)}>
-                                <Image
-                                  source={{ uri: `data:image/jpeg;base64,${req.imageBase64}` }}
-                                  style={{ width: 60, height: 60, borderRadius: RADIUS.sm, marginTop: SPACING[2] }}
-                                />
-                              </TouchableOpacity>
-                            ) : null}
-                          </View>
-                          <View style={styles.requestActions}>
-                            <TouchableOpacity
-                              style={styles.approveBtn}
-                              onPress={() =>
-                                approveExtraRoom(req.id, req.cleanerId)
-                              }
-                            >
-                              <Text style={styles.approveBtnText}>
-                                {t('approve')}
-                              </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={styles.rejectBtn}
-                              onPress={() => rejectExtraRoom(req.id)}
-                            >
-                              <Text style={styles.rejectBtnText}>
-                                {t('reject')}
-                              </Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      </Card>
-                    );
-                  })}
-              </View>
-            )}
-
             {/* Cleaner Progress */}
             {!search.trim() && cleaners.length > 0 && (
               <>
@@ -1325,11 +1265,6 @@ function DashboardScreen({ highlightRoomId, onRoomOpened }) {
         onClose={() => setSelectedRoom(null)}
         t={t}
       />
-      <Modal visible={!!imageViewer} transparent animationType="fade">
-        <Pressable style={styles.imageModal} onPress={() => setImageViewer(null)}>
-          <Image source={{ uri: imageViewer }} style={styles.fullImage} resizeMode="contain" />
-        </Pressable>
-      </Modal>
     </>
   );
 }
@@ -1490,49 +1425,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.sm,
     color: COLORS.textSecondary,
   },
-  requestCard: {
-    padding: SPACING[3],
-    marginBottom: SPACING[2],
-  },
-  requestRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  requestRoomName: {
-    fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.lg,
-    color: COLORS.text,
-  },
-  requestCleaner: {
-    fontFamily: FONTS.regular,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.textSecondary,
-    marginTop: 4,
-  },
-  requestActions: { flexDirection: 'row', gap: SPACING[2] },
-  approveBtn: {
-    backgroundColor: COLORS.success,
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: SPACING[3],
-    paddingVertical: SPACING[2],
-  },
-  approveBtnText: {
-    fontFamily: FONTS.semiBold,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.white,
-  },
-  rejectBtn: {
-    backgroundColor: COLORS.danger,
-    borderRadius: RADIUS.sm,
-    paddingHorizontal: SPACING[3],
-    paddingVertical: SPACING[2],
-  },
-  rejectBtnText: {
-    fontFamily: FONTS.semiBold,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.white,
-  },
   extraBadge: {
     backgroundColor: COLORS.danger,
     borderRadius: 12,
@@ -1597,16 +1489,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
     color: COLORS.primary,
-  },
-  imageModal: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullImage: {
-    width: '100%',
-    height: '80%',
   },
   sectionHeaderRow: {
     flexDirection: 'row',

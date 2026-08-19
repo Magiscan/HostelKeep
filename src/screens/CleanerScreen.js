@@ -14,6 +14,7 @@ import { useApp } from '../contexts/AppContext';
 import { Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';   // if not already imported
+import { usePushRegistration } from '../hooks/usePushRegistration';
 
 // ------------------------------------------------------------------
 // Constants – REASONS used for colours (no translation needed)
@@ -570,6 +571,7 @@ export default function CleanerScreen() {
     hostel, floors = [], rooms = [], roomStatus = {}, updateRoomStatus,
     requestExtraRoom, cancelExtraRoomRequest, extraRequests = [],
   } = useApp();
+  usePushRegistration(user);
 
   useEffect(() => {
     if (Platform.OS === 'web') {

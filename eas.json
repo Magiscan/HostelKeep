@@ -10,15 +10,28 @@
     },
     "preview": {
       "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-        }
+      "android": { "buildType": "apk" }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "android": { "buildType": "app-bundle" },
+      "ios": { "resourceClass": "m-medium" }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "//": "Path to the Google Play service account JSON. Play Console > Setup > API access. KEEP THIS OUT OF GIT.",
+        "serviceAccountKeyPath": "./play-service-account.json",
+        "track": "internal",
+        "releaseStatus": "draft"
+      },
+      "ios": {
+        "//": "From App Store Connect. appleId is your developer account email.",
+        "appleId": "YOUR_APPLE_ID_EMAIL",
+        "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID",
+        "appleTeamId": "YOUR_TEAM_ID"
+      }
+    }
   }
 }

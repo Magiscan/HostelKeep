@@ -11,13 +11,13 @@ import DashboardScreen from './DashboardScreen';
 import SetupScreen from './SetupScreen';
 import TeamScreen from './TeamScreen';
 import AssignScreen from './AssignScreen';
+import ExtraRequestsScreen from './ExtraRequestsScreen';
+import AccountScreen from '../AccountScreen';
 import { useAuth } from '../../contexts/AuthContext';
 import { useApp } from '../../contexts/AppContext';
 import { useNotifications } from '../../contexts/NotificationContext';
+import { usePushRegistration } from '../../hooks/usePushRegistration';
 import { ScrollView } from 'react-native-gesture-handler';
-import * as Notifications from 'expo-notifications';
-import { doc, setDoc } from 'firebase/firestore';
-import { db } from '../../firebase';   
 
 const LANGS = [
   { code: 'en', label: 'English' },
@@ -28,20 +28,40 @@ const LANGS = [
 export default function ManagerApp() {
   const { t, i18n } = useTranslation();
   const { user, logout } = useAuth();
-  const { hostel, updateHostel, hostelCode } = useApp();
+  const { hostel, updateHostel, hostelCode, extraRequests } = useApp();
   const [tab, setTab] = useState('dashboard');
   const { notifications, unreadCount, markAsRead, clearAll, deleteAllNotifications } = useNotifications();
   const [showNotifications, setShowNotifications] = useState(false);
   const [highlightRoomId, setHighlightRoomId] = useState(null);
 
+  // Registers this device's Expo push token, with the projectId production
+  // builds require. Replaces the old inline effect that used to live here —
+  // that version omitted projectId, which throws outside Expo Go, and it's
+  // now centralised so CleanerScreen can share the same fix.
+  usePushRegistration(user);
 
-  // Dynamic tab list with translated labels
+  // Pending extra-room requests, surfaced as a badge on the tab below.
+  const pendingRequestCount = extraRequests.filter(
+    r => r.status === 'pending' || !r.status,
+  ).length;
+
+  // Dynamic tab list with translated labels. Account lives in the user menu
+  // (opened from the avatar) rather than here — five tabs plus Account made
+  // the bar too crowded, and Account/Language/Hostel Code are all "about me"
+  // settings rather than daily workflow screens.
   const TABS = useMemo(() => [
     { key: 'dashboard', label: t('manager.tabDashboard'), icon: 'grid-outline', iconActive: 'grid' },
     { key: 'setup',     label: t('manager.tabSetup'),     icon: 'construct-outline', iconActive: 'construct' },
     { key: 'team',      label: t('manager.tabTeam'),      icon: 'people-outline', iconActive: 'people' },
     { key: 'assign',    label: t('manager.tabAssign'),    icon: 'swap-horizontal-outline', iconActive: 'swap-horizontal' },
-  ], [t]);
+    {
+      key: 'extraRequests',
+      label: t('extraRequestsFooter') || 'Requests',
+      icon: 'flag-outline',
+      iconActive: 'flag',
+      badge: pendingRequestCount,
+    },
+  ], [t, pendingRequestCount]);
 
   // Edit hostel name modal
   const [editVisible, setEditVisible] = useState(false);
@@ -72,31 +92,15 @@ export default function ManagerApp() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!user || Platform.OS === 'web') return;
-
-    async function registerPushToken() {
-      try {
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
-        let finalStatus = existingStatus;
-        if (existingStatus !== 'granted') {
-          const { status } = await Notifications.requestPermissionsAsync();
-          finalStatus = status;
-        }
-        if (finalStatus !== 'granted') return;
-
-        const tokenData = await Notifications.getExpoPushTokenAsync();
-        const token = tokenData.data;
-
-        // Save token to manager's Firestore document
-        await setDoc(doc(db, 'users', user.uid), { pushToken: token }, { merge: true });
-      } catch (e) {
-        console.warn('Push token registration failed:', e);
-      }
-    }
-
-    registerPushToken();
-  }, [user]);
+  // If the account screen is showing, it takes over the whole body — there's
+  // no "active" tab to highlight for it in the bottom bar, so it isn't one.
+  if (tab === 'account') {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <AccountScreen onBack={() => setTab('dashboard')} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -143,6 +147,7 @@ export default function ManagerApp() {
         {tab === 'setup' && <SetupScreen />}
         {tab === 'team' && <TeamScreen />}
         {tab === 'assign' && <AssignScreen />}
+        {tab === 'extraRequests' && <ExtraRequestsScreen />}
       </View>
 
       {/* ── Bottom Tabs ── */}
@@ -156,11 +161,20 @@ export default function ManagerApp() {
               onPress={() => setTab(tabItem.key)}
               activeOpacity={0.75}
             >
-              <Icon
-                name={isActive ? tabItem.iconActive : tabItem.icon}
-                size={22}
-                color={isActive ? COLORS.primary : COLORS.textMuted}
-              />
+              <View>
+                <Icon
+                  name={isActive ? tabItem.iconActive : tabItem.icon}
+                  size={22}
+                  color={isActive ? COLORS.primary : COLORS.textMuted}
+                />
+                {!!tabItem.badge && (
+                  <View style={styles.tabBadge}>
+                    <Text style={styles.tabBadgeText}>
+                      {tabItem.badge > 9 ? '9+' : tabItem.badge}
+                    </Text>
+                  </View>
+                )}
+              </View>
               <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
                 {tabItem.label}
               </Text>
@@ -183,7 +197,6 @@ export default function ManagerApp() {
               placeholderTextColor={COLORS.textMuted}
             />
             <View style={{ flexDirection: 'row', gap: SPACING[2], marginTop: SPACING[4] }}>
-              {/* Cancel button – secondary outline style */}
               <TouchableOpacity
                 onPress={() => setEditVisible(false)}
                 activeOpacity={0.7}
@@ -207,7 +220,6 @@ export default function ManagerApp() {
                 </Text>
               </TouchableOpacity>
 
-              {/* Save button – primary filled style, disabled if empty */}
               <TouchableOpacity
                 onPress={saveName}
                 disabled={!newName.trim()}
@@ -262,12 +274,25 @@ export default function ManagerApp() {
         </View>
       </Modal>
 
-      {/* ── User Menu Modal (now with Language & Hostel Code) ── */}
+      {/* ── User Menu Modal (Account, Language, Hostel Code, Sign Out) ── */}
       <Modal visible={showUserMenu} transparent animationType="fade" onRequestClose={() => setShowUserMenu(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setShowUserMenu(false)}>
           <View style={styles.menuCard}>
             <Text style={styles.menuTitle}>{user.username}</Text>
             <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: SPACING[2] }} />
+
+            {/* Account item */}
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowUserMenu(false);
+                setTab('account');
+              }}
+              activeOpacity={0.7}
+            >
+              <Icon name="person-circle-outline" size={18} color={COLORS.textSecondary} style={{ marginRight: SPACING[2] }} />
+              <Text style={styles.menuItemText}>{t('account') || 'Account'}</Text>
+            </TouchableOpacity>
 
             {/* Language item */}
             <TouchableOpacity
@@ -353,7 +378,7 @@ export default function ManagerApp() {
                         {item.message}
                       </Text>
                       <Text style={styles.notifTime}>
-                        {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(item.timestampMs ?? item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </Text>
                     </View>
                     {!item.read && <View style={styles.unreadDot} />}
@@ -432,6 +457,19 @@ const styles = StyleSheet.create({
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, paddingVertical: SPACING[1] },
   tabLabel: { fontFamily: FONTS.medium, fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
   tabLabelActive: { color: COLORS.primary, fontFamily: FONTS.bold },
+  tabBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -8,
+    backgroundColor: COLORS.danger,
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  tabBadgeText: { fontFamily: FONTS.bold, fontSize: 9, color: COLORS.white },
   // Modals
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: SPACING[6] },
   modalCard: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING[5], width: '100%', maxWidth: 400, ...SHADOW.md },

@@ -1,213 +1,320 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Image, Modal, Alert,
+} from 'react-native';
+// SDK 54 shipped a rewrite of expo-file-system around new File/Directory
+// classes. The old functional API (writeAsStringAsync, EncodingType) still
+// exists on the default import, but now THROWS at runtime instead of working
+// — that's the source of the "Cannot read property Base64 of undefined"
+// error. Importing the explicit /legacy module keeps the old, working API.
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { useTranslation } from 'react-i18next';
 import { useApp } from '../../contexts/AppContext';
-import AppCard from '../../components/Card/AppCard';
-import { COLORS } from '../../theme/colors';
-import { FONTS, FONT_SIZE } from '../../theme/typography';
-import { SPACING } from '../../theme/spacing';
+import { COLORS, FONTS, FONT_SIZE, RADIUS, SPACING, SHADOW } from '../../theme';
+import { Card, EmptyState, SectionTitle } from '../../components/UI';
+
+/**
+ * Native counterpart to ExtraRequestsScreen.web.js.
+ *
+ * This screen did not previously exist on mobile — ManagerApp imported only
+ * Dashboard, Setup, Team and Assign, so a manager on a phone could not approve
+ * or reject an extra-room request at all. The web version uses <img> and
+ * document.createElement, which crash on native, hence a separate file.
+ */
 
 const STATUS_COLORS = {
-  pending: COLORS.warning,
+  pending: COLORS.accent,
   approved: COLORS.success,
   rejected: COLORS.danger,
 };
 
-function SummaryChip({ label, value, color }) {
-  return (
-    <View style={styles.summaryChip}>
-      <Text style={[styles.summaryNumber, { color }]}>{value}</Text>
-      <Text style={styles.summaryLabel}>{label}</Text>
-    </View>
-  );
-}
-
 export default function ExtraRequestsScreen() {
-  const { extraRequests, rooms, cleaners, approveExtraRoom, rejectExtraRoom, cleanupOldExtraRequests } = useApp();
+  const { t } = useTranslation();
+  const { extraRequests, rooms, cleaners, approveExtraRoom, rejectExtraRoom } = useApp();
   const [filter, setFilter] = useState('pending');
-  const [imageViewer, setImageViewer] = useState(null);
+  const [viewer, setViewer] = useState(null);
 
-  useEffect(() => {
-    cleanupOldExtraRequests();
-  }, []);
-
-  const pendingCount = extraRequests.filter(r => r.status === 'pending' || !r.status).length;
-  const approvedCount = extraRequests.filter(r => r.status === 'approved').length;
-  const rejectedCount = extraRequests.filter(r => r.status === 'rejected').length;
-
-  const filteredRequests = extraRequests.filter(r => r.status === filter || (filter === 'pending' && !r.status));
-
-  const handleApprove = (roomId, cleanerId) => approveExtraRoom(roomId, cleanerId);
-  const handleReject = (roomId) => rejectExtraRoom(roomId);
-  const downloadImage = (base64) => {
-    const link = document.createElement('a');
-    link.href = `data:image/jpeg;base64,${base64}`;
-    link.download = `request_${Date.now()}.jpg`;
-    link.click();
+  const counts = {
+    pending: extraRequests.filter(r => r.status === 'pending' || !r.status).length,
+    approved: extraRequests.filter(r => r.status === 'approved').length,
+    rejected: extraRequests.filter(r => r.status === 'rejected').length,
   };
 
-  const tabs = ['pending', 'approved', 'rejected'];
+  const visible = extraRequests.filter(
+    r => r.status === filter || (filter === 'pending' && !r.status),
+  );
+
+  const shareImage = async (base64) => {
+    try {
+      const path = `${FileSystem.cacheDirectory}request_${Date.now()}.jpg`;
+      await FileSystem.writeAsStringAsync(path, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(path, { mimeType: 'image/jpeg' });
+      } else {
+        Alert.alert('Sharing is not available on this device.');
+      }
+    } catch (e) {
+      Alert.alert('Could not share the photo', e.message);
+    }
+  };
+
+  const handleApprove = async (roomId, cleanerId) => {
+    try {
+      await approveExtraRoom(roomId, cleanerId);
+    } catch (e) {
+      Alert.alert(e.message);
+    }
+  };
+
+  const handleReject = async (roomId) => {
+    try {
+      await rejectExtraRoom(roomId);
+    } catch (e) {
+      Alert.alert(e.message);
+    }
+  };
 
   return (
     <View style={styles.container}>
-      {/* ── Toolbar ── */}
-      <View style={styles.toolbar}>
-        <View>
-          <Text style={styles.title}>Extra Room Requests</Text>
-          <Text style={styles.subtitle}>Review and manage cleaner requests</Text>
-        </View>
-        <View style={styles.summaryRow}>
-          <SummaryChip label="Pending" value={pendingCount} color={COLORS.warning} />
-          <SummaryChip label="Approved" value={approvedCount} color={COLORS.success} />
-          <SummaryChip label="Rejected" value={rejectedCount} color={COLORS.danger} />
-        </View>
-      </View>
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <SectionTitle
+          title={t('extraRequests') || 'Extra Requests'}
+          subtitle={t('reviewCleanerRequests') || 'Review and manage cleaner requests'}
+        />
 
-      {/* Status filter tabs */}
-      <View style={styles.tabRow}>
-        {tabs.map(tab => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tab, filter === tab && styles.tabActive]}
-            onPress={() => setFilter(tab)}
-          >
-            <Text style={[styles.tabText, filter === tab && styles.tabTextActive]}>
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+        {/* Filter tabs */}
+        <View style={styles.tabRow}>
+          {['pending', 'approved', 'rejected'].map(tab => (
+            <TouchableOpacity
+              key={tab}
+              style={[styles.tab, filter === tab && styles.tabActive]}
+              onPress={() => setFilter(tab)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabText, filter === tab && styles.tabTextActive]}>
+                {tab.charAt(0).toUpperCase() + tab.slice(1)} ({counts[tab]})
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
-        {filteredRequests.length === 0 ? (
-          <Text style={styles.emptyText}>No {filter} requests.</Text>
+        {visible.length === 0 ? (
+          <EmptyState
+            icon="📋"
+            title={`No ${filter} requests`}
+            subtitle={
+              filter === 'pending'
+                ? 'Requests from your cleaners will appear here.'
+                : undefined
+            }
+          />
         ) : (
-          <View style={styles.grid}>
-            {filteredRequests.map(req => {
-              const room = rooms.find(r => r.id === req.id);
-              const cleaner = cleaners.find(c => c.id === req.cleanerId);
-              const status = req.status || 'pending';
-              const statusColor = STATUS_COLORS[status] || COLORS.textSecondary;
-              const timestamp = req.requestedAt ? new Date(req.requestedAt).toLocaleString() : '';
+          visible.map(req => {
+            const room = rooms.find(r => r.id === req.id);
+            const cleaner = cleaners.find(c => c.id === req.cleanerId);
+            const status = req.status || 'pending';
+            const statusColor = STATUS_COLORS[status] || COLORS.textSecondary;
 
-              return (
-                <AppCard key={req.id} style={styles.requestCard}>
-                  <View style={styles.headerRow}>
-                    <Text style={styles.roomName} numberOfLines={1}>{room?.name || 'Unknown room'}</Text>
-                    <View style={[styles.statusBadge, { backgroundColor: statusColor + '22' }]}>
-                      <Text style={[styles.statusText, { color: statusColor }]}>{status.toUpperCase()}</Text>
-                    </View>
+            // requestedAt is an ISO string on the Spark build.
+            let when = '';
+            if (req.requestedAt) {
+              const ms = new Date(req.requestedAt).getTime();
+              if (Number.isFinite(ms)) when = new Date(ms).toLocaleString();
+            }
+
+            return (
+              <Card key={req.id} style={styles.card}>
+                <View style={styles.headerRow}>
+                  <Text style={styles.roomName} numberOfLines={1}>
+                    {room?.name || t('unknownRoom') || 'Unknown room'}
+                  </Text>
+                  <View style={[styles.badge, { backgroundColor: `${statusColor}22` }]}>
+                    <Text style={[styles.badgeText, { color: statusColor }]}>
+                      {status.toUpperCase()}
+                    </Text>
                   </View>
-                  <Text style={styles.cleanerName}>Requested by {cleaner?.username || 'Unknown cleaner'}</Text>
-                  {timestamp ? <Text style={styles.timestamp}>{timestamp}</Text> : null}
+                </View>
 
-                  {req.imageBase64 ? (
-                    <View style={styles.imageRow}>
-                      <TouchableOpacity onPress={() => setImageViewer(`data:image/jpeg;base64,${req.imageBase64}`)}>
-                        <img
-                          src={`data:image/jpeg;base64,${req.imageBase64}`}
-                          style={{ width: 96, height: 72, borderRadius: 8, objectFit: 'cover', cursor: 'pointer' }}
-                        />
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={() => downloadImage(req.imageBase64)} style={styles.downloadBtn}>
-                        <Text style={styles.downloadText}>⬇ Download</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : null}
+                <Text style={styles.meta}>
+                  {t('requestedBy', {
+                    name: cleaner?.username || t('unknownCleaner') || 'Unknown cleaner',
+                  })}
+                </Text>
+                {when ? <Text style={styles.timestamp}>{when}</Text> : null}
 
-                  {status === 'pending' && (
-                    <View style={styles.actions}>
-                      <TouchableOpacity style={[styles.btn, styles.approveBtn]} onPress={() => handleApprove(req.id, req.cleanerId)}>
-                        <Text style={styles.approveText}>Approve</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.btn, styles.rejectBtn]} onPress={() => handleReject(req.id)}>
-                        <Text style={styles.rejectText}>Reject</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </AppCard>
-              );
-            })}
-          </View>
+                {req.imageBase64 ? (
+                  <View style={styles.imageRow}>
+                    <TouchableOpacity
+                      onPress={() => setViewer(req.imageBase64)}
+                      activeOpacity={0.8}
+                    >
+                      <Image
+                        source={{ uri: `data:image/jpeg;base64,${req.imageBase64}` }}
+                        style={styles.thumb}
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => shareImage(req.imageBase64)}
+                      style={styles.shareBtn}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.shareText}>{t('share') || 'Share'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+
+                {status === 'pending' && (
+                  <View style={styles.actions}>
+                    <TouchableOpacity
+                      style={[styles.btn, { backgroundColor: COLORS.success }]}
+                      onPress={() => handleApprove(req.id, req.cleanerId)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.btnText}>{t('approve') || 'Approve'}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.btn, { backgroundColor: COLORS.danger }]}
+                      onPress={() => handleReject(req.id)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.btnText}>{t('reject') || 'Reject'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </Card>
+            );
+          })
         )}
       </ScrollView>
 
-      {/* ── Lightbox ── */}
-      {imageViewer && (
-        <View style={styles.lightboxOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setImageViewer(null)} />
-          <View style={styles.lightboxContent}>
-            <img src={imageViewer} style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 8, display: 'block' }} />
-            <View style={styles.lightboxActions}>
-              <TouchableOpacity onPress={() => setImageViewer(null)} style={styles.lightboxBtn}>
-                <Text style={styles.lightboxBtnText}>Close</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+      {/* Full-screen photo viewer */}
+      <Modal visible={!!viewer} transparent animationType="fade">
+        <View style={styles.lightbox}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setViewer(null)}
+          />
+          {viewer && (
+            <Image
+              source={{ uri: `data:image/jpeg;base64,${viewer}` }}
+              style={styles.fullImage}
+              resizeMode="contain"
+            />
+          )}
+          <TouchableOpacity
+            onPress={() => setViewer(null)}
+            style={styles.closeBtn}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.closeText}>{t('close') || 'Close'}</Text>
+          </TouchableOpacity>
         </View>
-      )}
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background, position: 'relative' },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  scroll: { padding: SPACING[4] },
 
-  toolbar: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    flexWrap: 'wrap', gap: SPACING.md,
-    paddingHorizontal: SPACING.lg, paddingVertical: SPACING.lg,
-    backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  tabRow: { flexDirection: 'row', gap: SPACING[2], marginBottom: SPACING[4] },
+  tab: {
+    flex: 1,
+    paddingVertical: SPACING[2],
+    paddingHorizontal: SPACING[2],
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    minHeight: 40,
+    justifyContent: 'center',
   },
-  title: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text },
-  subtitle: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginTop: 2 },
-
-  summaryRow: { flexDirection: 'row', gap: SPACING.md },
-  summaryChip: {
-    alignItems: 'center', backgroundColor: COLORS.background,
-    borderRadius: 12, borderWidth: 1, borderColor: COLORS.border,
-    paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm,
-  },
-  summaryNumber: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl },
-  summaryLabel: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary, marginTop: 2 },
-
-  tabRow: { flexDirection: 'row', gap: SPACING.sm, paddingHorizontal: SPACING.lg, marginTop: SPACING.lg, marginBottom: SPACING.md },
-  tab: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
   tabActive: { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
-  tabText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary },
+  tabText: {
+    fontFamily: FONTS.medium,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textSecondary,
+  },
   tabTextActive: { color: COLORS.primary, fontFamily: FONTS.bold },
 
-  list: { flex: 1 },
-  listContent: { padding: SPACING.lg },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md },
-
-  requestCard: { width: 340 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  roomName: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.md, color: COLORS.text, flex: 1, marginRight: SPACING.sm },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
-  statusText: { fontFamily: FONTS.bold, fontSize: 10 },
-  cleanerName: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginTop: 4 },
-  timestamp: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary, marginTop: 2 },
-
-  imageRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm },
-  downloadBtn: { backgroundColor: COLORS.primaryLight, borderRadius: 8, paddingHorizontal: SPACING.sm, paddingVertical: SPACING.xs || 4 },
-  downloadText: { fontFamily: FONTS.bold, fontSize: 12, color: COLORS.primary },
-
-  actions: { flexDirection: 'row', gap: 8, marginTop: SPACING.md },
-  btn: { flex: 1, paddingVertical: SPACING.sm, borderRadius: 8, alignItems: 'center' },
-  approveBtn: { backgroundColor: COLORS.success },
-  rejectBtn: { backgroundColor: COLORS.danger },
-  approveText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.sm, color: '#FFFFFF' },
-  rejectText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.sm, color: '#FFFFFF' },
-
-  emptyText: { fontFamily: FONTS.medium, color: COLORS.textSecondary, marginTop: SPACING.xl, textAlign: 'center' },
-
-  lightboxOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.9)',
-    alignItems: 'center', justifyContent: 'center', zIndex: 50,
+  card: { padding: SPACING[4], marginBottom: SPACING[3] },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
   },
-  lightboxContent: { alignItems: 'center', gap: SPACING.md },
-  lightboxActions: { flexDirection: 'row' },
-  lightboxBtn: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 8, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm },
-  lightboxBtnText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.sm, color: '#FFFFFF' },
+  roomName: {
+    fontFamily: FONTS.bold,
+    fontSize: FONT_SIZE.lg,
+    color: COLORS.text,
+    flex: 1,
+    marginRight: SPACING[2],
+  },
+  badge: { paddingHorizontal: SPACING[2], paddingVertical: 3, borderRadius: RADIUS.sm },
+  badgeText: { fontFamily: FONTS.bold, fontSize: 10, letterSpacing: 0.4 },
+  meta: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+  timestamp: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+
+  imageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING[3],
+    marginTop: SPACING[3],
+  },
+  thumb: { width: 96, height: 72, borderRadius: RADIUS.sm },
+  shareBtn: {
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING[3],
+    paddingVertical: SPACING[2],
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  shareText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.sm, color: COLORS.primary },
+
+  actions: { flexDirection: 'row', gap: SPACING[2], marginTop: SPACING[4] },
+  btn: {
+    flex: 1,
+    paddingVertical: SPACING[3],
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  btnText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.md, color: COLORS.white },
+
+  lightbox: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullImage: { width: '92%', height: '70%' },
+  closeBtn: {
+    marginTop: SPACING[6],
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING[6],
+    paddingVertical: SPACING[3],
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  closeText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.md, color: COLORS.white },
 });
