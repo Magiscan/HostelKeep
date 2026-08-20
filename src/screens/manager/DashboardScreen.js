@@ -733,6 +733,10 @@ function DashboardScreen({ highlightRoomId, onRoomOpened }) {
     setResetAllModal(false);
   };
 
+  // FIXED: this used to merge only { cleaned, notes, extraTime, bedStatus },
+  // silently leaving extraCleaning/extraCleaningBy/etc. behind forever. That's
+  // what made an "extra room approved" badge on a cleaner's card survive
+  // indefinitely instead of clearing at the next reset.
   const confirmResetSingle = () => {
     if (resetSingleModal) {
       updateRoomStatus(resetSingleModal, {
@@ -740,6 +744,10 @@ function DashboardScreen({ highlightRoomId, onRoomOpened }) {
         notes: '',
         extraTime: 0,
         bedStatus: {},
+        extraCleaning: false,
+        extraCleaningBy: null,
+        extraCleaningTime: 0,
+        extraCleaningNotes: '',
       });
       setResetSingleModal(null);
     }

@@ -245,6 +245,10 @@ export function AppProvider({ children }) {
       bedStatus: {},
       managerNotes: '',
       commonOnly: false,
+      extraCleaning: false,
+      extraCleaningBy: null,
+      extraCleaningTime: 0,
+      extraCleaningNotes: '',
     }, { merge: true });
   }, [hostelCode]);
 

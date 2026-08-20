@@ -157,30 +157,22 @@ export function generateDailyReport({
     const isCleaned = status.cleaned || false;
 
     if (room.type === 'dorm' && room.beds?.length) {
-        room.beds.forEach(bed => {
-        const assign = assignmentBedStatus[bed.id] || { status: 'clean' };
-        const bedState = assign.status || 'clean';
-        const bedClean = bedStatus[bed.id]?.status === 'cleaned';
-        const outcome = bedClean
-            ? 'Pulito'
-            : (assign.status === 'stayover' || assign.status === 'noone')
-            ? 'Saltato'
-            : 'Non completato';
-        bedRows.push([
-            date,
-            floor,
-            room.name,
-            bed.name,
-            typeLabel,
-            cleaner,
-            getBedStateLabel(bedState, lang),
-            outcome,
-            '',
-            '',
-            status.notes || '',
-        ]);
-        });
-    } else {
+      room.beds.forEach(bed => {
+          const assign = assignmentBedStatus[bed.id] || { status: 'clean' };
+          const bedState = assign.status || 'clean';
+
+          // Stay-over / no-one beds are not being cleaned today — leave them out
+          // of the sheet entirely rather than listing them as "skipped".
+          if (bedState === 'stayover' || bedState === 'noone') return;
+
+          const bedClean = bedStatus[bed.id]?.status === 'cleaned';
+          const outcome = bedClean ? 'Pulito' : 'Non completato';
+          bedRows.push([
+              date, floor, room.name, bed.name, typeLabel, cleaner,
+              getBedStateLabel(bedState, lang), outcome, '', '', status.notes || '',
+          ]);
+          });
+      } else {
         const outcome = isCleaned ? 'Pulito' : 'Non completato';
         bedRows.push([
         date,

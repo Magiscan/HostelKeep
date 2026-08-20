@@ -226,6 +226,7 @@ const resources = {
       matching: 'Matching "{{query}}"',
       commonCleaned: 'Common areas cleaned',
       commonNotCleaned: 'Common areas not yet cleaned',
+      needsAssignment: 'Needs assignment',
 
       // ---- Cleaner ----
       greeting: 'Ciao, {{name}} 👋',

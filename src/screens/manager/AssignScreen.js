@@ -2,7 +2,7 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity, Modal,
-  Pressable, KeyboardAvoidingView, Platform, ScrollView,
+  Pressable, KeyboardAvoidingView, Platform, ScrollView, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../../components/Icon';
@@ -21,12 +21,36 @@ const BED_STATES = [
   { key: 'noone',    label: 'Inspected',  color: '#22C55E', bg: '#F0FDF4' },    // Green
 ];
 
+// A room "needs assignment" if there's actually something to do: common areas
+// checked, a dorm bed that isn't stayover/inspected, or (for private rooms) at
+// least one attribute checked. Mirrors the same helper in AssignScreen.web.js.
+function roomNeedsAssignment(room, status) {
+  if (status.commonOnly) return true;
+  if (room.type === 'dorm') {
+    const assign = status.assignmentBedStatus || {};
+    return (room.beds || []).some(b => {
+      const s = assign[b.id]?.status || 'noone';
+      return s !== 'noone' && s !== 'stayover';
+    });
+  }
+  if (room.type === 'private') {
+    return Object.values(status.assignmentAttributes || {}).some(Boolean);
+  }
+  return false;
+}
+
 export default function AssignScreen() {
   const { t } = useTranslation();
   const {
     rooms, cleaners, floors, assignRoomWithDetails, unassignRoom, roomStatus,
-    roomAttributes,
+    roomAttributes, updateRoomStatus,
   } = useApp();
+
+  const [search, setSearch] = useState('');
+  // Filters the room list down to rooms that actually have something to do —
+  // useful when a second manager assigns bed states first and a different
+  // manager assigns rooms to cleaners afterwards.
+  const [onlyNeedsAssignment, setOnlyNeedsAssignment] = useState(false);
 
   const sortedFloors = useMemo(() => {
     return [...floors].sort((a, b) => {
@@ -41,16 +65,22 @@ export default function AssignScreen() {
     });
   }, [floors]);
 
-  // Build sections: each floor becomes a section with its rooms
+  // Build sections: each floor becomes a section with its rooms, filtered by
+  // search text and the "needs assignment" toggle.
   const sections = useMemo(() => {
     return sortedFloors
       .map(floor => ({
         type: 'floor',
         floor,
-        rooms: rooms.filter(r => r.floorId === floor.id),
+        rooms: rooms.filter(r => {
+          if (r.floorId !== floor.id) return false;
+          if (search.trim() && !r.name.toLowerCase().includes(search.trim().toLowerCase())) return false;
+          if (onlyNeedsAssignment && !roomNeedsAssignment(r, roomStatus[r.id] || {})) return false;
+          return true;
+        }),
       }))
       .filter(sec => sec.rooms.length > 0);
-  }, [sortedFloors, rooms]);
+  }, [sortedFloors, rooms, search, onlyNeedsAssignment, roomStatus]);
 
   // Flatten into data array for FlatList
   const flatData = useMemo(() => {
@@ -72,7 +102,17 @@ export default function AssignScreen() {
   const [earlyCheckIn, setEarlyCheckIn] = useState(false);
   const [lateCheckOut, setLateCheckOut] = useState(false);
 
-  const clearAll = useCallback(() => rooms.forEach(room => unassignRoom(room.id)), [rooms, unassignRoom]);
+  // FIXED: now also blanks out assignmentAttributes on private rooms. Without
+  // this, a room cleared here could still have leftover checked attributes and
+  // wrongly keep passing the "needs assignment" filter above.
+  const clearAll = useCallback(() => {
+    rooms.forEach(room => {
+      unassignRoom(room.id);
+      if (room.type === 'private') {
+        updateRoomStatus(room.id, { assignmentAttributes: {} });
+      }
+    });
+  }, [rooms, unassignRoom, updateRoomStatus]);
 
   const openConfig = useCallback((room, cleaner) => {
     setSelectedRoom(room);
@@ -225,13 +265,53 @@ export default function AssignScreen() {
         keyExtractor={(item, index) => item.type === 'header' ? `header-${item.floor.id}` : `room-${item.room.id}`}
         contentContainerStyle={styles.scroll}
         ListHeaderComponent={
-          <View style={styles.headerRow}>
-            <SectionTitle title={t('assignments')} subtitle={t('tapToAssign')} />
-            <TouchableOpacity onPress={clearAll} style={styles.clearBtn} activeOpacity={0.7}>
-              <Icon name="close-circle-outline" size={16} color={COLORS.textMuted} />
-              <Text style={styles.clearText}>{t('clearAll')}</Text>
+          <View>
+            <View style={styles.headerRow}>
+              <SectionTitle title={t('assignments')} subtitle={t('tapToAssign')} />
+              <TouchableOpacity onPress={clearAll} style={styles.clearBtn} activeOpacity={0.7}>
+                <Icon name="close-circle-outline" size={16} color={COLORS.textMuted} />
+                <Text style={styles.clearText}>{t('clearAll')}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Search */}
+            <View style={styles.searchBar}>
+              <Icon name="search-outline" size={16} color={COLORS.textMuted} style={{ marginRight: SPACING[2] }} />
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder={t('search')}
+                placeholderTextColor={COLORS.textMuted}
+                style={styles.searchInput}
+              />
+              {search.length > 0 && (
+                <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 4 }}>
+                  <Icon name="close-circle" size={16} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Needs-assignment filter */}
+            <TouchableOpacity
+              onPress={() => setOnlyNeedsAssignment(v => !v)}
+              style={[styles.filterBtn, onlyNeedsAssignment && styles.filterBtnActive]}
+              activeOpacity={0.7}
+            >
+              <Icon
+                name={onlyNeedsAssignment ? 'checkmark-circle' : 'ellipse-outline'}
+                size={16}
+                color={onlyNeedsAssignment ? COLORS.white : COLORS.primary}
+              />
+              <Text style={[styles.filterBtnText, onlyNeedsAssignment && { color: COLORS.white }]}>
+                {t('needsAssignment') || 'Needs assignment'}
+              </Text>
             </TouchableOpacity>
           </View>
+        }
+        ListEmptyComponent={
+          (search.trim() || onlyNeedsAssignment) ? (
+            <EmptyState icon="🔍" title={t('noResults')} subtitle="" />
+          ) : null
         }
         getItemLayout={(data, index) => ({
           length: data[index]?.type === 'header' ? 60 : 120, // approximate heights
@@ -399,6 +479,26 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING[2], flexWrap: 'wrap' },
   clearBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: SPACING[3], paddingVertical: SPACING[1], backgroundColor: COLORS.surface, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.border, marginTop: 4, alignSelf: 'flex-start' },
   clearText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.textMuted },
+
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: COLORS.surface, borderRadius: RADIUS.md,
+    borderWidth: 1, borderColor: COLORS.border,
+    paddingHorizontal: SPACING[3], paddingVertical: SPACING[2],
+    marginBottom: SPACING[2],
+  },
+  searchInput: { flex: 1, fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.text },
+
+  filterBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start',
+    paddingHorizontal: SPACING[3], paddingVertical: SPACING[2],
+    backgroundColor: COLORS.primaryLight, borderRadius: RADIUS.sm,
+    borderWidth: 1, borderColor: COLORS.primary,
+    marginBottom: SPACING[3],
+  },
+  filterBtnActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  filterBtnText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.primary },
+
   roomCard: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, padding: SPACING[3], marginBottom: SPACING[3], ...SHADOW.sm },
   roomInfo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING[3] },
   roomName: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.lg, color: COLORS.text, marginBottom: 2 },

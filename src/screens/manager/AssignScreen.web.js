@@ -40,6 +40,24 @@ function sanitizeSheetName(name) {
   return cleaned.slice(0, 31) || 'Cleaner';
 }
 
+// A room "needs assignment" if there's actually something to do: common areas
+// checked, a dorm bed that isn't stayover/inspected, or (for private rooms) at
+// least one attribute checked. Used by the toolbar filter below.
+function roomNeedsAssignment(room, status) {
+  if (status.commonOnly) return true;
+  if (room.type === 'dorm') {
+    const assign = status.assignmentBedStatus || {};
+    return (room.beds || []).some(b => {
+      const s = assign[b.id]?.status || 'noone';
+      return s !== 'noone' && s !== 'stayover';
+    });
+  }
+  if (room.type === 'private') {
+    return Object.values(status.assignmentAttributes || {}).some(Boolean);
+  }
+  return false;
+}
+
 /* ─── Excel export styling ─────────────────────────────────────── */
 const XLS_BORDER_THIN = { style: 'thin', color: { rgb: 'FFCBD5E1' } };
 const XLS_BORDER_ALL = { top: XLS_BORDER_THIN, bottom: XLS_BORDER_THIN, left: XLS_BORDER_THIN, right: XLS_BORDER_THIN };
@@ -151,6 +169,10 @@ export default function AssignScreen() {
   } = useApp();
 
   const [search, setSearch] = useState('');
+  // Filters the room list down to rooms that actually have something to do —
+  // useful when a second manager assigns bed states first and a different
+  // manager assigns rooms to cleaners afterwards.
+  const [onlyNeedsAssignment, setOnlyNeedsAssignment] = useState(false);
   const [selectedRoomIds, setSelectedRoomIds] = useState(new Set());
   const [activeCleanerIds, setActiveCleanerIds] = useState(new Set(cleaners.map(c => c.id)));
 
@@ -163,6 +185,7 @@ export default function AssignScreen() {
   const [assignmentAttributes, setAssignmentAttributes] = useState({});
   const [earlyCheckIn, setEarlyCheckIn] = useState(false);
   const [lateCheckOut, setLateCheckOut] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Pending cleaner chosen for a bulk (multi-room) assignment — not applied until
   // the manager taps "Confirm" in the selection bar.
@@ -172,10 +195,16 @@ export default function AssignScreen() {
   const [confirmDialog, setConfirmDialog] = useState(null);
 
   const filteredRooms = useMemo(() => {
-    if (!search.trim()) return rooms;
-    const term = search.toLowerCase();
-    return rooms.filter(r => r.name.toLowerCase().includes(term));
-  }, [rooms, search]);
+    let list = rooms;
+    if (search.trim()) {
+      const term = search.toLowerCase();
+      list = list.filter(r => r.name.toLowerCase().includes(term));
+    }
+    if (onlyNeedsAssignment) {
+      list = list.filter(r => roomNeedsAssignment(r, roomStatus[r.id] || {}));
+    }
+    return list;
+  }, [rooms, search, onlyNeedsAssignment, roomStatus]);
 
   const sortedFloors = useMemo(() => {
     return [...floors].sort((a, b) => {
@@ -247,7 +276,17 @@ export default function AssignScreen() {
     await updateRoomStatus(roomId, { assignmentAttributes: attrs });
   }, [roomStatus, updateRoomStatus]);
 
-  const clearAll = () => rooms.forEach(room => unassignRoom(room.id));
+  // FIXED: now also blanks out assignmentAttributes on private rooms. Without
+  // this, a room cleared here could still have leftover checked attributes and
+  // wrongly keep passing the "needs assignment" filter above.
+  const clearAll = () => {
+    rooms.forEach(room => {
+      unassignRoom(room.id);
+      if (room.type === 'private') {
+        updateRoomStatus(room.id, { assignmentAttributes: {} });
+      }
+    });
+  };
 
   const resetBedStates = useCallback(async () => {
     const updates = [];
@@ -293,32 +332,52 @@ export default function AssignScreen() {
       // Track per-row metadata needed for styling/row-height (kept in the
       // same order as aoa data rows).
       const rowMeta = [];
+      // FIXED: this is now the single source of truth for "which rooms ended
+      // up on the sheet". Every downstream row-index calculation (dataEndRow,
+      // blank rows, signature row, the per-row styling pass) reads from THIS
+      // array's length — never from `assigned` — which is what keeps rowMeta
+      // and the printed rows in sync once rooms with nothing to clean are
+      // skipped below.
+      const printedRooms = [];
 
       assigned.forEach(room => {
         const status = roomStatus[room.id] || {};
         let bedsText = '';
         let isCommonOnly = false;
+        let hasActionableWork = true;
 
         if (status.commonOnly) {
           isCommonOnly = true;
           bedsText = 'Common areas only';
         } else if (room.type === 'dorm' && room.beds?.length) {
           const assign = status.assignmentBedStatus || {};
+          // 'noone' (inspected) and 'stayover' both mean nothing to clean —
+          // both are left off the printed sheet entirely, not just labelled.
           const lines = room.beds
-            .filter(b => (assign[b.id]?.status || 'noone') !== 'noone')
+            .filter(b => {
+              const s = assign[b.id]?.status || 'noone';
+              return s !== 'noone' && s !== 'stayover';
+            })
             .map(b => {
               const bedState = assign[b.id]?.status || 'clean';
               // "To clean" is the default expected action, so just the bed
-              // name is enough; anything else (stay-over, late, early) gets
-              // its state spelled out right next to the bed.
+              // name is enough; anything else (late, early) gets its state
+              // spelled out right next to the bed.
               return bedState === 'clean' ? b.name : `${b.name} — ${BED_STATE_LABELS[bedState]}`;
             });
-          bedsText = lines.length ? lines.join('\n') : 'All beds inspected ✓';
+          bedsText = lines.join('\n');
+          hasActionableWork = lines.length > 0;
         } else if (room.type === 'private') {
           const attrs = status.assignmentAttributes || {};
           const selected = Object.keys(attrs).filter(key => attrs[key]);
-          bedsText = selected.length ? selected.join(', ') : '';
+          bedsText = selected.join(', ');
+          hasActionableWork = selected.length > 0;
         }
+
+        // Safety net: if there's nothing to clean here and it isn't a
+        // common-only room, leave the room off this cleaner's sheet entirely
+        // rather than printing an empty/confusing row.
+        if (!isCommonOnly && !hasActionableWork) return;
 
         const flagParts = [];
         if (status.earlyCheckIn) flagParts.push('Early check-in');
@@ -337,10 +396,15 @@ export default function AssignScreen() {
             notesText.split('\n').length
           ),
         });
+        printedRooms.push(room);
       });
 
+      // A cleaner whose entire shift turned out to be stayovers/inspected
+      // beds gets no sheet at all, rather than an empty one.
+      if (printedRooms.length === 0) return;
+
       const dataStartRow = 2; // 0-indexed: row 0 = title, row 1 = header
-      const dataEndRow = dataStartRow + assigned.length - 1;
+      const dataEndRow = dataStartRow + printedRooms.length - 1;
 
       for (let i = 0; i < EXTRA_BLANK_ROWS; i++) aoa.push(['', '', '', '', '']);
       const blankStartRow = dataEndRow + 1;
@@ -372,8 +436,8 @@ export default function AssignScreen() {
       }
       ws['!rows'][1] = { hpt: 20 };
 
-      // ── Data rows ──
-      assigned.forEach((room, i) => {
+      // ── Data rows ── (iterate printedRooms, NOT the original `assigned`)
+      printedRooms.forEach((room, i) => {
         const r = dataStartRow + i;
         const meta = rowMeta[i];
         const shaded = i % 2 === 1;
@@ -543,7 +607,7 @@ export default function AssignScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Toolbar unchanged */}
+      {/* Toolbar */}
       <View style={styles.toolbar}>
         <View>
           <Text style={styles.pageTitle}>{t('assignments')}</Text>
@@ -559,6 +623,16 @@ export default function AssignScreen() {
               </TouchableOpacity>
             )}
           </View>
+          <TouchableOpacity
+            onPress={() => setOnlyNeedsAssignment(v => !v)}
+            style={[styles.toolBtn, onlyNeedsAssignment && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}
+            activeOpacity={0.7}
+          >
+            <Icon name={onlyNeedsAssignment ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={onlyNeedsAssignment ? COLORS.white : COLORS.primary} />
+            <Text style={[styles.toolBtnText, onlyNeedsAssignment && { color: COLORS.white }]}>
+              {t('needsAssignment') || 'Needs assignment'}
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleExportSheets} style={styles.toolBtn}>
             <Icon name="print-outline" size={16} color={COLORS.primary} />
             <Text style={styles.toolBtnText}>{t('printSheets') || 'Print'}</Text>
@@ -568,7 +642,7 @@ export default function AssignScreen() {
             style={[styles.toolBtn, { backgroundColor: COLORS.background, borderColor: COLORS.border }]}
             activeOpacity={0.7}
           >
-            <Icon name="Cartellino" size={16} color={COLORS.textSecondary} />
+            <Icon name="refresh-circle" size={16} color={COLORS.textSecondary} />
             <Text style={[styles.toolBtnText, { color: COLORS.textSecondary }]}>
               {t('resetBeds') || 'Reset Beds'}
             </Text>
@@ -633,7 +707,7 @@ export default function AssignScreen() {
           )}
 
           <ScrollView style={styles.roomArea} contentContainerStyle={styles.roomAreaContent}>
-            {filteredRooms.length === 0 && search.trim() !== '' && (
+            {filteredRooms.length === 0 && (search.trim() !== '' || onlyNeedsAssignment) && (
               <EmptyState icon="🔍" title={t('noResults')} subtitle="" />
             )}
             {sortedFloors.map(floor => {
@@ -817,11 +891,21 @@ export default function AssignScreen() {
           </ScrollView>
         </View>
 
-        {/* Sidebar — the cleaner picker for bulk-assign is pinned at the top so it's
-            visible the instant you select rooms; the full roster scrolls below it */}
+        {/* Collapsed rail — reopens the sidebar */}
+        {selectedRoomIds.size === 0 && !sidebarOpen && (
+          <TouchableOpacity
+            style={styles.sidebarRail}
+            onPress={() => setSidebarOpen(true)}
+            activeOpacity={0.7}
+          >
+            <Icon name="chevron-left" size={18} color={COLORS.textMuted} />
+            <Icon name="people-outline" size={20} color={COLORS.textSecondary} style={{ marginTop: SPACING[3] }} />
+          </TouchableOpacity>
+        )}
+        {(selectedRoomIds.size > 0 || sidebarOpen) && (
         <View style={styles.sidebar}>
-          {selectedRoomIds.size > 0 && (
-            <View style={styles.bulkSection}>
+          {selectedRoomIds.size > 0 ? (
+            <View style={[styles.bulkSection, { borderBottomWidth: 0, marginBottom: 0, flex: 1 }]}>
               <Text style={styles.bulkLabel}>{t('assignSelected', { count: selectedRoomIds.size }) || `Assign ${selectedRoomIds.size} rooms`}</Text>
               <Text style={styles.bulkHint}>
                 {t('bulkPickHint') || 'Pick a cleaner, then hit Confirm in the bar above.'}
@@ -863,36 +947,48 @@ export default function AssignScreen() {
                 </View>
               </ScrollView>
             </View>
+          ) : (
+            <>
+              <TouchableOpacity
+                onPress={() => setSidebarOpen(false)}
+                style={styles.sidebarHeader}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.sidebarTitle}>{t('workingToday') || 'Working Today'}</Text>
+                <Icon name="chevron-right" size={18} color={COLORS.textMuted} />
+              </TouchableOpacity>
+              
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.sidebarScrollContent}>
+                  {cleaners.map((cleaner, idx) => {
+                    const isActive = activeCleanerIds.has(cleaner.id);
+                    const color = CLEANER_COLORS[idx % CLEANER_COLORS.length];
+                    return (
+                      <TouchableOpacity
+                        key={cleaner.id}
+                        style={styles.cleanerItem}
+                        onPress={() => {
+                          setActiveCleanerIds(prev => {
+                            const next = new Set(prev);
+                            isActive ? next.delete(cleaner.id) : next.add(cleaner.id);
+                            return next;
+                          });
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[styles.cleanerColorDot, { backgroundColor: color }]} />
+                        <Text style={[styles.cleanerItemName, !isActive && { color: COLORS.textMuted }]}>{cleaner.username}</Text>
+                        <View style={[styles.checkboxMini, isActive && styles.checkboxMiniActive]}>
+                          {isActive && <Icon name="checkmark" size={12} color={COLORS.white} />}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              
+            </>
           )}
-
-          <Text style={styles.sidebarTitle}>{t('workingToday') || 'Working Today'}</Text>
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.sidebarScrollContent}>
-            {cleaners.map((cleaner, idx) => {
-              const isActive = activeCleanerIds.has(cleaner.id);
-              const color = CLEANER_COLORS[idx % CLEANER_COLORS.length];
-              return (
-                <TouchableOpacity
-                  key={cleaner.id}
-                  style={styles.cleanerItem}
-                  onPress={() => {
-                    setActiveCleanerIds(prev => {
-                      const next = new Set(prev);
-                      isActive ? next.delete(cleaner.id) : next.add(cleaner.id);
-                      return next;
-                    });
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.cleanerColorDot, { backgroundColor: color }]} />
-                  <Text style={[styles.cleanerItemName, !isActive && { color: COLORS.textMuted }]}>{cleaner.username}</Text>
-                  <View style={[styles.checkboxMini, isActive && styles.checkboxMiniActive]}>
-                    {isActive && <Icon name="checkmark" size={12} color={COLORS.white} />}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
         </View>
+        )}
       </View>
 
       {/* Side panel — now blocks interaction with the rest of the screen while open */}
@@ -1053,7 +1149,7 @@ export default function AssignScreen() {
           }
           message={
             confirmDialog === 'clearAll'
-              ? (t('clearAllConfirmMsg') || "This will unassign every room from its cleaner. This can't be undone.")
+              ? (t('clearAllConfirmMsg') || "This will unassign every room from its cleaner and clear any private-room features you'd checked. This can't be undone.")
               : (t('resetBedsConfirmMsg') || "This will reset every dorm bed back to Inspected for all rooms. This can't be undone.")
           }
           confirmLabel={t('confirm') || 'Confirm'}
@@ -1246,7 +1342,21 @@ const styles = StyleSheet.create({
     padding: SPACING[4],
   },
   sidebarScrollContent: { paddingBottom: SPACING[6] },
-  sidebarTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.md, color: COLORS.text, marginBottom: SPACING[3] },
+  sidebarTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.md, color: COLORS.text },
+  sidebarRail: {
+    width: 44,
+    backgroundColor: COLORS.surface,
+    borderLeftWidth: 1,
+    borderLeftColor: COLORS.border,
+    alignItems: 'center',
+    paddingTop: SPACING[4],
+  },
+  sidebarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING[3],
+  },
   cleanerItem: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING[2],
     paddingVertical: SPACING[2], paddingHorizontal: SPACING[2],
@@ -1268,7 +1378,7 @@ const styles = StyleSheet.create({
   /* Cleaner picker for bulk assign — a clean, sorted, avatar-based list
      instead of a loose wrap of pill buttons. Height is capped with its own
      scroll so a long roster never pushes the rest of the sidebar out of view. */
-  bulkCleanerScroll: { maxHeight: 240 },
+  bulkCleanerScroll: { flex: 1 },
   bulkCleanerCard: {
     borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md,
     backgroundColor: COLORS.surface, overflow: 'hidden',
