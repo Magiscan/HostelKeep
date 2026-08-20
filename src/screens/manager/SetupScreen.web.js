@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput,
 } from 'react-native';
 import Icon from '../../components/Icon';
 import { COLORS, RADIUS, SHADOW, FONTS, FONT_SIZE, SPACING, genId } from '../../theme';
@@ -486,6 +486,7 @@ export default function SetupScreen() {
   const [showAttrModal, setShowAttrModal] = useState(false);
   const [expandedFloors, setExpandedFloors] = useState({});
   const [deleteRoomId, setDeleteRoomId] = useState(null);
+  const [roomSearch, setRoomSearch] = useState('');
 
   const toggleFloor = (floorId) => setExpandedFloors(prev => ({ ...prev, [floorId]: !prev[floorId] }));
 
@@ -621,6 +622,21 @@ export default function SetupScreen() {
             {rooms.length} {rooms.length !== 1 ? t('setup.roomsPlural') : t('setup.roomSingular')}
           </Text>
         </View>
+        <View style={styles.searchBar}>
+          <Icon name="search-outline" size={16} color={COLORS.textMuted} style={{ marginRight: SPACING[2] }} />
+          <TextInput
+            value={roomSearch}
+            onChangeText={setRoomSearch}
+            placeholder={t('search')}
+            placeholderTextColor={COLORS.textMuted}
+            style={styles.searchInput}
+          />
+          {roomSearch.length > 0 && (
+            <TouchableOpacity onPress={() => setRoomSearch('')} style={{ padding: 4 }}>
+              <Icon name="close-circle" size={16} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
         <View style={styles.toolbarActions}>
           <Button title={t('manageFloors')} onPress={() => setShowFloorModal(true)} variant="secondary" size="sm" icon="layers-outline" />
           <Button title={t('attributes')} onPress={() => setShowAttrModal(true)} variant="secondary" size="sm" icon="options-outline" />
@@ -633,8 +649,17 @@ export default function SetupScreen() {
           <EmptyState icon="🛏" title={t('noRoomsToAssign') || t('rooms')} subtitle={t('addRoomsFirst') || ''} />
         )}
 
+        {roomSearch.trim() !== '' && !rooms.some(r =>
+          r.name.toLowerCase().includes(roomSearch.trim().toLowerCase())
+        ) && (
+          <EmptyState icon="🔍" title={t('noResults')} subtitle="" />
+        )}
+
         {sortedFloors.map(floor => {
-          const fr = rooms.filter(r => r.floorId === floor.id);
+          const fr = rooms.filter(r =>
+            r.floorId === floor.id &&
+            (!roomSearch.trim() || r.name.toLowerCase().includes(roomSearch.trim().toLowerCase()))
+          );
           if (!fr.length) return null;
           const isFloorExpanded = expandedFloors[floor.id] !== false;
           return (
@@ -766,6 +791,15 @@ const styles = StyleSheet.create({
   title: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text },
   subtitle: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginTop: 2 },
   toolbarActions: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2] },
+
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: COLORS.background, borderRadius: RADIUS.md,
+    borderWidth: 1, borderColor: COLORS.border,
+    paddingHorizontal: SPACING[3], paddingVertical: SPACING[2],
+    minWidth: 240,
+  },
+  searchInput: { flex: 1, fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.text },
 
   mainAreaContent: { padding: SPACING[6] },
 

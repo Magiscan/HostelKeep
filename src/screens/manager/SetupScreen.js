@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, TextInput, Platform
 } from 'react-native';
 import Icon from '../../components/Icon';
 import { COLORS, RADIUS, SHADOW, FONTS, FONT_SIZE, SPACING, genId } from '../../theme';
@@ -669,7 +669,9 @@ export default function SetupScreen() {
             (!roomSearch.trim() || r.name.toLowerCase().includes(roomSearch.trim().toLowerCase()))
           );
           if (!fr.length) return null;
-          const isFloorExpanded = expandedFloors[floor.id] !== false;
+          const isFloorExpanded = Platform.OS === 'web'
+            ? expandedFloors[floor.id] !== false
+            : expandedFloors[floor.id] === true;   // native: collapsed until tapped
           return (
             <View key={floor.id} style={{ marginBottom: SPACING[6] }}>
               <TouchableOpacity onPress={() => toggleFloor(floor.id)} style={styles.floorHeaderRow} activeOpacity={0.7}>

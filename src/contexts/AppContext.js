@@ -456,6 +456,10 @@ export function AppProvider({ children }) {
   const saveDailyLog = useCallback(async (dateOverride = null) => {
     if (!hostelCode) return;
 
+    if (rooms.some(r => r.assignedTo) && cleaners.length === 0) {
+      throw new Error('Still loading team data — please try again in a moment.');
+    }
+
     // Use the override date if provided, otherwise today (local time)
     let dateStr = dateOverride;
     if (!dateStr) {
@@ -481,7 +485,7 @@ export function AppProvider({ children }) {
 
       if (!cleanerMap[cleanerId]) {
         cleanerMap[cleanerId] = {
-          cleanerName: cleanerNameMap[cleanerId] || cleanerId,
+          cleanerName: cleanerNameMap[cleanerId] || 'Deleted cleaner',
           rooms: [],
         };
       }

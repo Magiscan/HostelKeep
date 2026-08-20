@@ -16,7 +16,7 @@ import { auth, db, firebaseConfig } from '../firebase';
 
 const AuthContext = createContext();
 
-const EMAIL_DOMAIN = 'keepclean.app';
+const EMAIL_DOMAIN = 'hostelkeep.app';
 export const MIN_PASSWORD_LENGTH = 8;
 
 /** Builds the loginLookup document ID for a hostel + username pair. */

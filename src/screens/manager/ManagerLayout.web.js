@@ -13,7 +13,7 @@ import { useNotifications } from '../../contexts/NotificationContext';
 import { useApp } from '../../contexts/AppContext';
 import Icon from '../../components/Icon';
 import { COLORS, FONTS, FONT_SIZE, SPACING, RADIUS, SHADOW } from '../../theme';
-import ExtraRequestsScreen from './ExtraRequestsScreen';
+import ExtraRequestsScreen from './ExtraRequestsScreen.web';
 import ReportsScreen from './ReportsScreen.web';
 import HistoryScreen from './HistoryScreen.web';
 
