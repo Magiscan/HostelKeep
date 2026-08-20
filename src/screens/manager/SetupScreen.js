@@ -474,7 +474,7 @@ export default function SetupScreen() {
 
   const { t } = useTranslation();
 
-  const [step, setStep] = useState(hostel.name ? 2 : 0);
+  const [step, setStep] = useState(floors.length > 0 ? 2 : 1);
   const [hName, setHName] = useState(hostel.name || '');
 
   const [floorCount, setFloorCount] = useState('');

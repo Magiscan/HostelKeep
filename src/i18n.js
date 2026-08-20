@@ -227,6 +227,18 @@ const resources = {
       commonCleaned: 'Common areas cleaned',
       commonNotCleaned: 'Common areas not yet cleaned',
       needsAssignment: 'Needs assignment',
+      hostelCreated:'Hostel created',
+      yourHostelCodeIs: 'Your hostel code is',
+      saveCodeWarning: 'Write this down. Your cleaners need this code to sign in, and it cannot be recovered from the login screen.',
+      copy: 'Copy',
+      copied: 'Copied',
+      createHostelSubtitle: 'Set up your property and manager account.',
+      passwordHint: 'At least 8 characters.',
+      recoveryEmailHint: 'Strongly recommended — without it, a forgotten password cannot be reset.',
+      backToLogin: 'Back to sign in',
+      featureFloors: 'Build your floors, rooms and beds once',
+      featureAssign: 'Assign rooms to cleaners in seconds',
+      featureTrack: 'Track progress live and export daily reports',
 
       // ---- Cleaner ----
       greeting: 'Ciao, {{name}} 👋',
