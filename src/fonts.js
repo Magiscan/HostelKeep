@@ -1,19 +1,29 @@
-// App.js imports './src/fonts' — this module did not exist in the repo, so the
-// native bundle failed to resolve it. Re-exports expo-font's useFonts plus the
-// font map, so App.js can call the hook unconditionally.
+// src/fonts.js — NATIVE font loading.
+//
+// REDESIGN: Inter is gone. The handoff uses two families:
+//   Fredoka 600      → wordmark, room numbers, percentages, bed letters, titles
+//   Rubik 400/500/600 → labels, body, buttons, inputs, meta
+//
+// Install first:
+//   npx expo install @expo-google-fonts/fredoka @expo-google-fonts/rubik
+//
+// You can then `npm uninstall @expo-google-fonts/inter`.
+import { useFonts } from 'expo-font';
+import { Fredoka_600SemiBold } from '@expo-google-fonts/fredoka';
 import {
-  useFonts,
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-} from '@expo-google-fonts/inter';
+  Rubik_400Regular,
+  Rubik_500Medium,
+  Rubik_600SemiBold,
+} from '@expo-google-fonts/rubik';
 
-export const INTER_FONTS = {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
+export const BRAND_FONTS = {
+  Fredoka_600SemiBold,
+  Rubik_400Regular,
+  Rubik_500Medium,
+  Rubik_600SemiBold,
 };
+
+// Alias so App.js keeps working if you haven't renamed the import yet.
+export const INTER_FONTS = BRAND_FONTS;
 
 export { useFonts };

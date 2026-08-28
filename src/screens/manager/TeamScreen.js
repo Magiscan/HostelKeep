@@ -1,40 +1,189 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Pressable, Alert,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert,
+  ActivityIndicator,
 } from 'react-native';
-import { COLORS, FONTS, FONT_SIZE, RADIUS, SPACING, SHADOW } from '../../theme';
-import { Button, Card, Label, Input, SectionTitle, EmptyState } from '../../components/UI';
+import Icon from '../../components/Icon';
+import BottomSheet from '../../components/BottomSheet';
 import { useApp } from '../../contexts/AppContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { COLORS } from '../../theme/colors';
+import { FONTS, DISPLAY, FONT_SIZE } from '../../theme/typography';
+import { SPACING } from '../../theme/spacing';
+import { RADIUS } from '../../theme/radius';
+import { SHADOW } from '../../theme/shadows';
+import { buildCleanerColors } from '../../utils/cleanerColor';
 
-export default function TeamScreen() {
+/**
+ * HostelKeep 2.0 team screen.
+ *
+ * The addition over the old version is the per-cleaner PROGRESS BAR on each
+ * card. Previously this screen was purely administrative — add, reset, delete
+ * — which meant a manager checking "how is everyone doing?" had to go
+ * elsewhere. The data was already in context; it just wasn't shown.
+ *
+ * Password reset still routes through resetCleanerPassword in AuthContext,
+ * which changes the password in place rather than deleting and recreating the
+ * account. Deleting still routes through deleteCleaner in AppContext, which
+ * also frees the login lookup so the name can be reused.
+ */
+
+const MIN_PASSWORD = 8;
+
+/* ─── Labelled field ──────────────────────────────────────────── */
+function Field({ label, value, onChangeText, placeholder, secure, autoCapitalize = 'none' }) {
+  const [focused, setFocused] = useState(false);
+  const [reveal, setReveal] = useState(false);
+
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <View style={{ position: 'relative', justifyContent: 'center' }}>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={COLORS.textMuted}
+          secureTextEntry={secure && !reveal}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={false}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={[
+            styles.input,
+            focused && { borderColor: COLORS.accent },
+            secure && { paddingRight: 48 },
+          ]}
+        />
+        {secure && (
+          <TouchableOpacity
+            onPress={() => setReveal(v => !v)}
+            style={styles.eyeBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Icon
+              name={reveal ? 'visibility_off' : 'visibility'}
+              size={20}
+              color={COLORS.textSecondary}
+            />
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
+
+/* ─── Cleaner card (memoised) ─────────────────────────────────── */
+const CleanerCard = React.memo(function CleanerCard({
+  cleaner, color, done, total, pct, t, onReset, onDelete,
+}) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardRow}>
+        <View style={[styles.avatar, { backgroundColor: color }]}>
+          <Text style={styles.avatarText}>
+            {cleaner.username.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.name} numberOfLines={1}>{cleaner.username}</Text>
+          <Text style={styles.roomsLabel}>
+            {total === 0
+              ? (t('noRoomsAssigned') || 'No rooms assigned')
+              : `${done}/${total} ${t('rooms')}`}
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={() => onReset(cleaner)}
+          style={styles.iconBtn}
+          activeOpacity={0.7}
+          accessibilityLabel={t('resetPassword')}
+        >
+          <Icon name="key" size={22} color={COLORS.textSecondary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => onDelete(cleaner)}
+          style={[styles.iconBtn, styles.iconBtnDanger]}
+          activeOpacity={0.7}
+          accessibilityLabel={t('delete')}
+        >
+          <Icon name="delete" size={22} color={COLORS.danger} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Progress — only meaningful once they have rooms */}
+      {total > 0 && (
+        <View style={styles.track}>
+          <View
+            style={[
+              styles.trackFill,
+              {
+                width: `${pct}%`,
+                backgroundColor: pct === 100 ? COLORS.success : COLORS.accent,
+              },
+            ]}
+          />
+        </View>
+      )}
+    </View>
+  );
+}, (prev, next) => (
+  prev.cleaner.id === next.cleaner.id
+  && prev.cleaner.username === next.cleaner.username
+  && prev.done === next.done
+  && prev.total === next.total
+  && prev.color === next.color
+));
+
+/* ─── Screen ──────────────────────────────────────────────────── */
+export default function TeamScreen({ bottomPad = 0 }) {
   const { t } = useTranslation();
-  const { cleaners, deleteCleaner } = useApp();
-  // FIXED: `user` is no longer needed — the server reads the hostel from the
-  // caller's own profile. `resetCleanerPassword` is new.
-  const { registerCleaner, resetCleanerPassword, user } = useAuth();
-  const [showForm, setShowForm] = useState(false);
+  const { cleaners, rooms, roomStatus, deleteCleaner, hostelCode } = useApp();
+  const { registerCleaner, resetCleanerPassword } = useAuth();
+
+  const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
-  const [deleteModal, setDeleteModal] = useState(null);
-  const [resetModal, setResetModal] = useState(null);
+
+  const [resetTarget, setResetTarget] = useState(null);
   const [newPassword, setNewPassword] = useState('');
   const [resetting, setResetting] = useState(false);
 
-  const handleAddCleaner = async () => {
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // One pass over rooms rather than filtering per cleaner — that was
+  // O(cleaners × rooms) and this screen re-renders on every status change.
+  const statsById = useMemo(() => {
+    const m = {};
+    cleaners.forEach(c => { m[c.id] = { done: 0, total: 0 }; });
+    rooms.forEach(r => {
+      if (!r.assignedTo || !m[r.assignedTo]) return;
+      m[r.assignedTo].total += 1;
+      if (roomStatus[r.id]?.cleaned) m[r.assignedTo].done += 1;
+    });
+    return m;
+  }, [cleaners, rooms, roomStatus]);
+
+  const colors = useMemo(() => buildCleanerColors(cleaners), [cleaners]);
+
+  const handleAdd = async () => {
     if (!name.trim() || !password.trim()) return;
-    // Raised from 6 to match MIN_PASSWORD_LENGTH on the server. When these
-    // disagree the UI accepts passwords the callable then rejects.
-    if (password.length < 8) {
-      Alert.alert(t('passwordTooShort') || 'Password must be at least 8 characters.');
+    if (password.length < MIN_PASSWORD) {
+      Alert.alert(
+        t('passwordTooShort') || `Password must be at least ${MIN_PASSWORD} characters.`,
+      );
       return;
     }
     setSaving(true);
     try {
-      await registerCleaner(name.trim(), password, user.hostelCode);
-      setShowForm(false);
+      await registerCleaner(name.trim(), password, hostelCode);
+      setShowAdd(false);
       setName('');
       setPassword('');
     } catch (e) {
@@ -44,30 +193,17 @@ export default function TeamScreen() {
     }
   };
 
-  const confirmDelete = async () => {
-    if (!deleteModal) return;
-    try {
-      await deleteCleaner(deleteModal.id);
-    } catch (e) {
-      Alert.alert(e.message);
-    } finally {
-      setDeleteModal(null);
-    }
-  };
-
-  const confirmReset = async () => {
-    if (!newPassword || newPassword.length < 8) {
-      Alert.alert(t('passwordTooShort') || 'Password must be at least 8 characters.');
+  const handleReset = async () => {
+    if (newPassword.length < MIN_PASSWORD) {
+      Alert.alert(
+        t('passwordTooShort') || `Password must be at least ${MIN_PASSWORD} characters.`,
+      );
       return;
     }
     setResetting(true);
     try {
-      // On Spark the client SDK cannot change another user's password, so
-      // this recreates the account — but unlike the old code it MIGRATES the
-      // cleaner's room assignments to the new uid instead of orphaning them,
-      // and it frees the old login lookup so the name can be reused.
-      await resetCleanerPassword(resetModal.id, newPassword, user.hostelCode);
-      setResetModal(null);
+      await resetCleanerPassword(resetTarget.id, newPassword, hostelCode);
+      setResetTarget(null);
       setNewPassword('');
       Alert.alert(t('passwordResetSuccess') || 'Password updated.');
     } catch (e) {
@@ -77,203 +213,330 @@ export default function TeamScreen() {
     }
   };
 
-  return (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <View style={styles.headerRow}>
-        <SectionTitle
-          title={t('team')}
-          subtitle={`${cleaners.length} cleaner${cleaners.length !== 1 ? 's' : ''}`}
-        />
-        <Button title={t('addCleaner')} onPress={() => setShowForm(true)} size="sm" />
-      </View>
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await deleteCleaner(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch (e) {
+      Alert.alert(e.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
-      {showForm && (
-        <Card style={styles.formCard}>
-          <Label>{t('cleanerName')}</Label>
-          <Input
+  const openReset = useCallback((cleaner) => {
+    setResetTarget(cleaner);
+    setNewPassword('');
+  }, []);
+
+  const openDelete = useCallback((cleaner) => setDeleteTarget(cleaner), []);
+
+  return (
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: bottomPad + SPACING.lg }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.countLine}>
+          {cleaners.length === 0
+            ? (t('addfirstCleaner') || 'Add your first cleaner to get started.')
+            : `${cleaners.length} ${cleaners.length === 1 ? t('cleaner') : t('cleaners') || 'cleaners'}`}
+        </Text>
+
+        <TouchableOpacity
+          onPress={() => setShowAdd(true)}
+          style={styles.addBtn}
+          activeOpacity={0.85}
+        >
+          <Icon name="person_add" size={21} color={COLORS.accent} />
+          <Text style={styles.addBtnText}>{t('addCleaner')}</Text>
+        </TouchableOpacity>
+
+        {cleaners.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyIcon}>👤</Text>
+            <Text style={styles.emptyTitle}>{t('noCleaners')}</Text>
+            <Text style={styles.emptySub}>
+              {t('teamEmptyHint')
+                || 'Cleaners sign in with your hostel code, their username and password.'}
+            </Text>
+          </View>
+        ) : (
+          cleaners.map(c => {
+            const s = statsById[c.id] || { done: 0, total: 0 };
+            const pct = s.total ? Math.round((s.done / s.total) * 100) : 0;
+            return (
+              <CleanerCard
+                key={c.id}
+                cleaner={c}
+                color={colors[c.id]}
+                done={s.done}
+                total={s.total}
+                pct={pct}
+                t={t}
+                onReset={openReset}
+                onDelete={openDelete}
+              />
+            );
+          })
+        )}
+      </ScrollView>
+
+      {/* ── Add cleaner ── */}
+      <BottomSheet
+        visible={showAdd}
+        onClose={() => { setShowAdd(false); setName(''); setPassword(''); }}
+        maxHeightRatio={0.7}
+      >
+        <Text style={styles.sheetTitle}>{t('addCleaner')}</Text>
+        <Text style={styles.sheetSub}>
+          {t('addCleanerHint')
+            || 'They sign in with your hostel code, this username and this password.'}
+        </Text>
+
+        <View style={{ gap: SPACING.sm }}>
+          <Field
+            label={t('cleanerName')}
             value={name}
             onChangeText={setName}
             placeholder={t('cleanerName')}
-            autoCapitalize="none"
-            style={{ marginBottom: SPACING[3] }}
+            autoCapitalize="words"
           />
-          <Label>{t('cleanerPassword')}</Label>
-          <Input
+          <Field
+            label={t('cleanerPassword')}
             value={password}
             onChangeText={setPassword}
             placeholder="••••••••"
-            secureTextEntry
-            style={{ marginBottom: SPACING[4] }}
+            secure
           />
-          <View style={{ flexDirection: 'row', gap: SPACING[2] }}>
-            <Button
-              title={saving ? t('saving') : t('save')}
-              onPress={handleAddCleaner}
-              disabled={saving}
-              style={{ flex: 1 }}
-            />
-            <Button
-              title={t('cancel')}
-              onPress={() => setShowForm(false)}
-              variant="secondary"
-              style={{ flex: 1 }}
-            />
-          </View>
-        </Card>
-      )}
+          <Text style={styles.hint}>
+            {t('passwordHint') || `At least ${MIN_PASSWORD} characters.`}
+          </Text>
+        </View>
 
-      {cleaners.length === 0 && !showForm && (
-        <EmptyState icon="👤" title={t('noCleaners')} subtitle={t('addfirstCleaner')} />
-      )}
+        <TouchableOpacity
+          onPress={handleAdd}
+          disabled={saving || !name.trim() || !password.trim()}
+          style={[
+            styles.primaryBtn,
+            (saving || !name.trim() || !password.trim()) && styles.primaryBtnDisabled,
+          ]}
+          activeOpacity={0.85}
+        >
+          {saving
+            ? <ActivityIndicator color={COLORS.onPrimary} />
+            : (
+              <>
+                <Icon name="person_add" size={22} color={COLORS.onPrimary} />
+                <Text style={styles.primaryBtnText}>{t('save')}</Text>
+              </>
+            )}
+        </TouchableOpacity>
+      </BottomSheet>
 
-      {cleaners.map(c => (
-        <Card key={c.id} style={styles.cleanerCard}>
-          <View style={styles.cleanerRow}>
-            <Text style={styles.cleanerName} numberOfLines={2}>{c.username}</Text>
-            <View style={styles.buttonGroup}>
-              <Button
-                title={t('resetPassword')}
-                onPress={() => setResetModal(c)}
-                variant="secondary"
-                size="sm"
-              />
-              <Button
-                title={t('delete')}
-                onPress={() => setDeleteModal(c)}
-                variant="danger"
-                size="sm"
-              />
-            </View>
-          </View>
-        </Card>
-      ))}
+      {/* ── Reset password ── */}
+      <BottomSheet
+        visible={!!resetTarget}
+        onClose={() => { setResetTarget(null); setNewPassword(''); }}
+        maxHeightRatio={0.65}
+      >
+        <Text style={styles.sheetTitle}>{t('resetPassword')}</Text>
+        <Text style={styles.sheetSub}>
+          {resetTarget?.username}
+          {' — '}
+          {t('resetPasswordHint')
+            || 'Their old password stops working immediately. Tell them the new one.'}
+        </Text>
 
-      {/* Delete confirmation modal */}
-      <Modal visible={!!deleteModal} transparent animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={() => setDeleteModal(null)}>
-          <Pressable onPress={() => {}} style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{t('deleteCleaner')}</Text>
-            <Text style={styles.modalMessage}>{t('deleteCleanerMsg')}</Text>
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={() => setDeleteModal(null)}
-                style={[styles.modalBtn, styles.modalBtnCancel]}
-              >
-                <Text style={styles.modalBtnText}>{t('cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={confirmDelete}
-                style={[styles.modalBtn, { backgroundColor: COLORS.danger }]}
-              >
-                <Text style={[styles.modalBtnText, { color: COLORS.white }]}>{t('delete')}</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+        <Field
+          label={t('newPassword')}
+          value={newPassword}
+          onChangeText={setNewPassword}
+          placeholder="••••••••"
+          secure
+        />
+        <Text style={styles.hint}>
+          {t('passwordHint') || `At least ${MIN_PASSWORD} characters.`}
+        </Text>
 
-      {/* Password reset modal */}
-      <Modal visible={!!resetModal} transparent animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={() => setResetModal(null)}>
-          {/* Inner Pressable stops the backdrop from closing the card on tap */}
-          <Pressable onPress={() => {}} style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              {t('resetPassword')} {resetModal?.username}
-            </Text>
-            <Label>{t('newPassword')}</Label>
-            <Input
-              value={newPassword}
-              onChangeText={setNewPassword}
-              placeholder="••••••••"
-              secureTextEntry
-              style={{ marginBottom: SPACING[4] }}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={() => setResetModal(null)}
-                style={[styles.modalBtn, styles.modalBtnCancel]}
-              >
-                <Text style={styles.modalBtnText}>{t('cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={confirmReset}
-                disabled={resetting}
-                style={[styles.modalBtn, styles.modalBtnPrimary]}
-              >
-                <Text style={[styles.modalBtnText, { color: COLORS.white }]}>
-                  {resetting ? t('saving') : t('reset')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-    </ScrollView>
+        <TouchableOpacity
+          onPress={handleReset}
+          disabled={resetting || newPassword.length < MIN_PASSWORD}
+          style={[
+            styles.primaryBtn,
+            (resetting || newPassword.length < MIN_PASSWORD) && styles.primaryBtnDisabled,
+          ]}
+          activeOpacity={0.85}
+        >
+          {resetting
+            ? <ActivityIndicator color={COLORS.onPrimary} />
+            : (
+              <>
+                <Icon name="key" size={22} color={COLORS.onPrimary} />
+                <Text style={styles.primaryBtnText}>{t('reset')}</Text>
+              </>
+            )}
+        </TouchableOpacity>
+      </BottomSheet>
+
+      {/* ── Delete cleaner ── */}
+      <BottomSheet
+        visible={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        maxHeightRatio={0.5}
+      >
+        <Text style={styles.sheetTitle}>{t('deleteCleaner')}</Text>
+        <Text style={styles.sheetSub}>
+          {deleteTarget?.username}
+          {' — '}
+          {t('deleteCleanerMsg')
+            || 'This removes their account and unassigns their rooms. It cannot be undone.'}
+        </Text>
+
+        <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xs }}>
+          <TouchableOpacity
+            onPress={() => setDeleteTarget(null)}
+            style={[styles.halfBtn, styles.halfBtnGhost]}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.halfBtnGhostText}>{t('cancel')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleDelete}
+            disabled={deleting}
+            style={[styles.halfBtn, { backgroundColor: COLORS.danger }]}
+            activeOpacity={0.8}
+          >
+            {deleting
+              ? <ActivityIndicator color={COLORS.onPrimary} />
+              : <Text style={styles.halfBtnText}>{t('delete')}</Text>}
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { padding: SPACING[4] },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: SPACING[2],
+  scroll: { paddingHorizontal: SPACING.md, paddingTop: SPACING.xs },
+  countLine: {
+    fontFamily: FONTS.medium,
+    fontSize: 14,
+    color: COLORS.textTertiary,
+    marginBottom: SPACING.md,
   },
-  formCard: { padding: SPACING[4], marginBottom: SPACING[4] },
-  cleanerCard: { padding: SPACING[3], marginBottom: SPACING[2] },
-  cleanerRow: {
+
+  addBtn: {
+    minHeight: 50,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: SPACING[2],
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: SPACING.md,
   },
-  cleanerName: {
-    fontFamily: FONTS.bold,
+  addBtnText: { fontFamily: FONTS.semiBold, fontSize: 16, color: COLORS.onPrimary },
+
+  card: {
+        backgroundColor: COLORS.surface,
+    borderWidth: 1, borderColor: COLORS.border,
+    borderRadius: 20, padding: 15, gap: 11,
+    marginBottom: 11,
+    ...SHADOW.card,          // 0 2px 6px rgba(11,31,58,0.06)
+  },
+  cardRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  avatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { fontFamily: DISPLAY.semiBold, fontSize: 17, color: '#FFFFFF' },
+  name: { fontFamily: DISPLAY.semiBold, fontSize: 20, color: COLORS.primary },
+  roomsLabel: { fontFamily: FONTS.medium, fontSize: 14, color: COLORS.textTertiary, fontVariant: ['tabular-nums'] },
+  iconBtn: {
+    width: 44, height: 44, borderRadius: 13,
+    borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  iconBtnDanger: { borderColor: COLORS.dangerBorder },
+
+  track: {
+    height: 8,
+    borderRadius: 6,
+    backgroundColor: COLORS.slate,
+    overflow: 'hidden',
+  },
+  trackFill: { height: '100%', borderRadius: 6 },
+
+  /* Sheet contents */
+  sheetTitle: { fontFamily: DISPLAY.semiBold, fontSize: FONT_SIZE.xxl, color: COLORS.primary },
+  sheetSub: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.md,
+    lineHeight: 21,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.sm,
+  },
+  fieldLabel: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: '#334155' },
+  input: {
+    height: 52,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: 14,
+    fontFamily: FONTS.medium,
     fontSize: FONT_SIZE.lg,
     color: COLORS.text,
-    flex: 1,
-    marginRight: SPACING[2],
+    backgroundColor: COLORS.surfaceAlt,
   },
-  buttonGroup: { flexDirection: 'row', gap: SPACING[2], flexShrink: 0 },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
+  eyeBtn: {
+    position: 'absolute',
+    right: 6,
+    width: 40,
+    height: 40,
     alignItems: 'center',
-    padding: SPACING[6],
+    justifyContent: 'center',
   },
-  modalCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
-    padding: SPACING[5],
-    width: '100%',
-    maxWidth: 400,
+  hint: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textMuted },
+
+  primaryBtn: {
+    height: 56,
+    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.md,
     ...SHADOW.md,
   },
-  modalTitle: {
-    fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.xl,
-    color: COLORS.text,
-    marginBottom: SPACING[3],
+  primaryBtnDisabled: { backgroundColor: COLORS.border, shadowOpacity: 0, elevation: 0 },
+  primaryBtnText: { fontFamily: DISPLAY.semiBold, fontSize: 18, color: COLORS.onPrimary },
+
+  halfBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: RADIUS.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  modalMessage: {
+  halfBtnGhost: { backgroundColor: COLORS.surfaceMuted },
+  halfBtnGhostText: { fontFamily: DISPLAY.semiBold, fontSize: FONT_SIZE.lg, color: COLORS.primary },
+  halfBtnText: { fontFamily: DISPLAY.semiBold, fontSize: FONT_SIZE.lg, color: COLORS.onPrimary },
+
+  emptyWrap: { alignItems: 'center', paddingVertical: SPACING.xl, gap: 6 },
+  emptyIcon: { fontSize: 46 },
+  emptyTitle: { fontFamily: DISPLAY.semiBold, fontSize: FONT_SIZE.xxl, color: COLORS.primary },
+  emptySub: {
     fontFamily: FONTS.regular,
     fontSize: FONT_SIZE.md,
     color: COLORS.textSecondary,
-    marginBottom: SPACING[5],
+    textAlign: 'center',
+    lineHeight: 21,
   },
-  modalActions: { flexDirection: 'row', gap: SPACING[2] },
-  modalBtn: {
-    flex: 1,
-    paddingVertical: SPACING[3],
-    borderRadius: RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  modalBtnCancel: { backgroundColor: COLORS.surface, borderColor: COLORS.border },
-  modalBtnText: { fontFamily: FONTS.bold, fontSize: 16, color: COLORS.primary },
-  modalBtnPrimary: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
 });

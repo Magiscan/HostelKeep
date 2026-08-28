@@ -1,55 +1,131 @@
+// src/screens/AccountScreen.js
+//
+// Account settings, including the in-app deletion flow required by App Store
+// Review Guideline 5.1.1(v) and Google Play.
+//
+// STRUCTURE: this renders as one of the manager's tab screens, underneath the
+// floating chrome — same as Rooms and Team. It no longer needs a back button,
+// because the toolbar is always on screen. `bottomPad` keeps the last card
+// clear of it.
+//
+// Reviewers look for account deletion to be easy to find; from the avatar menu
+// it's two taps, which is what they expect.
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Pressable,
-  Alert, ActivityIndicator, Linking, Platform,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
+  Alert, ActivityIndicator, Linking,
 } from 'react-native';
-import { COLORS, FONTS, FONT_SIZE, RADIUS, SPACING, SHADOW } from '../theme';
-import { Button, Card, Label, Input, SectionTitle } from '../components/UI';
+import { useTranslation } from 'react-i18next';
+import Icon from '../components/Icon';
+import BottomSheet from '../components/BottomSheet';
+import { COLORS } from '../theme/colors';
+import { FONTS, DISPLAY } from '../theme/typography';
 import { useAuth } from '../contexts/AuthContext';
+import { useApp } from '../contexts/AppContext';
 import { deleteOwnAccount } from '../utils/accountDeletion';
 
 // Must point at your live policy — App Review checks that the in-app link and
 // the App Store Connect metadata field resolve to the same page.
 const PRIVACY_URL = 'https://keepclean-hostel.web.app/privacy.html';
 
-/**
- * Account settings, including the in-app account deletion flow required by
- * App Store Review Guideline 5.1.1(v) and Google Play.
- *
- * Reviewers look for this to be EASY TO FIND. It's reached from the avatar
- * menu (Account item, alongside Language and Hostel Code) rather than a top
- * -level tab — keep it no more than two taps from the main screen.
- *
- * @param {function} [onBack] - if provided, shows a back button that calls
- *   this instead of a tab. Used when this screen is shown as a full-screen
- *   overlay rather than as one of the bottom tabs.
- */
-export default function AccountScreen({ onBack }) {
+const MIN_PASSWORD = 8;
+
+/* ── A labelled read-only row ───────────────────────────────────── */
+function InfoRow({ label, value, mono }) {
+  if (!value) return null;
+  return (
+    <View style={s.infoRow}>
+      <Text style={s.infoLabel}>{label}</Text>
+      <Text style={[s.infoValue, mono && s.infoValueMono]} numberOfLines={1}>{value}</Text>
+    </View>
+  );
+}
+
+/* ── A tappable settings row ────────────────────────────────────── */
+function ActionRow({ icon, label, value, onPress, danger, iconBg }) {
+  return (
+    <TouchableOpacity
+      style={s.actionRow}
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+    >
+      <View style={[s.actionIcon, iconBg && { backgroundColor: iconBg }]}>
+        <Icon name={icon} size={20} color={danger ? COLORS.danger : COLORS.primary} />
+      </View>
+      <Text style={[s.actionLabel, danger && { color: COLORS.danger }]} numberOfLines={1}>
+        {label}
+      </Text>
+      {!!value && <Text style={s.actionValue} numberOfLines={1}>{value}</Text>}
+      <Icon name="chevron_right" size={20} color={COLORS.textMuted} />
+    </TouchableOpacity>
+  );
+}
+
+/* ── Labelled input, matching every other form in the app ───────── */
+function Field({ label, value, onChangeText, placeholder, secure, autoCapitalize = 'none' }) {
+  const [focused, setFocused] = useState(false);
+  const [reveal, setReveal] = useState(false);
+  return (
+    <View style={{ gap: 7 }}>
+      <Text style={s.fieldLabel}>{label}</Text>
+      <View style={{ position: 'relative', justifyContent: 'center' }}>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={COLORS.textMuted}
+          secureTextEntry={secure && !reveal}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={false}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={[s.input, focused && { borderColor: COLORS.accent }, secure && { paddingRight: 48 }]}
+        />
+        {secure && (
+          <TouchableOpacity
+            onPress={() => setReveal(v => !v)}
+            style={s.eyeBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Icon name={reveal ? 'visibility_off' : 'visibility'} size={20} color={COLORS.textTertiary} />
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
+
+export default function AccountScreen({ bottomPad = 0 }) {
   const { t } = useTranslation();
   const { user, logout, changeOwnPassword } = useAuth();
+  const { hostel, updateHostel } = useApp();
 
-  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const isManager = user?.role === 'manager';
+
+  const [showPassword, setShowPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
+
+  const [showRename, setShowRename] = useState(false);
+  const [hostelName, setHostelName] = useState(hostel?.name || '');
+  const [savingName, setSavingName] = useState(false);
 
   const [showDelete, setShowDelete] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [progress, setProgress] = useState('');
 
-  const isManager = user?.role === 'manager';
-
   const handleChangePassword = async () => {
-    if (!currentPassword || newPassword.length < 8) {
-      Alert.alert(t('passwordTooShort') || 'Password must be at least 8 characters.');
+    if (!currentPassword || newPassword.length < MIN_PASSWORD) {
+      Alert.alert(t('passwordTooShort') || `Password must be at least ${MIN_PASSWORD} characters.`);
       return;
     }
     setSavingPassword(true);
     try {
       await changeOwnPassword(currentPassword, newPassword);
-      setShowPasswordForm(false);
+      setShowPassword(false);
       setCurrentPassword('');
       setNewPassword('');
       Alert.alert(t('passwordResetSuccess') || 'Password updated.');
@@ -57,6 +133,20 @@ export default function AccountScreen({ onBack }) {
       Alert.alert(e.message);
     } finally {
       setSavingPassword(false);
+    }
+  };
+
+  const handleRename = async () => {
+    const name = hostelName.trim();
+    if (!name) return;
+    setSavingName(true);
+    try {
+      await updateHostel({ name });
+      setShowRename(false);
+    } catch (e) {
+      Alert.alert(t('error') || 'Error', e.message);
+    } finally {
+      setSavingName(false);
     }
   };
 
@@ -78,298 +168,339 @@ export default function AccountScreen({ onBack }) {
     }
   };
 
-  const confirmDelete = () => {
-    Alert.alert(
-      isManager ? 'Delete hostel and account?' : 'Delete your account?',
-      isManager
-        ? 'This permanently deletes your hostel, all rooms, all cleaning history, '
-          + 'and every cleaner account in it. This cannot be undone.'
-        : 'This permanently deletes your account and removes you from your hostel. '
-          + 'This cannot be undone.',
-      [
-        { text: t('cancel') || 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: handleDelete },
-      ],
-    );
-  };
+  const initials = (user?.username || '?').trim().charAt(0).toUpperCase();
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      {onBack && (
-        <TouchableOpacity
-          onPress={onBack}
-          activeOpacity={0.7}
-          style={styles.backRow}
-        >
-          <Text style={styles.backChevron}>‹</Text>
-          <Text style={styles.backText}>{t('back') || 'Back'}</Text>
-        </TouchableOpacity>
-      )}
-
-      <SectionTitle
-        title={t('account') || 'Account'}
-        subtitle={user?.username}
-      />
-
-      {/* ── Details ── */}
-      <Card style={styles.card}>
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>{t('username') || 'Username'}</Text>
-          <Text style={styles.rowValue}>{user?.username}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>{t('hostelCode') || 'Hostel code'}</Text>
-          <Text style={styles.rowValue}>{user?.hostelCode}</Text>
-        </View>
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>{t('role') || 'Role'}</Text>
-          <Text style={styles.rowValue}>{user?.role}</Text>
-        </View>
-        {user?.recoveryEmail ? (
-          <View style={styles.row}>
-            <Text style={styles.rowLabel}>{t('recoveryEmail') || 'Recovery email'}</Text>
-            <Text style={styles.rowValue}>{user.recoveryEmail}</Text>
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        contentContainerStyle={[s.scroll, { paddingBottom: bottomPad + 24 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Identity ── */}
+        <View style={s.identityCard}>
+          <View style={s.avatar}>
+            <Text style={s.avatarText}>{initials}</Text>
           </View>
-        ) : null}
-      </Card>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={s.name} numberOfLines={1}>{user?.username}</Text>
+            <Text style={s.role} numberOfLines={1}>
+              {isManager ? (t('manager.role') || 'Manager') : (t('cleaner') || 'Housekeeper')}
+              {hostel?.name ? ` · ${hostel.name}` : ''}
+            </Text>
+          </View>
+        </View>
+
+        {/* ── Details ── */}
+        <Text style={s.sectionLabel}>{t('account') || 'Account'}</Text>
+        <View style={s.card}>
+          <InfoRow label={t('username') || 'Username'} value={user?.username} />
+          <InfoRow label={t('hostelCode') || 'Hostel code'} value={user?.hostelCode} mono />
+          <InfoRow label={t('recoveryEmail') || 'Recovery email'} value={user?.recoveryEmail} />
+        </View>
+
+        {/* ── Settings ── */}
+        <Text style={s.sectionLabel}>{t('settings') || 'Settings'}</Text>
+        <View style={s.card}>
+          {isManager && (
+            <ActionRow
+              icon="edit"
+              label={t('manager.editPropertyName') || 'Hostel name'}
+              value={hostel?.name}
+              onPress={() => { setHostelName(hostel?.name || ''); setShowRename(true); }}
+            />
+          )}
+          <ActionRow
+            icon="key"
+            label={t('changePassword') || 'Change password'}
+            onPress={() => setShowPassword(true)}
+          />
+          <ActionRow
+            icon="shield_person"
+            label={t('privacyPolicy') || 'Privacy Policy'}
+            onPress={() => Linking.openURL(PRIVACY_URL)}
+          />
+        </View>
+
+        {/* ── Sign out ── */}
+        <TouchableOpacity onPress={logout} style={s.signOutBtn} activeOpacity={0.8}>
+          <Icon name="logout" size={21} color={COLORS.primary} />
+          <Text style={s.signOutText}>{t('signOut') || 'Sign out'}</Text>
+        </TouchableOpacity>
+
+        {/* ── Danger zone ──
+            Deliberately last, visually separated, and the only red on the
+            screen — so it can't be mistaken for a routine setting. */}
+        <Text style={[s.sectionLabel, { color: COLORS.danger }]}>
+          {t('dangerZone') || 'Danger zone'}
+        </Text>
+        <View style={[s.card, s.dangerCard]}>
+          <Text style={s.dangerBody}>
+            {isManager
+              ? 'Permanently deletes your hostel, all of its rooms and cleaning '
+                + 'history, and every cleaner account in it.'
+              : 'Permanently deletes your account and all of your personal data.'}
+            {' This cannot be undone.'}
+          </Text>
+          <TouchableOpacity
+            onPress={() => setShowDelete(true)}
+            style={s.dangerBtn}
+            activeOpacity={0.8}
+          >
+            <Icon name="delete" size={20} color={COLORS.danger} />
+            <Text style={s.dangerBtnText}>{t('deleteAccount') || 'Delete account'}</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+
+      {/* ── Rename hostel ── */}
+      <BottomSheet
+        visible={showRename}
+        onClose={() => setShowRename(false)}
+        maxHeightRatio={0.55}
+      >
+        <Text style={s.sheetTitle}>{t('manager.editPropertyName') || 'Hostel name'}</Text>
+        <Text style={s.sheetSub}>
+          {t('manager.renameHint')
+            || 'This is what your housekeepers see when they sign in.'}
+        </Text>
+        <Field
+          label={t('propertyName') || 'Name'}
+          value={hostelName}
+          onChangeText={setHostelName}
+          placeholder={t('setup.propertyNamePlaceholder') || 'e.g. Sunset Hostel'}
+          autoCapitalize="words"
+        />
+        <View style={s.sheetActions}>
+          <TouchableOpacity
+            onPress={() => setShowRename(false)}
+            style={[s.halfBtn, s.halfBtnGhost]}
+            activeOpacity={0.8}
+          >
+            <Text style={s.halfBtnGhostText}>{t('cancel')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleRename}
+            disabled={savingName || !hostelName.trim()}
+            style={[s.halfBtn, s.halfBtnPrimary, (savingName || !hostelName.trim()) && s.halfBtnDisabled]}
+            activeOpacity={0.85}
+          >
+            {savingName
+              ? <ActivityIndicator color={COLORS.onPrimary} />
+              : <Text style={s.halfBtnText}>{t('save')}</Text>}
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
 
       {/* ── Change password ── */}
-      <Card style={styles.card}>
-        {!showPasswordForm ? (
-          <Button
-            title={t('changePassword') || 'Change password'}
-            onPress={() => setShowPasswordForm(true)}
-            variant="secondary"
+      <BottomSheet
+        visible={showPassword}
+        onClose={() => setShowPassword(false)}
+        maxHeightRatio={0.7}
+        scrollable
+      >
+        <Text style={s.sheetTitle}>{t('changePassword') || 'Change password'}</Text>
+        <View style={{ gap: 12 }}>
+          <Field
+            label={t('currentPassword') || 'Current password'}
+            value={currentPassword}
+            onChangeText={setCurrentPassword}
+            placeholder="••••••••"
+            secure
           />
+          <Field
+            label={t('newPassword') || 'New password'}
+            value={newPassword}
+            onChangeText={setNewPassword}
+            placeholder="••••••••"
+            secure
+          />
+          <Text style={s.hint}>
+            {t('passwordHint') || `At least ${MIN_PASSWORD} characters.`}
+          </Text>
+        </View>
+        <View style={s.sheetActions}>
+          <TouchableOpacity
+            onPress={() => setShowPassword(false)}
+            style={[s.halfBtn, s.halfBtnGhost]}
+            activeOpacity={0.8}
+          >
+            <Text style={s.halfBtnGhostText}>{t('cancel')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleChangePassword}
+            disabled={savingPassword || !currentPassword || newPassword.length < MIN_PASSWORD}
+            style={[
+              s.halfBtn, s.halfBtnPrimary,
+              (savingPassword || !currentPassword || newPassword.length < MIN_PASSWORD) && s.halfBtnDisabled,
+            ]}
+            activeOpacity={0.85}
+          >
+            {savingPassword
+              ? <ActivityIndicator color={COLORS.onPrimary} />
+              : <Text style={s.halfBtnText}>{t('save')}</Text>}
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
+
+      {/* ── Delete account ── */}
+      <BottomSheet
+        visible={showDelete}
+        onClose={() => !deleting && setShowDelete(false)}
+        maxHeightRatio={0.7}
+        scrollable
+      >
+        {deleting ? (
+          <View style={s.deletingBox}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={s.hint}>{progress || 'Deleting…'}</Text>
+          </View>
         ) : (
           <>
-            <Label>{t('currentPassword') || 'Current password'}</Label>
-            <Input
-              value={currentPassword}
-              onChangeText={setCurrentPassword}
+            <Text style={s.sheetTitle}>
+              {isManager ? 'Delete hostel and account' : 'Delete account'}
+            </Text>
+            <Text style={s.sheetSub}>
+              {isManager
+                ? 'Your hostel, every room, all cleaning history and every cleaner '
+                  + 'account will be removed. This is permanent.'
+                : 'Your account and all of your personal data will be removed. '
+                  + 'This is permanent.'}
+            </Text>
+            <Field
+              label={t('password') || 'Password'}
+              value={deletePassword}
+              onChangeText={setDeletePassword}
               placeholder="••••••••"
-              secureTextEntry
-              style={{ marginBottom: SPACING[3] }}
+              secure
             />
-            <Label>{t('newPassword') || 'New password'}</Label>
-            <Input
-              value={newPassword}
-              onChangeText={setNewPassword}
-              placeholder="••••••••"
-              secureTextEntry
-              style={{ marginBottom: SPACING[4] }}
-            />
-            <View style={{ flexDirection: 'row', gap: SPACING[2] }}>
-              <Button
-                title={savingPassword ? (t('saving') || 'Saving…') : (t('save') || 'Save')}
-                onPress={handleChangePassword}
-                disabled={savingPassword}
-                style={{ flex: 1 }}
-              />
-              <Button
-                title={t('cancel') || 'Cancel'}
-                onPress={() => setShowPasswordForm(false)}
-                variant="secondary"
-                style={{ flex: 1 }}
-              />
+            <View style={s.sheetActions}>
+              <TouchableOpacity
+                onPress={() => { setShowDelete(false); setDeletePassword(''); }}
+                style={[s.halfBtn, s.halfBtnGhost]}
+                activeOpacity={0.8}
+              >
+                <Text style={s.halfBtnGhostText}>{t('cancel') || 'Cancel'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleDelete}
+                disabled={!deletePassword}
+                style={[s.halfBtn, { backgroundColor: COLORS.danger }, !deletePassword && s.halfBtnDisabled]}
+                activeOpacity={0.85}
+              >
+                <Text style={s.halfBtnText}>{t('delete') || 'Delete'}</Text>
+              </TouchableOpacity>
             </View>
           </>
         )}
-      </Card>
-
-      {/* ── Privacy policy — reviewers check for an in-app link ── */}
-      <Card style={styles.card}>
-        <TouchableOpacity
-          onPress={() => Linking.openURL(PRIVACY_URL)}
-          activeOpacity={0.7}
-          style={styles.linkRow}
-        >
-          <Text style={styles.linkText}>{t('privacyPolicy') || 'Privacy Policy'}</Text>
-          <Text style={styles.linkChevron}>›</Text>
-        </TouchableOpacity>
-      </Card>
-
-      {/* ── Sign out ── */}
-      <Button
-        title={t('signOut') || 'Sign out'}
-        onPress={logout}
-        variant="secondary"
-        style={{ marginBottom: SPACING[6] }}
-      />
-
-      {/* ── Danger zone ── */}
-      <Card style={[styles.card, styles.dangerCard]}>
-        <Text style={styles.dangerTitle}>{t('deleteAccount') || 'Delete account'}</Text>
-        <Text style={styles.dangerBody}>
-          {isManager
-            ? 'Permanently deletes your hostel, all of its rooms and cleaning '
-              + 'history, and every cleaner account in it.'
-            : 'Permanently deletes your account and all of your personal data.'}
-          {' This cannot be undone.'}
-        </Text>
-        <Button
-          title={t('deleteAccount') || 'Delete account'}
-          onPress={() => setShowDelete(true)}
-          variant="danger"
-        />
-      </Card>
-
-      {/* ── Delete confirmation ── */}
-      <Modal visible={showDelete} transparent animationType="fade">
-        <Pressable
-          style={styles.modalBackdrop}
-          onPress={() => !deleting && setShowDelete(false)}
-        >
-          <Pressable onPress={() => {}} style={styles.modalCard}>
-            {deleting ? (
-              <View style={{ alignItems: 'center', paddingVertical: SPACING[6] }}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={[styles.dangerBody, { marginTop: SPACING[4] }]}>
-                  {progress || 'Deleting…'}
-                </Text>
-              </View>
-            ) : (
-              <>
-                <Text style={styles.modalTitle}>
-                  {isManager ? 'Delete hostel and account' : 'Delete account'}
-                </Text>
-                <Text style={styles.dangerBody}>
-                  Enter your password to confirm. This is permanent.
-                </Text>
-                <Label>{t('password') || 'Password'}</Label>
-                <Input
-                  value={deletePassword}
-                  onChangeText={setDeletePassword}
-                  placeholder="••••••••"
-                  secureTextEntry
-                  style={{ marginBottom: SPACING[4] }}
-                />
-                <View style={styles.modalActions}>
-                  <TouchableOpacity
-                    onPress={() => { setShowDelete(false); setDeletePassword(''); }}
-                    style={[styles.modalBtn, styles.modalBtnCancel]}
-                  >
-                    <Text style={styles.modalBtnText}>{t('cancel') || 'Cancel'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={confirmDelete}
-                    style={[styles.modalBtn, { backgroundColor: COLORS.danger }]}
-                  >
-                    <Text style={[styles.modalBtnText, { color: COLORS.white }]}>
-                      Delete
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </Pressable>
-        </Pressable>
-      </Modal>
-    </ScrollView>
+      </BottomSheet>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  scroll: { padding: SPACING[4] },
-  backRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING[3],
-    alignSelf: 'flex-start',
-    paddingVertical: SPACING[1],
-    paddingRight: SPACING[2],
+const s = StyleSheet.create({
+  scroll: { paddingHorizontal: 18, paddingTop: 8 },
+
+  identityCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    backgroundColor: COLORS.primary,
+    borderRadius: 20, padding: 18,
+    marginBottom: 8,
   },
-  backChevron: {
-    fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.xl,
-    color: COLORS.primary,
-    marginRight: 4,
+  avatar: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 2, borderColor: COLORS.accent,
+    alignItems: 'center', justifyContent: 'center',
   },
-  backText: {
-    fontFamily: FONTS.medium,
-    fontSize: FONT_SIZE.md,
-    color: COLORS.primary,
+  avatarText: { fontFamily: DISPLAY.semiBold, fontSize: 22, color: COLORS.accent },
+  name: { fontFamily: DISPLAY.semiBold, fontSize: 22, color: '#FFFFFF' },
+  role: { fontFamily: FONTS.medium, fontSize: 14, color: COLORS.onNavyMuted, marginTop: 2 },
+
+  sectionLabel: {
+    fontFamily: FONTS.semiBold, fontSize: 13,
+    letterSpacing: 1, textTransform: 'uppercase',
+    color: COLORS.textTertiary,
+    marginTop: 20, marginBottom: 8,
   },
-  card: { padding: SPACING[4], marginBottom: SPACING[4] },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING[2],
-  },
-  rowLabel: {
-    fontFamily: FONTS.medium,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.textSecondary,
-  },
-  rowValue: {
-    fontFamily: FONTS.semiBold,
-    fontSize: FONT_SIZE.md,
-    color: COLORS.text,
-  },
-  linkRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING[2],
-  },
-  linkText: {
-    fontFamily: FONTS.medium,
-    fontSize: FONT_SIZE.md,
-    color: COLORS.primary,
-  },
-  linkChevron: {
-    fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.xl,
-    color: COLORS.textMuted,
-  },
-  dangerCard: {
-    borderColor: COLORS.danger,
-    borderWidth: 1,
-  },
-  dangerTitle: {
-    fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.lg,
-    color: COLORS.danger,
-    marginBottom: SPACING[2],
-  },
-  dangerBody: {
-    fontFamily: FONTS.regular,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING[4],
-    lineHeight: 20,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: SPACING[6],
-  },
-  modalCard: {
+
+  card: {
     backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
-    padding: SPACING[5],
-    width: '100%',
-    maxWidth: 400,
-    ...SHADOW.md,
+    borderRadius: 20, borderWidth: 1, borderColor: COLORS.border,
+    paddingHorizontal: 16,
   },
-  modalTitle: {
-    fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.xl,
-    color: COLORS.text,
-    marginBottom: SPACING[3],
+
+  infoRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    minHeight: 52,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  modalActions: { flexDirection: 'row', gap: SPACING[2] },
-  modalBtn: {
-    flex: 1,
-    paddingVertical: SPACING[3],
-    borderRadius: RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
+  infoLabel: { flex: 1, fontFamily: FONTS.medium, fontSize: 15, color: COLORS.textTertiary },
+  infoValue: { fontFamily: FONTS.semiBold, fontSize: 15, color: COLORS.text, maxWidth: '55%' },
+  infoValueMono: { fontFamily: DISPLAY.semiBold, fontSize: 17, letterSpacing: 2, color: COLORS.primary },
+
+  actionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    minHeight: 60,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
-  modalBtnCancel: { backgroundColor: COLORS.surface, borderColor: COLORS.border },
-  modalBtnText: { fontFamily: FONTS.bold, fontSize: 16, color: COLORS.primary },
+  actionIcon: {
+    width: 38, height: 38, borderRadius: 13,
+    backgroundColor: COLORS.accentLight,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  actionLabel: { flex: 1, fontFamily: FONTS.medium, fontSize: 16, color: COLORS.text },
+  actionValue: { fontFamily: FONTS.regular, fontSize: 14, color: COLORS.textTertiary, maxWidth: '40%' },
+
+  signOutBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9,
+    minHeight: 54, borderRadius: 16,
+    borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: COLORS.surface,
+    marginTop: 20,
+  },
+  signOutText: { fontFamily: FONTS.semiBold, fontSize: 16, color: COLORS.primary },
+
+  dangerCard: { borderColor: COLORS.dangerBorder, paddingVertical: 16 },
+  dangerBody: {
+    fontFamily: FONTS.regular, fontSize: 14, lineHeight: 20,
+    color: COLORS.textSecondary, marginBottom: 14,
+  },
+  dangerBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    minHeight: 52, borderRadius: 16,
+    backgroundColor: COLORS.dangerLight,
+    borderWidth: 1.5, borderColor: COLORS.dangerBorder,
+  },
+  dangerBtnText: { fontFamily: FONTS.semiBold, fontSize: 16, color: COLORS.danger },
+
+  /* Sheets */
+  sheetTitle: { fontFamily: DISPLAY.semiBold, fontSize: 25, color: COLORS.primary, marginBottom: 2 },
+  sheetSub: {
+    fontFamily: FONTS.regular, fontSize: 15, lineHeight: 21,
+    color: COLORS.textSecondary, marginBottom: 10,
+  },
+  sheetActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+
+  fieldLabel: { fontFamily: FONTS.medium, fontSize: 15, color: '#334155' },
+  input: {
+    height: 52, borderRadius: 14,
+    borderWidth: 1.5, borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceAlt,
+    paddingHorizontal: 14,
+    fontFamily: FONTS.medium, fontSize: 17, color: COLORS.text,
+  },
+  eyeBtn: {
+    position: 'absolute', right: 6,
+    width: 40, height: 40,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  hint: { fontFamily: FONTS.regular, fontSize: 13, color: COLORS.textTertiary },
+
+  deletingBox: { alignItems: 'center', gap: 14, paddingVertical: 32 },
+
+  halfBtn: { flex: 1, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  halfBtnGhost: { backgroundColor: COLORS.surfaceMuted },
+  halfBtnGhostText: { fontFamily: FONTS.semiBold, fontSize: 17, color: COLORS.text },
+  halfBtnPrimary: { backgroundColor: COLORS.primary },
+  halfBtnDisabled: { backgroundColor: COLORS.disabledBg },
+  halfBtnText: { fontFamily: FONTS.semiBold, fontSize: 17, color: COLORS.onPrimary },
 });

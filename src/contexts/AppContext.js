@@ -423,6 +423,12 @@ export function AppProvider({ children }) {
     await deleteDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId));
   }, [hostelCode]);
 
+  const deleteExtraRequest = useCallback(async (roomId) => {
+    if (!hostelCode) return;
+    await deleteDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId));
+  }, [hostelCode]);
+
+
   const cleanupOldExtraRequests = useCallback(async () => {
     if (!hostelCode) return;
     const now = Date.now();
@@ -435,10 +441,10 @@ export function AppProvider({ children }) {
     const batch = writeBatch(db);
     snap.forEach(docSnap => {
       const data = docSnap.data();
-      if (data.imageBase64 && data.requestedAt) {
+      if (data.requestedAt) {
         const age = now - new Date(data.requestedAt).getTime();
         if (age > twentyFourHours) {
-          batch.update(docSnap.ref, { imageBase64: null });
+          batch.delete(docSnap.ref);
         }
       }
     });
@@ -553,6 +559,7 @@ export function AppProvider({ children }) {
     rejectExtraRoom,
     extraRequests,
     cancelExtraRoomRequest,
+    deleteExtraRequest,
     cleanupOldExtraRequests,
     dailyLogExists,
     saveDailyLog,
@@ -587,6 +594,7 @@ export function AppProvider({ children }) {
     rejectExtraRoom,
     extraRequests,
     cancelExtraRoomRequest,
+    deleteExtraRequest,
     cleanupOldExtraRequests,
     // FIXED: these were in the returned object but missing from the deps, so
     // consumers were handed stale closures.

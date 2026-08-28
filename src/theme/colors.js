@@ -1,36 +1,77 @@
-// Palette used by the newer component modules (Dashboard/*, Card/*, the .web
-// screens). src/theme.js holds a SECOND, slightly different palette used by the
-// older native screens — see PATCHES.md for the consolidation plan.
+// src/theme/colors.js — palette used by the WEB screens, components/Dashboard/*
+// and (since the redesign) LoginScreen.js + CleanerScreen.js.
 //
-// FIXED: textMuted, successLight and warningLight were referenced by
-// DashboardScreen.web, HistoryScreen.web and Sidebar but never defined here,
-// so those styles were resolving to `undefined`.
+// Re-exports the same tokens as src/theme.js so the two can no longer drift.
+// Every key the screens reference is defined here — a missing key silently
+// resolves to `undefined`, which RN renders as "no colour" rather than throwing,
+// so gaps here show up as invisible text rather than a stack trace.
+
+import { BRAND, NEUTRAL, STATUS, ACCENT } from './tokens';
 
 export const COLORS = {
-  primary:       "#2563EB",
-  primaryLight:  "#DBEAFE",
-  primaryDark:   "#1D4ED8",
+  /* Brand */
+  primary:       BRAND.navy,
+  primaryLight:  '#E8EDF5',
+  primaryDark:   BRAND.navyHover,
+  onPrimary:     '#FFFFFF',        // text/icons ON navy
+  onAccent:      BRAND.navy,       // text/icons ON yellow
 
-  success:       "#22C55E",
-  successLight:  "#DCFCE7",   // ← ADDED (HistoryScreen.web)
-  warning:       "#F59E0B",
-  warningLight:  "#FEF3C7",   // ← ADDED (HistoryScreen.web)
-  danger:        "#EF4444",
-  dangerLight:   "#FEE2E2",
+  accent:        BRAND.yellow,
+  accentLight:   BRAND.yellowSoft,
+  accentDark:    '#B45309',        // readable yellow-family text
 
-  background:    "#F8FAFC",
-  surface:       "#FFFFFF",
+  /* Semantic */
+  success:       ACCENT.complete,
+  successLight:  STATUS.inspected.bg,
+  successDark:   STATUS.inspected.text,
+  warning:       BRAND.yellow,
+  warningLight:  STATUS.waiting.bg,
+  danger:        '#B91C1C',
+  dangerLight:   STATUS.error.bg,
+  dangerBorder:  STATUS.error.border,
+  info:          STATUS.cleaned.text,
+  infoLight:     STATUS.cleaned.bg,
 
-  border:        "#E5E7EB",
-  borderFocus:   "#93C5FD",
+  /* Surfaces */
+  background:    NEUTRAL.appBg,      // #F4F6FA
+  surface:       NEUTRAL.surface,    // #FFFFFF  cards, sheets
+  surfaceAlt:    NEUTRAL.inputFill,  // #FBFCFE  input fills
+  surfaceMuted:  NEUTRAL.slateChip,  // #F1F5F9  stepper trays, ghost buttons
+  surfaceSunken: NEUTRAL.slateChip,  // #F1F5F9  badge wells
+  disabledBg:    NEUTRAL.deskBg,     // #E7EBF2
 
-  text:          "#111827",
-  textSecondary: "#6B7280",
-  textMuted:     "#9CA3AF",   // ← ADDED (DashboardScreen.web, Sidebar)
+  /* Lines */
+  border:        NEUTRAL.border,
+  borderStrong:  '#CBD5E1',        // AssignScreen stayover chip
+  borderFocus:   BRAND.yellow,
+  inputFill:     NEUTRAL.inputFill,
 
-  white:         "#FFFFFF",
-  black:         "#0F172A",
+  /* Text */
+  text:          NEUTRAL.text,
+  textStrong:    NEUTRAL.text,     // Icon.js default `color` prop
+  textSecondary: NEUTRAL.text2,
+  textTertiary:  NEUTRAL.text3,
+  textMuted:     NEUTRAL.text4,
 
-  sidebar:       "#FFFFFF",
-  shadow:        "rgba(15,23,42,0.08)",
+  /* Decorative */
+  beige:         NEUTRAL.beigePill,
+  slate:         NEUTRAL.slateChip,
+
+  white:         '#FFFFFF',
+  black:         NEUTRAL.text,
+
+  /* Sidebar (web) — navy panel */
+  sidebar:         BRAND.navy,
+  sidebarText:     '#A9BCD5',
+  sidebarActive:   BRAND.yellow,
+  sidebarActiveBg: 'rgba(245,179,43,0.15)',
+
+  /* On-navy tones */
+  onNavy:        '#FFFFFF',
+  onNavyMuted:   '#A9BCD5',
+  onNavySoft:    '#DCE6F2',
+
+  shadow:        'rgba(11,31,58,0.08)',
 };
+
+export { STATUS, ACCENT };

@@ -6,6 +6,7 @@ import { FONTS, FONT_SIZE } from '../../theme/typography';
 import { SPACING } from '../../theme/spacing';
 import { RADIUS } from '../../theme/radius';
 import { useTranslation } from 'react-i18next';
+import { Wordmark } from '../brand/Glass';
 
 const logo = require('../../../assets/logo.png');
 
@@ -64,8 +65,7 @@ export default function Sidebar({
       <View style={styles.logoRow}>
           <Image source={logo} style={styles.logoMark} />
         <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.logoText} numberOfLines={1}>HostelKeep</Text>
-          <Text style={styles.logoSubtext} numberOfLines={1}>Housekeeping Manager</Text>
+          <Wordmark size={20} />
         </View>
       </View>
 
@@ -218,17 +218,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  logoText: {
-    fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.lg,
-    color: COLORS.text,
-  },
-  logoSubtext: {
-    fontFamily: FONTS.regular,
-    fontSize: 11,
-    color: COLORS.textMuted,
-    marginTop: 1,
-  },
 
   /* Nav */
   navScroll: { flex: 1 },
@@ -281,7 +270,7 @@ const styles = StyleSheet.create({
   },
   rowLabelActive: {
     color: COLORS.primary,
-    fontFamily: FONTS.bold,
+    fontFamily: FONTS.semiBold,
   },
 
   badge: {
@@ -289,7 +278,7 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     paddingHorizontal: 5,
-    backgroundColor: COLORS.danger,
+    backgroundColor: COLORS.accent,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -297,7 +286,7 @@ const styles = StyleSheet.create({
   badgeText: {
     fontFamily: FONTS.bold,
     fontSize: 10,
-    color: '#FFFFFF',
+    color: COLORS.onAccent,
   },
 
   /* Footer */
@@ -402,7 +391,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   langTitle: {
-    fontFamily: FONTS.bold,
+    fontFamily: FONTS.display,
     fontSize: FONT_SIZE.lg,
     color: COLORS.text,
     flexShrink: 1,
@@ -471,11 +460,6 @@ const styles = StyleSheet.create({
   },
   langItemTextActive: {
     color: COLORS.primary,
-    fontFamily: FONTS.bold,
+    fontFamily: FONTS.semiBold,
   },
-  logoImage: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,   // optional if you want rounded corners
-  }
 });

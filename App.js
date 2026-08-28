@@ -39,7 +39,7 @@ import { COLORS } from './src/theme';
 // After the Phase 1 rename, src/fonts.js only exports INTER_FONTS + useFonts —
 // importing the individual font constants by name silently resolved to
 // undefined. This matches what's actually exported now.
-import { useFonts, INTER_FONTS } from './src/fonts';
+import { useFonts, BRAND_FONTS } from './src/fonts';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -115,11 +115,7 @@ function RootNavigator() {
 export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
 
-  // FIXED: useFonts used to be called inside a Platform.OS ternary — a
-  // conditional hook. It only worked because Platform.OS never changes at
-  // runtime. The hook is now always called; the web shim in src/fonts.web.js
-  // returns [true, null] immediately.
-  const [fontsLoaded, fontError] = useFonts(INTER_FONTS);
+  const [fontsLoaded, fontError] = useFonts(BRAND_FONTS);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {

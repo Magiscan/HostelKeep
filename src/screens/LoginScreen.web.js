@@ -1,3 +1,4 @@
+// src/screens/LoginScreen.web.js
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -11,7 +12,8 @@ import { COLORS, RADIUS, SHADOW, FONTS, FONT_SIZE, SPACING } from '../theme';
 import { Button, Card, Label, Input } from '../components/UI';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Wordmark } from '../components/brand/Glass';
+import { BottomSheet } from '../components/brand/Overlays';
 
 const logo = require('../../assets/logo.png');
 
@@ -41,6 +43,7 @@ export default function LoginScreenWeb() {
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [showLangModal, setShowLangModal] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
 
   const currentLang = LANGS.find(l => l.code === i18n.language) || LANGS[0];
   const isValid = hostelCode.trim() && name.trim() && pass.trim();
@@ -63,14 +66,23 @@ export default function LoginScreenWeb() {
       alert('Please enter your username and hostel code first.');
       return;
     }
-    // FIXED: no more unauthenticated query against `users`.
     const message = await requestPasswordReset(name, hostelCode);
     alert(message);
   };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      {/* ── Top bar ── */}
+      {/* ── Top bar: info + language ── */}
       <View style={styles.langWrapper}>
+        <TouchableOpacity
+          onPress={() => setShowInfo(true)}
+          style={styles.infoButton}
+          activeOpacity={0.7}
+          accessibilityLabel={t('info') || 'Info'}
+        >
+          <Icon name="information-circle-outline" size={22} color={COLORS.primary} />
+        </TouchableOpacity>
+
         <TouchableOpacity
           onPress={() => setShowLangModal(true)}
           style={styles.langButton}
@@ -86,22 +98,14 @@ export default function LoginScreenWeb() {
         {/* ── Decorative brand panel (desktop only) ── */}
         {showPanel && (
           <View style={styles.panel}>
-            <View style={[styles.blob, styles.blobTopRight]} />
-            <View style={[styles.blob, styles.blobBottomLeft]} />
 
             <View style={styles.panelContent}>
               <View style={styles.panelBrandBlock}>
-                <LinearGradient
-                  colors={[COLORS.primary, '#1E40AF']}    // brand gradient
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.panelLogoWrap}
-                >
+                <View style={styles.panelLogoWrap}>
                   <Image source={logo} style={styles.panelLogo} resizeMode="contain" />
-                </LinearGradient>
+                </View>
                 <View style={styles.panelBrandTextBlock}>
-                  <Text style={styles.panelBrandText}>{t('appName')}</Text>
-                  <Text style={styles.panelTagline}>Housekeeping Intelligence</Text>
+                  <Wordmark size={24} />
                 </View>
               </View>
 
@@ -114,7 +118,7 @@ export default function LoginScreenWeb() {
                 {FEATURES.map(f => (
                   <View key={f.text} style={styles.featureRow}>
                     <View style={styles.featureIconWrap}>
-                      <Icon name={f.icon} size={15} color="#FFFFFF" />
+                      <Icon name={f.icon} size={15} color={COLORS.primary} />
                     </View>
                     <Text style={styles.featureText}>{f.text}</Text>
                   </View>
@@ -137,17 +141,11 @@ export default function LoginScreenWeb() {
             <View style={styles.formHeader}>
               {!showPanel && (
                 <View style={styles.mobileBrandBlock}>
-                  <LinearGradient
-                    colors={[COLORS.primary, '#1E40AF']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.mobileBrandLogoWrap}
-                  >
+                  <View style={styles.mobileBrandLogoWrap}>
                     <Image source={logo} style={styles.mobileBrandLogo} resizeMode="contain" />
-                  </LinearGradient>
+                  </View>
                   <View style={styles.mobileBrandTextBlock}>
-                    <Text style={styles.mobileBrandText} numberOfLines={1}>{t('appName')}</Text>
-                    <Text style={styles.mobileTagline} numberOfLines={1}>Housekeeping Intelligence</Text>
+                    <Wordmark size={27} />
                   </View>
                 </View>
               )}
@@ -236,8 +234,7 @@ export default function LoginScreenWeb() {
         </KeyboardAvoidingView>
       </View>
 
-
-      {/* ── Language modal (sidebar style) ── */}
+      {/* ── Language modal ── */}
       <Modal visible={showLangModal} transparent animationType="fade">
         <Pressable style={styles.modalBackdrop} onPress={() => setShowLangModal(false)}>
           <Pressable style={styles.langCard} onPress={() => {}}>
@@ -279,6 +276,34 @@ export default function LoginScreenWeb() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* ── Info sheet ── */}
+      <BottomSheet visible={showInfo} onClose={() => setShowInfo(false)}>
+        <View style={{ gap: SPACING.xs }}>
+          <Text style={styles.sheetTitle}>{t('appName')}</Text>
+          <Text style={styles.infoBody}>
+            {t('infoBody')
+              || 'HostelKeep helps hostels manage daily room cleaning. '
+               + 'Managers set up rooms and assign them to cleaners; cleaners '
+               + 'see only their own rooms and mark them as they go.'}
+          </Text>
+          <Text style={styles.infoLabel}>
+            {t('infoNoAccount') || 'Don\u2019t have a hostel code?'}
+          </Text>
+          <Text style={styles.infoBody}>
+            {t('infoAskManager')
+              || 'Ask your manager \u2014 they create your account and give you '
+               + 'the code, your username and your password.'}
+          </Text>
+          <TouchableOpacity
+            onPress={() => setShowInfo(false)}
+            style={styles.sheetCloseBtn}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.sheetCloseText}>{t('close')}</Text>
+          </TouchableOpacity>
+        </View>
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -289,13 +314,24 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
 
-  /* ── Top‑right language switcher ─────────────────────── */
+  /* ── Top bar ─────────────────────────────────────── */
   langWrapper: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
     zIndex: 20,
-    padding: SPACING.lg,
+  },
+  infoButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: COLORS.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   langButton: {
     flexDirection: 'row',
@@ -316,61 +352,40 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
 
-  /* ── Body split (panel + form) ───────────────────────── */
+  /* ── Body split ─────────────────────────────────── */
   body: {
     flex: 1,
     flexDirection: 'row',
   },
 
-  /* ── Decorative brand panel (desktop only) ───────────── */
+  /* ── Decorative brand panel ───────────────────────── */
   panel: {
     flex: 1,
     maxWidth: 460,
-    backgroundColor: COLORS.primary,
     overflow: 'hidden',
     position: 'relative',
     justifyContent: 'center',
-  },
-  blob: {
-    position: 'absolute',
-    borderRadius: 9999,
-  },
-  blobTopRight: {
-    width: 320,
-    height: 320,
-    top: -120,
-    right: -100,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  blobBottomLeft: {
-    width: 260,
-    height: 260,
-    bottom: -100,
-    left: -80,
-    backgroundColor: 'rgba(0,0,0,0.10)',
   },
   panelContent: {
     paddingHorizontal: 48,
     paddingVertical: 40,
   },
 
-  /* Brand block inside panel */
   panelBrandBlock: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 44,
   },
   panelLogoWrap: {
-    width: 54,
-    height: 54,
-    borderRadius: 15,
+    width: 58,
+    height: 58,
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    padding: 0,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
     marginRight: 14,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.25)',
-    ...SHADOW.md,
   },
   panelLogo: {
     width: 30,
@@ -380,38 +395,23 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  panelBrandText: {
-    fontFamily: FONTS.bold,
-    fontSize: 24,
-    color: '#FFFFFF',
-    letterSpacing: 0.3,
-  },
-  panelTagline: {
-    fontFamily: FONTS.medium,
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 2,
-    letterSpacing: 0.2,
-  },
 
   panelHeadline: {
-    fontFamily: FONTS.bold,
+    fontFamily: FONTS.display,
     fontSize: 34,
     lineHeight: 40,
-    color: '#FFFFFF',
+    color: COLORS.text,
     marginBottom: SPACING.md,
-    letterSpacing: -0.5,
   },
   panelSub: {
     fontFamily: FONTS.regular,
     fontSize: FONT_SIZE.md,
     lineHeight: 22,
-    color: 'rgba(255,255,255,0.82)',
+    color: COLORS.textSecondary,
     marginBottom: 40,
     maxWidth: 340,
   },
 
-  /* Features list inside panel */
   featureList: {},
   featureRow: {
     flexDirection: 'row',
@@ -423,7 +423,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 9,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(11,31,58,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
   featureText: {
     fontFamily: FONTS.medium,
     fontSize: FONT_SIZE.sm,
-    color: '#FFFFFF',
+    color: COLORS.text,
     flex: 1,
     minWidth: 0,
   },
@@ -453,22 +453,21 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
   },
 
-  /* Mobile brand (only shown when panel hidden) */
   mobileBrandBlock: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: SPACING.lg,
   },
   mobileBrandLogoWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 58,
+    height: 58,
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    padding: 0,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
     marginRight: 12,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.25)',
   },
   mobileBrandLogo: {
     width: 24,
@@ -478,22 +477,10 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  mobileBrandText: {
-    fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.lg,
-    color: COLORS.text,
-    letterSpacing: 0.2,
-  },
-  mobileTagline: {
-    fontFamily: FONTS.regular,
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    marginTop: 1,
-  },
 
   welcomeTitle: {
-    fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.xxl,
+    fontFamily: FONTS.display,
+    fontSize: 34,
     color: COLORS.text,
     letterSpacing: -0.5,
   },
@@ -507,7 +494,9 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 400,
-    padding: SPACING.lg,
+    padding: 20,
+    borderRadius: 24,
+    gap: 14,
     ...SHADOW.md,
   },
   fieldGroup: {
@@ -551,7 +540,7 @@ const styles = StyleSheet.create({
 
   forgotBtn: {
     alignSelf: 'flex-end',
-    marginTop: SPACING[4],      // 16px above – separates from password field
+    marginTop: SPACING[4],
     marginBottom: SPACING[8],
   },
   forgotText: {
@@ -593,7 +582,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   langTitle: {
-    fontFamily: FONTS.bold,
+    fontFamily: FONTS.display,
     fontSize: FONT_SIZE.xl,
     color: COLORS.text,
     marginBottom: SPACING[4],
@@ -634,5 +623,38 @@ const styles = StyleSheet.create({
     color: COLORS.danger,
     fontFamily: FONTS.medium,
     fontSize: FONT_SIZE.md,
+  },
+
+  /* ── Info sheet styles ─────────────────────────────── */
+  sheetTitle: {
+    fontFamily: FONTS.display,
+    fontSize: FONT_SIZE.xl,
+    color: COLORS.text,
+    marginBottom: SPACING[2],
+  },
+  infoBody: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.md,
+    lineHeight: 22,
+    color: COLORS.textSecondary,
+  },
+  infoLabel: {
+    fontFamily: FONTS.semiBold,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.text,
+    marginTop: SPACING.sm,
+  },
+  sheetCloseBtn: {
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: SPACING.md,
+  },
+  sheetCloseText: {
+    fontFamily: FONTS.semiBold,
+    fontSize: FONT_SIZE.lg,
+    color: COLORS.onPrimary,
   },
 });

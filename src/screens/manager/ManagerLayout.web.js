@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
   },
   main: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: COLORS.background,
   },
   modalBackdrop: {
     flex: 1,
@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
     padding: SPACING[4],
     width: 400,
     maxHeight: 500,
-    ...SHADOW.md,
+    ...SHADOW.card,
   },
   notifHeaderRow: {
     flexDirection: 'row',
@@ -239,7 +239,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING[3],
   },
   menuTitle: {
-    fontFamily: FONTS.bold,
+    fontFamily: FONTS.display,
     fontSize: FONT_SIZE.lg,
     color: COLORS.text,
   },

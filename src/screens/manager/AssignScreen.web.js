@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Modal, useWindowDimensions,
 } from 'react-native';
 // NOTE: switched from the plain 'xlsx' package to 'xlsx-js-style'. Same API
 // (utils.book_new, aoa_to_sheet, writeFile, etc.) but it actually WRITES cell
@@ -10,24 +10,26 @@ import {
 import XLSX from 'xlsx-js-style';
 import Icon from '../../components/Icon';
 import { COLORS, RADIUS, FONTS, FONT_SIZE, SPACING, SHADOW } from '../../theme';
+import { DISPLAY } from '../../theme/typography';
 import {
   FloorHeader, EmptyState, Badge, Avatar, Label, Input,
 } from '../../components/UI';
 import { useApp } from '../../contexts/AppContext';
+import { roomNeedsAssignment, effectiveAttributes } from '../../utils/assignment';
+import { STATUS } from '../../theme/colors';
+import { buildCleanerColors } from '../../utils/cleanerColor';
+import { Pressable } from 'react-native';
+import { BunkBedIcon } from '../../components/brand/Pieces';
 
 const BED_STATES = [
-  { key: 'clean',    label: 'To clean',   color: '#3B82F6', bg: '#EFF6FF' },    // Blue
-  { key: 'stayover', label: 'Stay‑over',  color: '#94A3B8', bg: '#F8FAFC' },    // Grey
-  { key: 'late',     label: 'Late c/out', color: '#8B5CF6', bg: '#F5F3FF' },    // Violet
-  { key: 'early',    label: 'Early c/in', color: '#F97316', bg: '#FFF7ED' },    // Orange
-  { key: 'noone',    label: 'Inspected',  color: '#22C55E', bg: '#F0FDF4' },    // Green
+  { key: 'clean',    label: 'To clean',   color: STATUS.dirty.text,    bg: STATUS.dirty.bg,    border: STATUS.dirty.border },
+  { key: 'stayover', label: 'Stay‑over',  color: STATUS.cleaned.text,  bg: STATUS.cleaned.bg,  border: STATUS.cleaned.border },
+  { key: 'late',     label: 'Late c/out', color: STATUS.late.text,     bg: STATUS.late.bg,     border: STATUS.late.border },
+  { key: 'early',    label: 'Early c/in', color: STATUS.early.text,    bg: STATUS.early.bg,    border: STATUS.early.border },
+  { key: 'noone',    label: 'Inspected',  color: STATUS.excluded.text, bg: STATUS.excluded.bg, border: STATUS.excluded.border },
 ];
-const BED_CYCLE = ['clean', 'stayover', 'late', 'early', 'noone'];
+const BED_CYCLE = ['noone', 'clean', 'stayover', 'early', 'late'];
 const BED_STATE_LABELS = Object.fromEntries(BED_STATES.map(s => [s.key, s.label]));
-
-const CLEANER_COLORS = [
-  '#2563EB', '#7C3AED', '#DB2777', '#EA580C', '#65A30D', '#0891B2', '#4F46E5', '#BE123C',
-];
 
 const EXTRA_BLANK_ROWS = 4;
 function formatDateIT(d) {
@@ -38,24 +40,6 @@ function formatDateIT(d) {
 function sanitizeSheetName(name) {
   const cleaned = (name || 'Cleaner').replace(/[:\\/?*[\]]/g, '').trim();
   return cleaned.slice(0, 31) || 'Cleaner';
-}
-
-// A room "needs assignment" if there's actually something to do: common areas
-// checked, a dorm bed that isn't stayover/inspected, or (for private rooms) at
-// least one attribute checked. Used by the toolbar filter below.
-function roomNeedsAssignment(room, status) {
-  if (status.commonOnly) return true;
-  if (room.type === 'dorm') {
-    const assign = status.assignmentBedStatus || {};
-    return (room.beds || []).some(b => {
-      const s = assign[b.id]?.status || 'noone';
-      return s !== 'noone' && s !== 'stayover';
-    });
-  }
-  if (room.type === 'private') {
-    return Object.values(status.assignmentAttributes || {}).some(Boolean);
-  }
-  return false;
 }
 
 /* ─── Excel export styling ─────────────────────────────────────── */
@@ -128,11 +112,11 @@ function ConfirmDialog({ visible, title, message, confirmLabel, onConfirm, onCan
         <Text style={confirmStyles.title}>{title}</Text>
         <Text style={confirmStyles.message}>{message}</Text>
         <View style={confirmStyles.actions}>
-          <TouchableOpacity onPress={onCancel} style={[confirmStyles.btn, confirmStyles.btnCancel]}>
-            <Text style={confirmStyles.btnText}>Cancel</Text>
+          <TouchableOpacity onPress={onCancel} style={[confirmStyles.halfBtn, confirmStyles.halfBtnGhost]}>
+            <Text style={confirmStyles.halfBtnGhostText}>Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={onConfirm} style={[confirmStyles.btn, confirmStyles.btnDanger]}>
-            <Text style={[confirmStyles.btnText, { color: COLORS.white }]}>{confirmLabel || 'Confirm'}</Text>
+          <TouchableOpacity onPress={onConfirm} style={[confirmStyles.halfBtn, { backgroundColor: COLORS.danger }]}>
+            <Text style={confirmStyles.halfBtnText}>{confirmLabel || 'Confirm'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -149,20 +133,22 @@ const confirmStyles = StyleSheet.create({
   },
   card: {
     width: '100%', maxWidth: 400,
-    backgroundColor: COLORS.surface, borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.surface, borderRadius: 20,
     padding: SPACING[5], ...SHADOW.md,
   },
-  title: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text, marginBottom: SPACING[2] },
+  title: { fontFamily: DISPLAY.semiBold, fontSize: 25, color: COLORS.text, marginBottom: SPACING[2] },
   message: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.textSecondary, marginBottom: SPACING[5] },
   actions: { flexDirection: 'row', gap: SPACING[3] },
-  btn: { flex: 1, paddingVertical: SPACING[3], borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  btnCancel: { backgroundColor: COLORS.surface, borderColor: COLORS.border },
-  btnDanger: { backgroundColor: COLORS.danger, borderColor: COLORS.danger },
-  btnText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.md, color: COLORS.text },
+  halfBtn: { flex: 1, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  halfBtnGhost: { backgroundColor: COLORS.surfaceMuted },
+  halfBtnGhostText: { fontFamily: DISPLAY.semiBold, fontSize: 17, color: COLORS.primary },
+  halfBtnText: { fontFamily: DISPLAY.semiBold, fontSize: 17, color: COLORS.onPrimary },
 });
 
 export default function AssignScreen() {
   const { t } = useTranslation();
+  const { width } = useWindowDimensions();
+  const isNarrow = width < 900;
   const {
     rooms, cleaners, floors, assignRoomWithDetails, unassignRoom, roomStatus,
     updateRoomStatus, roomAttributes,
@@ -172,8 +158,10 @@ export default function AssignScreen() {
   // Filters the room list down to rooms that actually have something to do —
   // useful when a second manager assigns bed states first and a different
   // manager assigns rooms to cleaners afterwards.
-  const [onlyNeedsAssignment, setOnlyNeedsAssignment] = useState(false);
+  const [filter, setFilter] = useState('all');   // 'all' | 'todo' | 'unassigned'
+  const [showMore, setShowMore] = useState(false);
   const [selectedRoomIds, setSelectedRoomIds] = useState(new Set());
+  const [roomType, setRoomType] = useState(null); 
   const [activeCleanerIds, setActiveCleanerIds] = useState(new Set(cleaners.map(c => c.id)));
 
   const [panelOpen, setPanelOpen] = useState(false);
@@ -194,17 +182,43 @@ export default function AssignScreen() {
   // Which "are you sure?" dialog is open: null | 'clearAll' | 'resetBeds'
   const [confirmDialog, setConfirmDialog] = useState(null);
 
+  const colors = useMemo(() => buildCleanerColors(cleaners), [cleaners]);
+
+    // Counted over ALL rooms, before search and type filtering — a count that
+  // changes as you type tells you nothing, and the numbers jumping around
+  // while you narrow is more distracting than useful.
+  const counts = useMemo(() => {
+    const c = { all: 0, todo: 0, unassigned: 0 };
+    rooms.forEach(r => {
+      const hasWork = roomNeedsAssignment(r, roomStatus[r.id] || {});
+      c.all += 1;
+      if (hasWork) c.todo += 1;
+      if (hasWork && !r.assignedTo) c.unassigned += 1;
+    });
+    return c;
+  }, [rooms, roomStatus]);
+
+  const FILTERS = useMemo(() => [
+    { key: 'all',        label: t('filterAll')        || 'All',        count: counts.all },
+    { key: 'todo',       label: t('filterToPrepare')  || 'To prepare', count: counts.todo },
+    { key: 'unassigned', label: t('filterUnassigned') || 'Unassigned', count: counts.unassigned },
+  ], [t, counts]);
+
   const filteredRooms = useMemo(() => {
     let list = rooms;
     if (search.trim()) {
       const term = search.toLowerCase();
       list = list.filter(r => r.name.toLowerCase().includes(term));
     }
-    if (onlyNeedsAssignment) {
-      list = list.filter(r => roomNeedsAssignment(r, roomStatus[r.id] || {}));
-    }
+    if (roomType) list = list.filter(r => r.type === roomType);
+    if (filter !== 'all') {
+        list = list.filter(r => {
+          const hasWork = roomNeedsAssignment(r, roomStatus[r.id] || {});
+          return filter === 'todo' ? hasWork : (hasWork && !r.assignedTo);
+        });
+      }
     return list;
-  }, [rooms, search, onlyNeedsAssignment, roomStatus]);
+  }, [rooms, search, filter, roomType, roomStatus]);
 
   const sortedFloors = useMemo(() => {
     return [...floors].sort((a, b) => {
@@ -270,11 +284,13 @@ export default function AssignScreen() {
   }, [roomStatus, updateRoomStatus]);
 
   const toggleRoomAttribute = useCallback(async (roomId, attr) => {
+    const room = rooms.find(r => r.id === roomId);
     const status = roomStatus[roomId] || {};
+    const active = new Set(effectiveAttributes(room, status));
     const attrs = { ...(status.assignmentAttributes || {}) };
-    attrs[attr] = !attrs[attr];
+    attrs[attr] = !active.has(attr);
     await updateRoomStatus(roomId, { assignmentAttributes: attrs });
-  }, [roomStatus, updateRoomStatus]);
+  }, [rooms, roomStatus, updateRoomStatus]);
 
   // FIXED: now also blanks out assignmentAttributes on private rooms. Without
   // this, a room cleared here could still have leftover checked attributes and
@@ -283,7 +299,11 @@ export default function AssignScreen() {
     rooms.forEach(room => {
       unassignRoom(room.id);
       if (room.type === 'private') {
-        updateRoomStatus(room.id, { assignmentAttributes: {} });
+        const attrs = {};
+        Object.keys(room.attributes || {}).forEach(key => {
+          if (room.attributes[key]) attrs[key] = false;
+        });
+        updateRoomStatus(room.id, { assignmentAttributes: attrs });
       }
     });
   };
@@ -291,26 +311,49 @@ export default function AssignScreen() {
   const resetBedStates = useCallback(async () => {
     const updates = [];
     rooms.forEach(room => {
-      if (room.type !== 'dorm' || !room.beds?.length) return;
+      if (room.type === 'dorm' && room.beds?.length) {
+        const defaultAssignments = {};
+        room.beds.forEach(bed => {
+          // Default state = Inspected (noone)
+          defaultAssignments[bed.id] = { status: 'noone', reason: 'noone' };
+        });
 
-      const defaultAssignments = {};
-      room.beds.forEach(bed => {
-        // Default state = Inspected (noone)
-        defaultAssignments[bed.id] = { status: 'noone', reason: 'noone' };
-      });
+        updates.push(
+          updateRoomStatus(room.id, { assignmentBedStatus: defaultAssignments })
+        );
+      }
 
-      updates.push(
-        updateRoomStatus(room.id, { assignmentBedStatus: defaultAssignments })
-      );
+      if (room.type === 'private') {
+        const attrs = {};
+        Object.keys(room.attributes || {}).forEach(key => {
+          if (room.attributes[key]) attrs[key] = false;
+        });
+
+        updates.push(
+          updateRoomStatus(room.id, { assignmentAttributes: attrs })
+        );
+      }
     });
 
     await Promise.all(updates);
   }, [rooms, updateRoomStatus]);
 
   const handleExportSheets = () => {
+    const orphaned = rooms.filter(r =>
+      !r.assignedTo && roomNeedsAssignment(r, roomStatus[r.id] || {})
+    );
+
+    if (orphaned.length) {
+      const names = orphaned.map(r => r.name).join(', ');
+      const msg = `${names}\n\n` + (t('unassignedWarningMsg')
+        || "These won't appear on any sheet. Assign them first, or print anyway.");
+
+      const proceed = window.confirm(msg + '\n\nPrint anyway?');
+      if (!proceed) return;
+    }
     const assignedCleanerIds = [...new Set(rooms.filter(r => r.assignedTo).map(r => r.assignedTo))];
     if (!assignedCleanerIds.length) {
-      Alert.alert('No assignments', 'Assign rooms first.');
+      window.alert(t('noAssignmentsMsg') || 'Assign rooms first.');
       return;
     }
     const wb = XLSX.utils.book_new();
@@ -368,8 +411,7 @@ export default function AssignScreen() {
           bedsText = lines.join('\n');
           hasActionableWork = lines.length > 0;
         } else if (room.type === 'private') {
-          const attrs = status.assignmentAttributes || {};
-          const selected = Object.keys(attrs).filter(key => attrs[key]);
+          const selected = effectiveAttributes(room, status);
           bedsText = selected.join(', ');
           hasActionableWork = selected.length > 0;
         }
@@ -575,13 +617,13 @@ export default function AssignScreen() {
     closePanel();
   };
 
-  if (!rooms.length) return <EmptyState icon="📋" title={t('noRoomsToAssign')} subtitle={t('addRoomsFirst')} />;
-  if (!cleaners.length) return <EmptyState icon="👤" title={t('noCleaners')} subtitle={t('addCleanersFirst')} />;
-
   const selectedRoomsList = useMemo(
     () => rooms.filter(r => selectedRoomIds.has(r.id)),
     [rooms, selectedRoomIds]
   );
+
+  if (!rooms.length) return <EmptyState icon="📋" title={t('noRoomsToAssign')} subtitle={t('addRoomsFirst')} />;
+  if (!cleaners.length) return <EmptyState icon="👤" title={t('noCleaners')} subtitle={t('addCleanersFirst')} />;
 
   // If every currently-selected room already happens to be assigned to the
   // same cleaner (e.g. the manager assigned them one-by-one via the side
@@ -608,49 +650,108 @@ export default function AssignScreen() {
   return (
     <View style={styles.container}>
       {/* Toolbar */}
-      <View style={styles.toolbar}>
-        <View>
-          <Text style={styles.pageTitle}>{t('assignments')}</Text>
-          <Text style={styles.subtitle}>{t('tapToAssign')}</Text>
-        </View>
-        <View style={styles.toolbarRight}>
+        <View style={styles.toolbar}>
+        {/* Row 1 — identity and actions */}
+        <View style={styles.toolbarRow}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.pageTitle}>{t('assignments')}</Text>
+            <Text style={styles.subtitle}>{t('tapToAssign')}</Text>
+          </View>
+
           <View style={styles.searchBar}>
-            <Icon name="search-outline" size={16} color={COLORS.textMuted} style={{ marginRight: SPACING[2] }} />
-            <TextInput value={search} onChangeText={setSearch} placeholder={t('search')} placeholderTextColor={COLORS.textMuted} style={styles.searchInput} />
+            <Icon name="search" size={19} color={COLORS.textMuted} />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder={t('search')}
+              placeholderTextColor={COLORS.textMuted}
+              style={styles.searchInput}
+            />
             {search.length > 0 && (
-              <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 4 }}>
-                <Icon name="close-circle" size={16} color={COLORS.textMuted} />
+              <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 2 }}>
+                <Icon name="cancel" size={18} color={COLORS.textMuted} />
               </TouchableOpacity>
             )}
           </View>
+
+          <TouchableOpacity onPress={handleExportSheets} style={styles.primaryBtn} activeOpacity={0.85}>
+            <Icon name="print" size={19} color={COLORS.accent} />
+            <Text style={styles.primaryBtnText}>{t('printSheets') || 'Print'}</Text>
+          </TouchableOpacity>
+
+          <View style={{ position: 'relative' }}>
+            <TouchableOpacity
+              onPress={() => setShowMore(true)}   // always open
+              style={styles.iconBtn}
+              activeOpacity={0.7}
+              accessibilityLabel={t('bulkActions') || 'More actions'}
+            >
+              <Icon name="more_horiz" size={20} color={COLORS.textTertiary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Row 2 — filtering */}
+        <View style={styles.toolbarRow}>
+          <View style={styles.segment}>
+            {FILTERS.map(f => {
+              const active = filter === f.key;
+              return (
+                <TouchableOpacity
+                  key={f.key}
+                  onPress={() => setFilter(f.key)}
+                  style={[styles.segmentItem, active && styles.segmentItemActive]}
+                  activeOpacity={0.8}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
+                    {f.label}
+                  </Text>
+                  <View style={[styles.segmentCount, active && styles.segmentCountActive]}>
+                    <Text style={[styles.segmentCountText, active && styles.segmentCountTextActive]}>
+                      {f.count}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
           <TouchableOpacity
-            onPress={() => setOnlyNeedsAssignment(v => !v)}
-            style={[styles.toolBtn, onlyNeedsAssignment && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }]}
+            onPress={() => setRoomType(v => (v === 'private' ? null : 'private'))}
+            style={[styles.typeBtn, roomType === 'private' && styles.typeBtnActive]}
             activeOpacity={0.7}
           >
-            <Icon name={onlyNeedsAssignment ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={onlyNeedsAssignment ? COLORS.white : COLORS.primary} />
-            <Text style={[styles.toolBtnText, onlyNeedsAssignment && { color: COLORS.white }]}>
-              {t('needsAssignment') || 'Needs assignment'}
+            <Icon
+              name="single_bed"
+              size={18}
+              color={roomType === 'private' ? COLORS.primary : COLORS.textTertiary}
+            />
+            <Text style={[styles.typeBtnText, roomType === 'private' && styles.typeBtnTextActive]}>
+              {t('private')}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleExportSheets} style={styles.toolBtn}>
-            <Icon name="print-outline" size={16} color={COLORS.primary} />
-            <Text style={styles.toolBtnText}>{t('printSheets') || 'Print'}</Text>
-          </TouchableOpacity>
+
           <TouchableOpacity
-            onPress={() => setConfirmDialog('resetBeds')}
-            style={[styles.toolBtn, { backgroundColor: COLORS.background, borderColor: COLORS.border }]}
+            onPress={() => setRoomType(v => (v === 'dorm' ? null : 'dorm'))}
+            style={[styles.typeBtn, roomType === 'dorm' && styles.typeBtnActive]}
             activeOpacity={0.7}
           >
-            <Icon name="refresh-circle" size={16} color={COLORS.textSecondary} />
-            <Text style={[styles.toolBtnText, { color: COLORS.textSecondary }]}>
-              {t('resetBeds') || 'Reset Beds'}
+            <BunkBedIcon
+              size={18}
+              color={roomType === 'dorm' ? COLORS.primary : COLORS.textTertiary}
+            />
+            <Text style={[styles.typeBtnText, roomType === 'dorm' && styles.typeBtnTextActive]}>
+              {t('dormitory')}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setConfirmDialog('clearAll')} style={[styles.toolBtn, { backgroundColor: COLORS.dangerLight, borderColor: COLORS.danger }]}>
-            <Icon name="close-circle-outline" size={16} color={COLORS.danger} />
-            <Text style={[styles.toolBtnText, { color: COLORS.danger }]}>{t('clearAll')}</Text>
-          </TouchableOpacity>
+
+          <View style={{ flex: 1 }} />
+
+          <Text style={styles.resultCount}>
+            {filteredRooms.length} {t('rooms')}
+          </Text>
         </View>
       </View>
 
@@ -682,7 +783,7 @@ export default function AssignScreen() {
                 </ScrollView>
                 {displayCleaner && (
                   <View style={styles.pendingCleanerTag}>
-                    <View style={[styles.cleanerDot, { backgroundColor: CLEANER_COLORS[cleaners.findIndex(c => c.id === displayCleaner.id) % CLEANER_COLORS.length] }]} />
+                    <View style={[styles.cleanerDot, { backgroundColor: colors[displayCleaner.id] }]} />
                     <Text style={styles.pendingCleanerText}>
                       {(t('assigningTo') || 'Assigning to') + ': ' + displayCleaner.username}
                     </Text>
@@ -694,7 +795,7 @@ export default function AssignScreen() {
                   disabled={!displayCleanerId}
                   activeOpacity={0.7}
                 >
-                  <Icon name="checkmark-circle-outline" size={16} color={displayCleanerId ? COLORS.white : COLORS.textMuted} />
+                  {/* <Icon name="checkmark-circle-outline" size={16} color={displayCleanerId ? COLORS.white : COLORS.textMuted} /> */}
                   <Text style={[styles.confirmSelectionText, !displayCleanerId && { color: COLORS.textMuted }]}>
                     {t('confirm') || 'Confirm'}
                   </Text>
@@ -707,7 +808,7 @@ export default function AssignScreen() {
           )}
 
           <ScrollView style={styles.roomArea} contentContainerStyle={styles.roomAreaContent}>
-            {filteredRooms.length === 0 && (search.trim() !== '' || onlyNeedsAssignment) && (
+            {filteredRooms.length === 0 && (search.trim() !== '' || filter !== 'all' || roomType) && (
               <EmptyState icon="🔍" title={t('noResults')} subtitle="" />
             )}
             {sortedFloors.map(floor => {
@@ -723,8 +824,8 @@ export default function AssignScreen() {
                       const status = roomStatus[room.id] || {};
                       const bedAssigns = status.assignmentBedStatus || {};
                       const beds = room.beds || [];
-                      const cleanerColor = currentCleaner
-                        ? CLEANER_COLORS[cleaners.findIndex(c => c.id === currentCleaner.id) % CLEANER_COLORS.length]
+                      const cardColor = currentCleaner
+                        ? colors[currentCleaner.id]
                         : COLORS.border;
                       const isFrozen = status.commonOnly;
 
@@ -734,7 +835,8 @@ export default function AssignScreen() {
                           style={[
                             styles.roomCard,
                             isSelected && styles.roomCardSelected,
-                            currentCleaner && { borderLeftWidth: 4, borderLeftColor: cleanerColor },
+                            currentCleaner && { borderLeftWidth: 4, borderLeftColor: cardColor },
+                            isNarrow && { width: '100%' },
                           ]}
                         >
                           {/* Top row: name, more button, selection checkbox */}
@@ -742,10 +844,13 @@ export default function AssignScreen() {
                             <View style={{ flex: 1 }}>
                               <Text style={styles.roomName}>{room.name}</Text>
                               <View style={{ flexDirection: 'row', gap: SPACING[2], marginTop: 4 }}>
-                                <Badge label={room.type === 'private' ? t('private') : t('dormitory')} type={room.type === 'private' ? 'priv' : 'dorm'} />
-                                {room.type === 'dorm' && beds.length > 0 && (
-                                  <Text style={styles.bedCount}>{beds.length} {t('beds')}</Text>
-                                )}
+                                <View style={styles.typePill}>
+                                  <Text style={styles.typePillText}>
+                                    {room.type === 'dorm'
+                                      ? `${t('dormitory')} · ${beds.length} ${t('beds')}`
+                                      : t('private')}
+                                  </Text>
+                                </View>
                               </View>
                             </View>
                             <View style={styles.cardTopActions}>
@@ -776,7 +881,7 @@ export default function AssignScreen() {
                                     key={bed.id}
                                     style={[
                                       styles.bedChip,
-                                      { backgroundColor: st.bg, borderColor: st.color },
+                                      { backgroundColor: st.bg, borderColor: st.border },
                                       isFrozen && styles.bedChipFrozen,
                                     ]}
                                     onPress={() => toggleBedState(room.id, bed.id)}
@@ -810,13 +915,11 @@ export default function AssignScreen() {
                               ? Object.keys(room.attributes).filter(a => room.attributes[a])
                               : [];
                             if (roomOwnAttrs.length === 0) return null;
-                            const savedAttrs = status.assignmentAttributes;
+                            const activeAttrs = new Set(effectiveAttributes(room, status));
                             return (
                               <View style={styles.attributeList}>
                                 {roomOwnAttrs.map(attr => {
-                                  const isActive = savedAttrs && Object.prototype.hasOwnProperty.call(savedAttrs, attr)
-                                    ? !!savedAttrs[attr]
-                                    : true;
+                                  const isActive = activeAttrs.has(attr);
                                   return (
                                     <TouchableOpacity
                                       key={attr}
@@ -860,7 +963,7 @@ export default function AssignScreen() {
                             <View style={styles.cleanerInfo}>
                               {currentCleaner ? (
                                 <View style={styles.cleanerRow}>
-                                  <View style={[styles.cleanerDot, { backgroundColor: cleanerColor }]} />
+                                  <View style={[styles.cleanerDot, { backgroundColor: cardColor }]} />
                                   <Text style={styles.cleanerNameSmall}>{currentCleaner.username}</Text>
                                 </View>
                               ) : (
@@ -892,7 +995,7 @@ export default function AssignScreen() {
         </View>
 
         {/* Collapsed rail — reopens the sidebar */}
-        {selectedRoomIds.size === 0 && !sidebarOpen && (
+        {!isNarrow && selectedRoomIds.size === 0 && !sidebarOpen && (
           <TouchableOpacity
             style={styles.sidebarRail}
             onPress={() => setSidebarOpen(true)}
@@ -902,7 +1005,7 @@ export default function AssignScreen() {
             <Icon name="people-outline" size={20} color={COLORS.textSecondary} style={{ marginTop: SPACING[3] }} />
           </TouchableOpacity>
         )}
-        {(selectedRoomIds.size > 0 || sidebarOpen) && (
+        {!isNarrow && (selectedRoomIds.size > 0 || sidebarOpen) && (
         <View style={styles.sidebar}>
           {selectedRoomIds.size > 0 ? (
             <View style={[styles.bulkSection, { borderBottomWidth: 0, marginBottom: 0, flex: 1 }]}>
@@ -916,8 +1019,7 @@ export default function AssignScreen() {
                     .sort((a, b) => a.username.localeCompare(b.username))
                     .map((cleaner, i, arr) => {
                       const isPicked = displayCleanerId === cleaner.id;
-                      const colorIdx = cleaners.findIndex(c => c.id === cleaner.id);
-                      const color = CLEANER_COLORS[colorIdx % CLEANER_COLORS.length];
+                      const color = colors[cleaner.id];
                       const isLast = i === arr.length - 1;
                       return (
                         <TouchableOpacity
@@ -961,7 +1063,7 @@ export default function AssignScreen() {
                 <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.sidebarScrollContent}>
                   {cleaners.map((cleaner, idx) => {
                     const isActive = activeCleanerIds.has(cleaner.id);
-                    const color = CLEANER_COLORS[idx % CLEANER_COLORS.length];
+                    const color = colors[cleaner.id];
                     return (
                       <TouchableOpacity
                         key={cleaner.id}
@@ -1015,7 +1117,7 @@ export default function AssignScreen() {
                 {selectedCleaner ? (
                 <View style={styles.assignedCleanerRow}>
                     <View style={styles.cleanerRow}>
-                    <View style={[styles.cleanerDot, { backgroundColor: CLEANER_COLORS[cleaners.findIndex(c => c.id === selectedCleaner.id) % CLEANER_COLORS.length] }]} />
+                    <View style={[styles.cleanerDot, { backgroundColor: colors[selectedCleaner.id] }]} />
                     <Text style={styles.cleanerNameSmall}>{selectedCleaner.username}</Text>
                     </View>
                     <TouchableOpacity onPress={() => setSelectedCleaner(null)}>
@@ -1031,7 +1133,7 @@ export default function AssignScreen() {
                         onPress={() => setSelectedCleaner(cleaner)}
                         activeOpacity={0.7}
                     >
-                        <View style={[styles.cleanerDot, { backgroundColor: CLEANER_COLORS[idx % CLEANER_COLORS.length] }]} />
+                        <View style={[styles.cleanerDot, { backgroundColor: colors[cleaner.id] }]} />
                         <Text style={styles.cleanerPickerChipText}>{cleaner.username}</Text>
                     </TouchableOpacity>
                     ))}
@@ -1140,6 +1242,41 @@ export default function AssignScreen() {
         </View>
         )}
 
+        <Modal
+          visible={showMore}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowMore(false)}
+        >
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' }}
+            onPress={() => setShowMore(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalCard}>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => { setShowMore(false); setConfirmDialog('resetBeds'); }}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="refresh" size={19} color={COLORS.textTertiary} />
+                  <Text style={styles.menuItemText}>{t('resetBeds') || 'Reset beds'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.menuItem}
+                  onPress={() => { setShowMore(false); setConfirmDialog('clearAll'); }}
+                  activeOpacity={0.7}
+                >
+                  <Icon name="cancel" size={19} color={COLORS.danger} />
+                  <Text style={[styles.menuItemText, { color: COLORS.danger }]}>
+                    {t('clearAll')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Pressable>
+        </Modal>
+
         <ConfirmDialog
           visible={!!confirmDialog}
           title={
@@ -1169,22 +1306,33 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
 
   toolbar: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: SPACING[6], paddingVertical: SPACING[4],
-    backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
-    flexWrap: 'wrap', gap: SPACING[3],
+    paddingHorizontal: 24, paddingVertical: 16, gap: 12,
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    zIndex: 10,                       // keeps the overflow menu above the list
   },
-  pageTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text },
-  subtitle: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginTop: 2 },
-  toolbarRight: { flexDirection: 'row', alignItems: 'center', gap: SPACING[3], flexWrap: 'wrap' },
+  toolbarRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    flexWrap: 'wrap', minWidth: 0,
+  },
+  pageTitle: { fontFamily: DISPLAY.semiBold, fontSize: 27, color: COLORS.primary },
+  subtitle: { fontFamily: FONTS.regular, fontSize: 14, color: COLORS.textTertiary, marginTop: 2 },
+  toolbarRight: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING[3], flexWrap: 'wrap',
+    flex: 1, minWidth: 0, justifyContent: 'flex-end',
+  },
   searchBar: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.background, borderRadius: RADIUS.md,
-    borderWidth: 1, borderColor: COLORS.border,
-    paddingHorizontal: SPACING[3], paddingVertical: SPACING[2],
-    width: 240,
+    flexDirection: 'row', alignItems: 'center', gap: 9,
+    flex: 1, minWidth: 180, maxWidth: 320,
+    minHeight: 46, paddingHorizontal: 14,
+    borderRadius: 14, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceAlt,
   },
-  searchInput: { flex: 1, fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.text },
+  searchInput: {
+    flex: 1, minWidth: 0,
+    fontFamily: FONTS.medium, fontSize: 15, color: COLORS.text,
+    outlineStyle: 'none',            // web only — kills the browser focus ring
+  },
   toolBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: SPACING[3], paddingVertical: SPACING[2],
@@ -1192,6 +1340,69 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.primary,
   },
   toolBtnText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.primary },
+
+  primaryBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    minHeight: 46, paddingHorizontal: 16, borderRadius: 14,
+    backgroundColor: COLORS.primary,
+  },
+  primaryBtnText: { fontFamily: FONTS.semiBold, fontSize: 15, color: COLORS.onPrimary },
+  iconBtn: {
+    width: 46, height: 46, borderRadius: 14,
+    borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  /* Overflow menu */
+  menuCatcher: {
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    zIndex: 30,
+  },
+  menu: {
+    position: 'absolute', top: 52, right: 0,
+    minWidth: 220, zIndex: 40,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16, borderWidth: 1, borderColor: COLORS.border,
+    paddingVertical: 6,
+    shadowColor: '#0B1F3A', shadowOpacity: 0.18,
+    shadowRadius: 30, shadowOffset: { width: 0, height: 12 },
+  },
+  menuItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    minHeight: 46, paddingHorizontal: 14,
+  },
+  menuItemText: { fontFamily: FONTS.medium, fontSize: 15, color: COLORS.text },
+
+  /* Segment — same shape as native, sized for a mouse */
+  segment: {
+    flexDirection: 'row', gap: 4, padding: 4,
+    backgroundColor: COLORS.slate, borderRadius: 14,
+  },
+  segmentItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    minHeight: 38, paddingHorizontal: 14, borderRadius: 10,
+  },
+  segmentItemActive: { backgroundColor: COLORS.surface, ...SHADOW.card },
+  segmentLabel: { fontFamily: FONTS.semiBold, fontSize: 14, color: COLORS.textTertiary },
+  segmentLabelActive: { color: COLORS.text },
+  segmentCount: {
+    minWidth: 22, paddingHorizontal: 6, paddingVertical: 1,
+    borderRadius: 8, backgroundColor: 'rgba(15,23,42,0.06)',
+  },
+  segmentCountActive: { backgroundColor: COLORS.accentLight },
+  segmentCountText: { fontFamily: FONTS.semiBold, fontSize: 12, color: COLORS.textTertiary, textAlign: 'center' },
+  segmentCountTextActive: { color: COLORS.accentDark },
+
+  typeBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    minHeight: 46, paddingHorizontal: 14, borderRadius: 14,
+    borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: COLORS.surface,
+  },
+  typeBtnActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentLight },
+  typeBtnText: { fontFamily: FONTS.semiBold, fontSize: 14, color: COLORS.textTertiary },
+  typeBtnTextActive: { color: COLORS.primary },
+
+  resultCount: { fontFamily: FONTS.medium, fontSize: 14, color: COLORS.textTertiary },
 
   body: { flex: 1, flexDirection: 'row' },
   roomAreaWrapper: { flex: 1 },
@@ -1262,11 +1473,12 @@ const styles = StyleSheet.create({
   roomGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[4] },
   roomCard: {
     width: 340,
+    maxWidth: '100%',
     backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border,
-    padding: SPACING[4], ...SHADOW.sm,
+    borderRadius: 20, borderWidth: 1.5, borderColor: COLORS.border,
+    padding: 15, gap: 12, ...SHADOW.card,
   },
-  roomCardSelected: { borderColor: COLORS.primary, borderWidth: 2 },
+  roomCardSelected: { borderColor: COLORS.accent },
 
   cardTopRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
@@ -1282,7 +1494,10 @@ const styles = StyleSheet.create({
   },
   checkboxActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
 
-  roomName: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.lg, color: COLORS.text },
+  roomName: {
+    fontFamily: DISPLAY.semiBold, fontSize: 30, lineHeight: 32,
+    color: COLORS.primary, fontVariant: ['tabular-nums'],
+  },
   bedCount: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary },
 
   bedList: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2], marginBottom: SPACING[3] },
@@ -1291,19 +1506,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: RADIUS.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 11,
+    borderRadius: 12,
     borderWidth: 1,
-    minWidth: 110,          // fixed enough for longest state text
+    minWidth: 110,
   },
   bedChipFrozen: {
     backgroundColor: COLORS.border,
     borderColor: COLORS.textMuted,
     opacity: 0.6,
   },
-  bedChipName: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.sm, color: COLORS.text },
-  bedChipState: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.text },
+  bedChipName: { fontFamily: DISPLAY.semiBold, fontSize: 16 },
+  bedChipState: { fontFamily: FONTS.semiBold, fontSize: 12 },
 
   /* Private room attributes */
   attributeList: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2], marginBottom: SPACING[3] },
@@ -1330,10 +1545,11 @@ const styles = StyleSheet.create({
   cardActions: { flexDirection: 'row', gap: SPACING[2] },
   cardBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 8, paddingVertical: 4,
-    borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.border,
+    paddingHorizontal: 12, minHeight: 38,
+    borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.dangerBorder,
+    backgroundColor: COLORS.surface,
   },
-  cardBtnText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary },
+  cardBtnText: { fontFamily: FONTS.semiBold, fontSize: 13, color: COLORS.danger },
 
   /* Sidebar narrower */
   sidebar: {
@@ -1478,5 +1694,36 @@ const styles = StyleSheet.create({
     },
     cleanerPickerChipText: {
     fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.text,
+    },
+    typePill: {
+      alignSelf: 'flex-start',
+      borderRadius: 9,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      backgroundColor: COLORS.beige,
+    },
+    typePillText: {
+      fontFamily: FONTS.semiBold,
+      fontSize: 13,
+      color: COLORS.primary,
+    },
+    modalOverlay: {
+      flex: 1,
+      justifyContent: 'flex-start',
+      alignItems: 'flex-end',
+      paddingTop: 90,            // adjust to place under the button
+      paddingRight: 24,
+    },
+    modalCard: {
+      width: 220,
+      backgroundColor: COLORS.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingVertical: 6,
+      shadowColor: '#0B1F3A',
+      shadowOpacity: 0.18,
+      shadowRadius: 30,
+      shadowOffset: { width: 0, height: 12 },
     },
 });

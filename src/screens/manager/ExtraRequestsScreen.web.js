@@ -5,11 +5,12 @@ import AppCard from '../../components/Card/AppCard';
 import { COLORS } from '../../theme/colors';
 import { FONTS, FONT_SIZE } from '../../theme/typography';
 import { SPACING } from '../../theme/spacing';
+import { STATUS } from '../../theme/colors';
 
-const STATUS_COLORS = {
-  pending: COLORS.warning,
-  approved: COLORS.success,
-  rejected: COLORS.danger,
+const STATUS_META = {
+  pending:  STATUS.waiting,
+  approved: STATUS.inspected,
+  rejected: STATUS.error,
 };
 
 function SummaryChip({ label, value, color }) {
@@ -86,15 +87,15 @@ export default function ExtraRequestsScreen() {
               const room = rooms.find(r => r.id === req.id);
               const cleaner = cleaners.find(c => c.id === req.cleanerId);
               const status = req.status || 'pending';
-              const statusColor = STATUS_COLORS[status] || COLORS.textSecondary;
+              const meta = STATUS_META[status] || STATUS_META.pending;
               const timestamp = req.requestedAt ? new Date(req.requestedAt).toLocaleString() : '';
 
               return (
                 <AppCard key={req.id} style={styles.requestCard}>
                   <View style={styles.headerRow}>
                     <Text style={styles.roomName} numberOfLines={1}>{room?.name || 'Unknown room'}</Text>
-                    <View style={[styles.statusBadge, { backgroundColor: statusColor + '22' }]}>
-                      <Text style={[styles.statusText, { color: statusColor }]}>{status.toUpperCase()}</Text>
+                    <View style={[styles.statusBadge, { backgroundColor: meta.bg }]}>
+                      <Text style={[styles.statusText, { color: meta.text }]}>{status.toUpperCase()}</Text>
                     </View>
                   </View>
                   <Text style={styles.cleanerName}>Requested by {cleaner?.username || 'Unknown cleaner'}</Text>
@@ -172,9 +173,9 @@ const styles = StyleSheet.create({
 
   tabRow: { flexDirection: 'row', gap: SPACING.sm, paddingHorizontal: SPACING.lg, marginTop: SPACING.lg, marginBottom: SPACING.md },
   tab: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
-  tabActive: { backgroundColor: COLORS.primaryLight, borderColor: COLORS.primary },
+  tabActive: { backgroundColor: 'rgba(15,23,42,0.06)', borderColor: COLORS.border },
   tabText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary },
-  tabTextActive: { color: COLORS.primary, fontFamily: FONTS.bold },
+  tabTextActive: { color: COLORS.text, fontFamily: FONTS.semiBold },
 
   list: { flex: 1 },
   listContent: { padding: SPACING.lg },
@@ -194,10 +195,10 @@ const styles = StyleSheet.create({
 
   actions: { flexDirection: 'row', gap: 8, marginTop: SPACING.md },
   btn: { flex: 1, paddingVertical: SPACING.sm, borderRadius: 8, alignItems: 'center' },
-  approveBtn: { backgroundColor: COLORS.success },
-  rejectBtn: { backgroundColor: COLORS.danger },
-  approveText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.sm, color: '#FFFFFF' },
-  rejectText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.sm, color: '#FFFFFF' },
+  approveBtn: { backgroundColor: COLORS.primary },
+  rejectBtn: { backgroundColor: COLORS.surface, borderWidth: 1.5, borderColor: COLORS.dangerBorder },
+  approveText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.sm, color: COLORS.onPrimary },
+  rejectText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.sm, color: COLORS.danger },
 
   emptyText: { fontFamily: FONTS.medium, color: COLORS.textSecondary, marginTop: SPACING.xl, textAlign: 'center' },
 

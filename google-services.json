@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "794054195007",
+    "project_id": "keepclean-hostel",
+    "storage_bucket": "keepclean-hostel.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:794054195007:android:bb43101eaeb8dfc2a9058a",
+        "android_client_info": {
+          "package_name": "com.keepclean"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDjLBTcSnPeBzqXWtc-mI3BtlOUflgx09E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,23 +1,46 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Platform, Pressable,
+  View, Text, StyleSheet, TouchableOpacity, Modal, Pressable, ScrollView,
+  TextInput, Platform, Image, 
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import Icon from '../../components/Icon';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import { COLORS, RADIUS, FONTS, FONT_SIZE, SPACING, SHADOW } from '../../theme';
-import { Avatar, Button } from '../../components/UI';
-import DashboardScreen from './DashboardScreen';
+import Icon from '../../components/Icon';
+import { useAuth } from '../../contexts/AuthContext';
+import { useApp } from '../../contexts/AppContext';
+import { useNotifications } from '../../contexts/NotificationContext';
+import { usePushRegistration } from '../../hooks/usePushRegistration';
 import SetupScreen from './SetupScreen';
 import TeamScreen from './TeamScreen';
 import AssignScreen from './AssignScreen';
 import ExtraRequestsScreen from './ExtraRequestsScreen';
 import AccountScreen from '../AccountScreen';
-import { useAuth } from '../../contexts/AuthContext';
-import { useApp } from '../../contexts/AppContext';
-import { useNotifications } from '../../contexts/NotificationContext';
-import { usePushRegistration } from '../../hooks/usePushRegistration';
-import { ScrollView } from 'react-native-gesture-handler';
+import { COLORS } from '../../theme/colors';
+import { FONTS, DISPLAY, FONT_SIZE } from '../../theme/typography';
+import { SPACING } from '../../theme/spacing';
+import { RADIUS } from '../../theme/radius';
+import { SHADOW } from '../../theme/shadows';
+import { Linking } from 'react-native';
+import { ProSheet, ProfileMenu, SetupSheet } from '../../components/brand/Sheets';
+import { ToastHost, useToast } from '../../components/brand';
+import { useAvatarPicker } from '../../hooks/useAvatarPicker';
+import { AvatarPickerSheet, LanguageSheet } from '../../components/brand/Pickers';
+
+/**
+ * HostelKeep 2.0 manager shell.
+ *
+ * STRUCTURAL CHANGE from the previous version: the chrome now FLOATS over the
+ * content rather than sandwiching it.
+ *
+ *  • Top bar: wordmark (opens Pro), notifications, avatar — all floating
+ *    "glass" pills over the scrolling content.
+ *  • Bottom: a floating pill tab bar with the hostel-setup button beside it,
+ *    not a full-width docked bar.
+ *
+ * Because the chrome floats, every child screen must add bottom padding or
+ * its last row hides behind the tab bar. That's what CONTENT_BOTTOM_PAD is
+ * for — it's passed down so screens don't each guess at the number.
+ */
 
 const LANGS = [
   { code: 'en', label: 'English' },
@@ -25,360 +48,344 @@ const LANGS = [
   { code: 'es', label: 'Español' },
 ];
 
+// Tab bar height + its bottom offset + breathing room.
+export const CONTENT_BOTTOM_PAD = 122;
+
 export default function ManagerApp() {
   const { t, i18n } = useTranslation();
-  const { user, logout } = useAuth();
+  const { user, logout, updateProfile } = useAuth();
   const { hostel, updateHostel, hostelCode, extraRequests } = useApp();
-  const [tab, setTab] = useState('dashboard');
-  const { notifications, unreadCount, markAsRead, clearAll, deleteAllNotifications } = useNotifications();
-  const [showNotifications, setShowNotifications] = useState(false);
+  const { notifications, unreadCount, markAsRead, clearAll, deleteAllNotifications } =
+    useNotifications();
+  const insets = useSafeAreaInsets();
+
+  const [tab, setTab] = useState('assign');
   const [highlightRoomId, setHighlightRoomId] = useState(null);
+  const [scrollTopSignal, setScrollTopSignal] = useState(0);
 
-  // Registers this device's Expo push token, with the projectId production
-  // builds require. Replaces the old inline effect that used to live here —
-  // that version omitted projectId, which throws outside Expo Go, and it's
-  // now centralised so CleanerScreen can share the same fix.
-  usePushRegistration(user);
-
-  // Pending extra-room requests, surfaced as a badge on the tab below.
-  const pendingRequestCount = extraRequests.filter(
-    r => r.status === 'pending' || !r.status,
-  ).length;
-
-  // Dynamic tab list with translated labels. Account lives in the user menu
-  // (opened from the avatar) rather than here — five tabs plus Account made
-  // the bar too crowded, and Account/Language/Hostel Code are all "about me"
-  // settings rather than daily workflow screens.
-  const TABS = useMemo(() => [
-    { key: 'dashboard', label: t('manager.tabDashboard'), icon: 'grid-outline', iconActive: 'grid' },
-    { key: 'setup',     label: t('manager.tabSetup'),     icon: 'construct-outline', iconActive: 'construct' },
-    { key: 'team',      label: t('manager.tabTeam'),      icon: 'people-outline', iconActive: 'people' },
-    { key: 'assign',    label: t('manager.tabAssign'),    icon: 'swap-horizontal-outline', iconActive: 'swap-horizontal' },
-    {
-      key: 'extraRequests',
-      label: t('extraRequestsFooter') || 'Requests',
-      icon: 'flag-outline',
-      iconActive: 'flag',
-      badge: pendingRequestCount,
-    },
-  ], [t, pendingRequestCount]);
-
-  // Edit hostel name modal
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showSetupSheet, setShowSetupSheet] = useState(false);
+  const [showPro, setShowPro] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
   const [newName, setNewName] = useState(hostel.name || '');
+  const [showLang, setShowLang] = useState(false);
+  const toast = useToast();
+  const avatar = useAvatarPicker();
 
-  // Hostel code modal
-  const [showCodeModal, setShowCodeModal] = useState(false);
+  usePushRegistration(user);
 
-  // User menu modal
-  const [showUserMenu, setShowUserMenu] = useState(false);
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      document.title = 'HostelKeep';
+    }
+  }, []);
 
-  // Language menu modal
-  const [showLangMenu, setShowLangMenu] = useState(false);
+  const safeExtraRequests = Array.isArray(extraRequests) ? extraRequests : [];
+  const pendingRequestCount = safeExtraRequests.filter(
+    r => r && (r.status === 'pending' || !r.status),
+  ).length;
+
+  const pickHostelLogo = () => avatar.open({
+    canRemove: !!hostel.logoUri,
+    onPicked:  (uri) => updateHostel({ logoUri: uri }),
+    onRemove:  ()    => updateHostel({ logoUri: null }),
+  });
+
+  const removeHostelLogo = () => updateHostel({ logoUri: null });
+
+  // Manager's own photo → the user document.
+  const pickProfilePhoto = () => avatar.open({
+    canRemove: !!user.photoUri,
+    onPicked:  (uri) => updateProfile({ photoUri: uri }),
+    onRemove:  ()    => updateProfile({ photoUri: null }),
+  });
+
+  const handleNotifyPro = async () => {
+    setShowPro(false);
+    try {
+      await updateProfile({
+        proInterest: true,
+        proInterestAt: new Date().toISOString(),
+      });
+    } catch (_) {
+      // non-critical — never block the confirmation on this
+    }
+    toast.show(t('pro.notified') || "We'll let you know.");
+  };
+
+  const handleContact = () =>
+    Linking.openURL(
+      'mailto:hello@kohciao.com?subject=' +
+        encodeURIComponent('HostelKeep Pro'),
+    );
+
+  // Four primary tabs. Rooms/Setup moved to the hostel button beside the tab
+  // bar — it's configuration, not daily workflow, and this keeps the bar from
+  // getting crowded at the small pill width.
+  const TABS = useMemo(() => [
+    { key: 'assign', label: t('manager.tabAssign'), icon: 'swap_horiz' },
+    {
+      key: 'extraRequests',
+      label: t('extraRequestsFooter') || 'Extra',
+      icon: 'flag',
+      badge: pendingRequestCount,
+    },
+    // Not a screen — a Pro teaser. `pro: true` is handled in onPress below.
+    { key: 'live', label: t('manager.tabLive') || 'Live', icon: 'monitoring', pro: true },
+  ], [t, pendingRequestCount]);
+
+  const initials = (user.username || '?').trim().charAt(0).toUpperCase();
+  const hostelInitials = (hostel.name || 'H')
+    .trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
   const saveName = () => {
     if (newName.trim()) updateHostel({ name: newName.trim() });
     setEditVisible(false);
   };
 
-  const openEdit = () => {
-    setNewName(hostel.name);
-    setEditVisible(true);
-  };
-
-  useEffect(() => {
-    if (Platform.OS === 'web') {
-      document.title = 'KeepClean';
+  const renderTab = () => {
+    switch (tab) {
+      case 'assign':        return <AssignScreen bottomPad={CONTENT_BOTTOM_PAD} scrollTopSignal={scrollTopSignal} />;
+      case 'extraRequests': return <ExtraRequestsScreen bottomPad={CONTENT_BOTTOM_PAD} scrollTopSignal={scrollTopSignal} />;
+      case 'setup':         return <SetupScreen bottomPad={CONTENT_BOTTOM_PAD} />;
+      case 'team':          return <TeamScreen bottomPad={CONTENT_BOTTOM_PAD} />;
+      case 'account':       return <AccountScreen bottomPad={CONTENT_BOTTOM_PAD} />;
+      default:              return <AssignScreen bottomPad={CONTENT_BOTTOM_PAD} />;
     }
-  }, []);
-
-  // If the account screen is showing, it takes over the whole body — there's
-  // no "active" tab to highlight for it in the bottom bar, so it isn't one.
-  if (tab === 'account') {
-    return (
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        <AccountScreen onBack={() => setTab('dashboard')} />
-      </SafeAreaView>
-    );
-  }
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.logo}>{t('appName')}</Text>
-          {hostel.name ? (
-            <TouchableOpacity onPress={openEdit} activeOpacity={0.7}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={styles.hostelName}>· {hostel.name}</Text>
-                <Icon name="pencil" size={14} color={COLORS.textMuted} />
-              </View>
-            </TouchableOpacity>
-          ) : null}
-        </View>
+      <AvatarPickerSheet
+        controller={avatar}
+        title={t('profilePhoto') || 'Photo'}
+        labels={{
+          camera:  t('takePhoto')     || 'Take a photo',
+          gallery: t('chooseFromGallery') || 'Choose from gallery',
+          remove:  t('removePhoto')   || 'Remove photo',
+          close:   t('close'),
+        }}
+      />
 
-        <View style={styles.headerRight}>
-          {/* Notification bell */}
-          <TouchableOpacity onPress={() => setShowNotifications(true)} style={styles.iconBtn}>
-            <Icon name="alarm-outline" size={22} color={COLORS.textSecondary} />
-            {unreadCount > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{unreadCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+      <LanguageSheet
+        visible={showLang}
+        onClose={() => setShowLang(false)}
+        languages={LANGS}
+        current={i18n.language}
+        onSelect={(code) => i18n.changeLanguage(code)}
+        title={t('manager.language')}
+      />
+      {/* ── Floating top bar ── */}
+      <View style={styles.topBar}>
+        <TouchableOpacity
+          onPress={() => setShowPro(true)}
+          style={styles.glassPill}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.wordmark}>
+            Hostel<Text style={styles.wordmarkAccent}>Keep</Text>
+          </Text>
+        </TouchableOpacity>
 
-          {/* Avatar (opens menu) */}
-          <TouchableOpacity onPress={() => setShowUserMenu(true)} activeOpacity={0.7}>
-            <Avatar name={user.username} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* ── Content ── */}
-      <View style={styles.content}>
-        {tab === 'dashboard' && (
-          <DashboardScreen
-            highlightRoomId={highlightRoomId}
-            onRoomOpened={() => setHighlightRoomId(null)}
-          />
-        )}
-        {tab === 'setup' && <SetupScreen />}
-        {tab === 'team' && <TeamScreen />}
-        {tab === 'assign' && <AssignScreen />}
-        {tab === 'extraRequests' && <ExtraRequestsScreen />}
-      </View>
-
-      {/* ── Bottom Tabs ── */}
-      <View style={styles.tabBar}>
-        {TABS.map(tabItem => {
-          const isActive = tab === tabItem.key;
-          return (
-            <TouchableOpacity
-              key={tabItem.key}
-              style={styles.tabItem}
-              onPress={() => setTab(tabItem.key)}
-              activeOpacity={0.75}
-            >
-              <View>
-                <Icon
-                  name={isActive ? tabItem.iconActive : tabItem.icon}
-                  size={22}
-                  color={isActive ? COLORS.primary : COLORS.textMuted}
-                />
-                {!!tabItem.badge && (
-                  <View style={styles.tabBadge}>
-                    <Text style={styles.tabBadgeText}>
-                      {tabItem.badge > 9 ? '9+' : tabItem.badge}
-                    </Text>
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-                {tabItem.label}
+        <TouchableOpacity
+          onPress={() => setShowNotifications(true)}
+          style={styles.glassCircle}
+          activeOpacity={0.8}
+        >
+          <Icon name="notifications" size={24} color={COLORS.primary} />
+          {unreadCount > 0 && (
+            <View style={styles.notifBadge}>
+              <Text style={styles.notifBadgeText}>
+                {unreadCount > 99 ? '99+' : unreadCount}
               </Text>
-            </TouchableOpacity>
-          );
-        })}
+            </View>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setShowProfile(true)}
+          style={styles.avatarBtn}
+          activeOpacity={0.8}
+        >
+          <View style={styles.avatarInner}>
+            {user.photoUri
+              ? <Image source={{ uri: user.photoUri }} style={styles.avatarImage} />
+              : <Text style={styles.avatarText}>{initials}</Text>}
+          </View>
+        </TouchableOpacity>
       </View>
 
-      {/* ── Edit Hostel Name Modal ── */}
+      {/* ── Content (scrolls beneath the chrome) ── */}
+      <View style={styles.content}>{renderTab()}</View>
+
+      {/* ── Floating tab bar + hostel setup ── */}
+      <View style={[styles.tabBarWrap, { bottom: Math.max(insets.bottom, 12) + 18 }]}>
+        <View style={styles.tabBar}>
+          {TABS.map(item => {
+            const active = !item.pro && tab === item.key;
+            return (
+              <TouchableOpacity
+                key={item.key}
+                style={[styles.tabItem, active && styles.tabItemActive]}
+                onPress={() => {
+                  if (item.pro) { setShowPro(true); return; }
+                  if (tab === item.key) setScrollTopSignal(n => n + 1);
+                  else setTab(item.key);
+                }}
+                activeOpacity={0.8}
+              >
+                <View>
+                  <Icon
+                    name={item.icon}
+                    size={23}
+                    filled={active}
+                    color={active ? COLORS.text : '#8A93A2'}
+                  />
+                  {!!item.badge && (
+                    <View style={styles.tabBadge}>
+                      <Text style={styles.tabBadgeText}>
+                        {item.badge > 9 ? '9+' : item.badge}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Text
+                  style={[styles.tabLabel, active && styles.tabLabelActive]}
+                  numberOfLines={1}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity
+          onPress={() => setShowSetupSheet(true)}
+          style={styles.hostelBtn}
+          activeOpacity={0.85}
+          accessibilityLabel={t('manager.tabSetup')}
+        >
+          <View style={styles.hostelInner}>
+            {hostel.logoUri
+              ? <Image source={{ uri: hostel.logoUri }} style={styles.hostelLogo} />
+              : <Text style={styles.hostelBtnText}>{hostelInitials}</Text>}
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Hostel setup sheet ── */}
+      <SetupSheet
+        visible={showSetupSheet}
+        onClose={() => setShowSetupSheet(false)}
+        title={t('manager.setupTitle') || 'Hostel setup'}
+        subtitle={t('manager.setupSub')}
+        hostelName={hostel.name}
+        hostelLogoUri={hostel.logoUri}
+        onPickLogo={pickHostelLogo}
+        onRemoveLogo={hostel.logoUri ? removeHostelLogo : undefined}
+        links={[
+          {
+            icon: 'bed',
+            title: t('rooms'),
+            sub: t('manager.roomsSub') || 'Floors, rooms and beds',
+            onPress: () => { setShowSetupSheet(false); setTab('setup'); },
+          },
+          {
+            icon: 'group',
+            title: t('manager.tabTeam'),
+            sub: t('manager.teamSub') || 'Housekeepers and access',
+            onPress: () => { setShowSetupSheet(false); setTab('team'); },
+          },
+        ]}
+        proLabel={t('manager.buyPro') || 'Get HostelKeep Pro'}
+        onPro={() => { setShowSetupSheet(false); setShowPro(true); }}
+        feedbackLabel={t('manager.feedback') || 'Send feedback'}
+        onFeedback={() => Linking.openURL('mailto:hello@kohciao.com')}
+        closeLabel={t('close')}
+      />
+
+      {/* ── Edit hostel name ── */}
       <Modal visible={editVisible} transparent animationType="fade" onRequestClose={() => setEditVisible(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{t('manager.editPropertyName')}</Text>
+        <Pressable style={styles.centerBackdrop} onPress={() => setEditVisible(false)}>
+          <Pressable onPress={() => {}} style={styles.dialog}>
+            <Text style={styles.sheetTitle}>{t('manager.editPropertyName')}</Text>
             <TextInput
-              style={styles.modalInput}
+              style={styles.input}
               value={newName}
               onChangeText={setNewName}
               placeholder={t('manager.propertyNamePlaceholder')}
-              autoCapitalize="words"
               placeholderTextColor={COLORS.textMuted}
+              autoCapitalize="words"
             />
-            <View style={{ flexDirection: 'row', gap: SPACING[2], marginTop: SPACING[4] }}>
+            <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
               <TouchableOpacity
                 onPress={() => setEditVisible(false)}
-                activeOpacity={0.7}
-                style={{
-                  flex: 1,
-                  backgroundColor: COLORS.surface,
-                  borderRadius: RADIUS.sm,
-                  borderWidth: 1,
-                  borderColor: COLORS.border,
-                  paddingVertical: SPACING[3],
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
+                style={[styles.halfBtn, styles.halfBtnGhost]}
+                activeOpacity={0.8}
               >
-                <Text style={{
-                  fontFamily: FONTS.bold,
-                  fontSize: FONT_SIZE.md,
-                  color: COLORS.primary,
-                }}>
-                  {t('cancel')}
-                </Text>
+                <Text style={styles.halfBtnGhostText}>{t('cancel')}</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 onPress={saveName}
                 disabled={!newName.trim()}
+                style={[styles.halfBtn, !newName.trim() && { backgroundColor: COLORS.border }]}
                 activeOpacity={0.8}
-                style={{
-                  flex: 1,
-                  backgroundColor: !newName.trim() ? '#E2E8F0' : COLORS.primary,
-                  borderRadius: RADIUS.sm,
-                  borderWidth: 1,
-                  borderColor: !newName.trim() ? COLORS.border : COLORS.primary,
-                  paddingVertical: SPACING[3],
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
               >
-                <Text style={{
-                  fontFamily: FONTS.bold,
-                  fontSize: FONT_SIZE.md,
-                  color: !newName.trim() ? COLORS.textMuted : COLORS.white,
-                }}>
+                <Text style={[styles.halfBtnText, !newName.trim() && { color: COLORS.textMuted }]}>
                   {t('save')}
                 </Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ── Hostel Code Modal ── */}
-      <Modal visible={showCodeModal} transparent animationType="fade" onRequestClose={() => setShowCodeModal(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{t('manager.yourHostelCode')}</Text>
-            <Text style={styles.codeText}>{hostel.code || hostelCode || 'N/A'}</Text>
-            <Text style={styles.codeHint}>{t('manager.hostelCodeHint')}</Text>
-            <TouchableOpacity
-              onPress={() => setShowCodeModal(false)}
-              style={{
-                backgroundColor: COLORS.primary,
-                borderRadius: RADIUS.sm,
-                paddingVertical: SPACING[3],
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginTop: SPACING[4],
-              }}
-            >
-              <Text style={{ fontFamily: 'System', fontWeight: '600', fontSize: 16, color: COLORS.white }}>
-                {t('close')}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ── User Menu Modal (Account, Language, Hostel Code, Sign Out) ── */}
-      <Modal visible={showUserMenu} transparent animationType="fade" onRequestClose={() => setShowUserMenu(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setShowUserMenu(false)}>
-          <View style={styles.menuCard}>
-            <Text style={styles.menuTitle}>{user.username}</Text>
-            <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: SPACING[2] }} />
-
-            {/* Account item */}
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                setShowUserMenu(false);
-                setTab('account');
-              }}
-              activeOpacity={0.7}
-            >
-              <Icon name="person-circle-outline" size={18} color={COLORS.textSecondary} style={{ marginRight: SPACING[2] }} />
-              <Text style={styles.menuItemText}>{t('account') || 'Account'}</Text>
-            </TouchableOpacity>
-
-            {/* Language item */}
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                setShowUserMenu(false);
-                setTimeout(() => setShowLangMenu(true), 25);
-              }}
-              activeOpacity={0.7}
-            >
-              <Icon name="globe-outline" size={18} color={COLORS.textSecondary} style={{ marginRight: SPACING[2] }} />
-              <Text style={styles.menuItemText}>{t('manager.language')}</Text>
-            </TouchableOpacity>
-
-            {/* Hostel Code item */}
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => {
-                setShowUserMenu(false);
-                setTimeout(() => setShowCodeModal(true), 25);
-              }}
-              activeOpacity={0.7}
-            >
-              <Icon name="key-outline" size={18} color={COLORS.textSecondary} style={{ marginRight: SPACING[2] }} />
-              <Text style={styles.menuItemText}>{t('manager.yourHostelCode')}</Text>
-            </TouchableOpacity>
-
-            {/* Sign Out item */}
-            <TouchableOpacity
-              style={styles.menuItem}
-              onPress={() => { setShowUserMenu(false); logout(); }}
-              activeOpacity={0.7}
-            >
-              <Icon name="log-out-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[2] }} />
-              <Text style={[styles.menuItemText, { color: COLORS.danger }]}>{t('signOut')}</Text>
-            </TouchableOpacity>
-          </View>
+          </Pressable>
         </Pressable>
       </Modal>
 
-      {/* Notification Modal */}
-      <Modal visible={showNotifications} transparent animationType="fade" onRequestClose={() => setShowNotifications(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setShowNotifications(false)}>
-          <View style={styles.notifCard}>
-            <View style={styles.notifHeaderRow}>
-              <Text style={styles.menuTitle}>Notifications</Text>
-              <View style={{ flexDirection: 'row', gap: SPACING[2] }}>
-                {unreadCount > 0 && (
-                  <TouchableOpacity onPress={clearAll}>
-                    <Text style={{ fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.primary }}>
-                      Mark all read
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                {notifications.length > 0 && (
-                  <TouchableOpacity onPress={deleteAllNotifications}>
-                    <Text style={{ fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.danger }}>
-                      Delete all
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+      {/* ── Notifications ── */}
+      <Modal
+        visible={showNotifications}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowNotifications(false)}
+      >
+        <Pressable style={styles.backdrop} onPress={() => setShowNotifications(false)}>
+          <Pressable onPress={() => {}} style={[styles.sheet, { maxHeight: '80%' }]}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeadRow}>
+              <Text style={[styles.sheetTitle, { flex: 1 }]}>
+                {t('notifications') || 'Notifications'}
+              </Text>
+              {unreadCount > 0 && (
+                <TouchableOpacity onPress={clearAll} activeOpacity={0.7}>
+                  <Text style={styles.linkText}>{t('markAllRead') || 'Mark all read'}</Text>
+                </TouchableOpacity>
+              )}
             </View>
-            <ScrollView style={{ maxHeight: 300 }}>
+
+            <ScrollView style={{ maxHeight: 380 }}>
               {notifications.length === 0 ? (
-                <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, textAlign: 'center', marginTop: 20 }}>
-                  No notifications yet.
+                <Text style={styles.emptyHint}>
+                  {t('noNotifications') || 'No notifications yet.'}
                 </Text>
               ) : (
                 notifications.map(item => (
                   <TouchableOpacity
                     key={item.id}
-                    style={[styles.notifItem, item.read && { opacity: 0.6 }]}
+                    style={[styles.notifRow, item.read && { opacity: 0.55 }]}
                     onPress={() => {
                       markAsRead(item.id);
                       setShowNotifications(false);
-                      setTab('dashboard');
+                      setTab('assign');
                       setHighlightRoomId(item.roomId);
                     }}
+                    activeOpacity={0.7}
                   >
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.notifMessage, item.read && { color: COLORS.textMuted }]}>
-                        {item.message}
-                      </Text>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.notifText}>{item.message}</Text>
                       <Text style={styles.notifTime}>
-                        {new Date(item.timestampMs ?? item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(item.timestampMs ?? item.timestamp)
+                          .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </Text>
                     </View>
                     {!item.read && <View style={styles.unreadDot} />}
@@ -386,190 +393,355 @@ export default function ManagerApp() {
                 ))
               )}
             </ScrollView>
-            <TouchableOpacity
-              onPress={() => setShowNotifications(false)}
-              style={{ marginTop: SPACING[3], alignSelf: 'center', padding: SPACING[2] }}
-            >
-              <Text style={{ fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.primary }}>Close</Text>
-            </TouchableOpacity>
-          </View>
+
+            {notifications.length > 0 && (
+              <TouchableOpacity
+                onPress={deleteAllNotifications}
+                style={[styles.outlineBtn, { borderColor: COLORS.dangerBorder }]}
+                activeOpacity={0.8}
+              >
+                <Icon name="delete" size={22} color={COLORS.danger} />
+                <Text style={[styles.outlineBtnText, { color: COLORS.danger }]}>
+                  {t('deleteAll') || 'Delete all'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </Pressable>
         </Pressable>
       </Modal>
 
-      {/* ── Language Menu Modal ── */}
-      <Modal visible={showLangMenu} transparent animationType="fade" onRequestClose={() => setShowLangMenu(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setShowLangMenu(false)}>
-          <View style={styles.menuCard}>
-            <Text style={styles.menuTitle}>{t('manager.language')}</Text>
-            <View style={{ gap: SPACING[2] }}>
-              {LANGS.map(lang => (
-                <TouchableOpacity
-                  key={lang.code}
-                  style={[styles.menuItem, i18n.language === lang.code && styles.menuItemActive]}
-                  onPress={() => { i18n.changeLanguage(lang.code); setShowLangMenu(false); }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.menuItemText, i18n.language === lang.code && styles.menuItemTextActive]}>
-                    {lang.label}
-                  </Text>
-                  {i18n.language === lang.code && (
-                    <Icon name="checkmark-circle" size={20} color={COLORS.primary} />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
-            <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: SPACING[2] }} />
-            <TouchableOpacity
-              onPress={() => setShowLangMenu(false)}
-              style={[styles.menuItem, { justifyContent: 'center' }]}
-              activeOpacity={0.7}
-            >
-              <Icon name="close-circle-outline" size={18} color={COLORS.danger} style={{ marginRight: SPACING[1] }} />
-              <Text style={[styles.menuItemText, { color: COLORS.danger }]}>{t('close')}</Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Modal>
+      {/* ── Profile: language, account, sign out ── */}
+      <ProfileMenu
+        visible={showProfile}
+        onClose={() => setShowProfile(false)}
+        name={user.username}
+        hostelName={hostel.name}
+        photoUri={user.photoUri}
+        onChangePhoto={pickProfilePhoto}
+        langLabel={(LANGS.find(l => l.code === i18n.language) || LANGS[0]).label}
+        onLanguage={() => { setShowProfile(false); setShowLang(true); }}
+        // onChangePassword={() => { setShowProfile(false); setShowPassword(true); }}
+        onAccount={() => { setShowProfile(false); setTab('account'); }}
+        onSignOut={() => { setShowProfile(false); logout(); }}
+        labels={{
+          language: t('manager.language'),
+          changePassword: t('changePassword') || 'Change password',
+          account: t('account') || 'Account & privacy',
+          signOut: t('signOut'),
+        }}
+      />
+
+      {/* ── Pro (static — no gating logic yet, see PHASE-A-NOTES) ── */}
+      <ProSheet
+        visible={showPro}
+        onClose={() => setShowPro(false)}
+        title={t('pro.title') || 'More power, coming soon'}
+        subtitle={t('pro.sub') || 'HostelKeep Pro adds live monitoring, deeper reports and multi-property support.'}
+        features={[
+          { icon: 'monitoring',      title: t('pro.f1') || 'Live board',        sub: t('pro.f1sub') || 'See every room update the moment it happens.' },
+          { icon: 'bar_chart',       title: t('pro.f2') || 'Reports & history', sub: t('pro.f2sub') || 'Export daily and monthly performance.' },
+          { icon: 'apartment',       title: t('pro.f3') || 'Multi-property',    sub: t('pro.f3sub') || 'Run several hostels from one account.' },
+          { icon: 'support_agent',   title: t('pro.f4') || 'Priority support',  sub: t('pro.f4sub') || 'Talk to a human, fast.' },
+        ]}
+        notifyLabel={t('pro.notify') || 'Notify me at launch'}
+        onNotify={handleNotifyPro}
+        learnMoreLabel={t('pro.learnMore') || 'Learn more'}
+        learnMoreUrl="https://comingsoon.com"
+        contactLabel={t('pro.talk') || 'Talk to KohCiao'}
+        onContact={handleContact}
+        closeLabel={t('close')}
+      />
+      <ToastHost toast={toast} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: SPACING[4], paddingVertical: SPACING[3],
-    backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
-    flexWrap: 'wrap',
-  },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING[2] },
-  logo: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.primary, letterSpacing: -0.3 },
-  hostelName: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.textSecondary },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: SPACING[2] },
-  iconBtn: { padding: 6 },
-  codeBtn: { padding: 6, borderRadius: RADIUS.sm, backgroundColor: COLORS.primaryLight },
   content: { flex: 1 },
-  tabBar: {
-    flexDirection: 'row', backgroundColor: COLORS.surface,
-    borderTopWidth: 1, borderTopColor: COLORS.border,
-    paddingTop: SPACING[2], paddingBottom: Platform.OS === 'ios' ? 20 : SPACING[2],
+
+  /* Sub-header for full-takeover screens */
+  subHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
   },
-  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, paddingVertical: SPACING[1] },
-  tabLabel: { fontFamily: FONTS.medium, fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
-  tabLabelActive: { color: COLORS.primary, fontFamily: FONTS.bold },
-  tabBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -8,
-    backgroundColor: COLORS.danger,
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 3,
   },
-  tabBadgeText: { fontFamily: FONTS.bold, fontSize: 9, color: COLORS.white },
-  // Modals
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: SPACING[6] },
-  modalCard: { backgroundColor: COLORS.surface, borderRadius: RADIUS.lg, padding: SPACING[5], width: '100%', maxWidth: 400, ...SHADOW.md },
-  modalTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text, marginBottom: SPACING[4] },
-  modalInput: {
-    fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.text, backgroundColor: COLORS.background,
-    borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.border,
-    paddingHorizontal: SPACING[3], paddingVertical: SPACING[3],
+  subHeaderTitle: {
+    fontFamily: DISPLAY.semiBold,
+    fontSize: FONT_SIZE.xxl,
+    color: COLORS.primary,
   },
-  codeText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xxxl, color: COLORS.primary, textAlign: 'center', marginBottom: SPACING[2] },
-  codeHint: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, textAlign: 'center' },
-  badge: {
+
+  /* Floating top bar */
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 12,
+  },
+  // React Native has no backdrop-filter, so the prototype's frosted glass is
+  // approximated with a near-opaque surface + soft shadow. Visually close.
+  glassPill: {
+    flexShrink: 0,
+    marginRight: 'auto',
+    minHeight: 52,
+    borderRadius: 26,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    justifyContent: 'center',
+    ...SHADOW.md,
+  },
+  wordmark: {
+    fontFamily: DISPLAY.semiBold,
+    fontSize: FONT_SIZE.xl,
+    color: COLORS.primary,
+  },
+  wordmarkAccent: { color: COLORS.accent },
+  glassCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOW.md,
+  },
+  notifBadge: {
     position: 'absolute',
-    top: -4,
-    right: -6,
-    backgroundColor: COLORS.danger,
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
+    top: -2,
+    right: -2,
+    minWidth: 21,
+    height: 21,
+    borderRadius: 11,
+    backgroundColor: COLORS.accent,
+    borderWidth: 2,
+    borderColor: COLORS.surface,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
-  badgeText: {
+  notifBadgeText: {
     fontFamily: FONTS.bold,
-    fontSize: 10,
-    color: COLORS.white,
+    fontSize: 11,
+    color: COLORS.onAccent,
   },
-  notifCard: {
+  avatarBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    padding: 4,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+  },
+  avatarText: { fontFamily: DISPLAY.semiBold, fontSize: 20, color: COLORS.accent },
+  avatarInner: {
+    flex: 1,
+    borderRadius: 22,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',          
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',     
+  },
+
+  /* Floating tab bar */
+  tabBarWrap: {
+    position: 'absolute',
+    left: SPACING.md,
+    right: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  tabBar: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 4,
+    padding: 7,
+    borderRadius: 34,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    ...SHADOW.lg,
+  },
+  tabItem: {
+    flex: 1,
+    minHeight: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    paddingVertical: 7,
+    paddingHorizontal: 2,
+  },
+  tabItemActive: { backgroundColor: 'rgba(15,23,42,0.10)' },
+  tabLabel: {
+    fontFamily: FONTS.semiBold,
+    fontSize: 11,
+    color: COLORS.textSecondary,
+  },
+  tabLabelActive: { color: COLORS.text },
+  tabBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -8,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: COLORS.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  tabBadgeText: { fontFamily: FONTS.bold, fontSize: 10, color: COLORS.onAccent },
+
+  hostelBtn: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    padding: 7,
+  },
+  hostelInner: {
+    flex: 1, borderRadius: 28,
+    backgroundColor: COLORS.primary,
+    borderWidth: 2, borderColor: COLORS.accent,
+    alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',          // ← without this the square image escapes the circle
+  },
+  hostelLogo: { width: '100%', height: '100%' },
+  hostelBtnText: { fontFamily: DISPLAY.semiBold, fontSize: 19, color: COLORS.accent },
+
+  /* Sheets */
+  backdrop: { flex: 1, backgroundColor: 'rgba(11,31,58,0.45)', justifyContent: 'flex-end' },
+  centerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(11,31,58,0.45)',
+    justifyContent: 'center',
+    padding: SPACING.lg,
+  },
+  sheet: {
     backgroundColor: COLORS.surface,
+    borderTopLeftRadius: RADIUS.xxl,
+    borderTopRightRadius: RADIUS.xxl,
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xl,
+    gap: SPACING.xs,
+    ...SHADOW.lg,
+  },
+  dialog: {
+    backgroundColor: COLORS.surface,
+    borderRadius: RADIUS.xxl,
+    padding: SPACING.lg,
+    gap: SPACING.xs,
+    ...SHADOW.lg,
+  },
+  sheetHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: COLORS.border,
+    alignSelf: 'center',
+    marginBottom: SPACING.xs,
+  },
+  sheetHeadRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
+  sheetTitle: { fontFamily: DISPLAY.semiBold, fontSize: FONT_SIZE.xxl, color: COLORS.primary },
+  sheetSub: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.xs,
+  },
+  sheetCloseBtn: {
+    height: 52,
+    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: SPACING.sm,
+  },
+  sheetCloseText: { fontFamily: DISPLAY.semiBold, fontSize: FONT_SIZE.lg, color: COLORS.onPrimary },
+
+  input: {
+    height: 52,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
     borderRadius: RADIUS.lg,
-    padding: SPACING[4],
-    width: 320,
-    maxHeight: 400,
-    ...SHADOW.md,
+    paddingHorizontal: 14,
+    fontFamily: FONTS.medium,
+    fontSize: FONT_SIZE.lg,
+    color: COLORS.text,
+    backgroundColor: COLORS.surfaceAlt,
   },
-  notifHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+
+  halfBtn: {
+    flex: 1,
+    height: 52,
+    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.primary,
     alignItems: 'center',
-    marginBottom: SPACING[3],
+    justifyContent: 'center',
   },
-  notifItem: {
+  halfBtnGhost: { backgroundColor: COLORS.surfaceMuted },
+  halfBtnGhostText: { fontFamily: DISPLAY.semiBold, fontSize: FONT_SIZE.lg, color: COLORS.primary },
+  halfBtnText: { fontFamily: DISPLAY.semiBold, fontSize: FONT_SIZE.lg, color: COLORS.onPrimary },
+
+  outlineBtn: {
+    height: 52,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1.5,
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.surface,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING[2],
+    justifyContent: 'center',
+    gap: SPACING.xs,
+  },
+  outlineBtnText: { fontFamily: DISPLAY.semiBold, fontSize: FONT_SIZE.lg, color: COLORS.primary },
+
+  linkText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.sm, color: COLORS.primary },
+  emptyHint: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.md,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    paddingVertical: SPACING.lg,
+  },
+  notifRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  notifMessage: {
-    fontFamily: FONTS.medium,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.text,
-    flex: 1,
-  },
+  notifText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.primary },
   notifTime: {
     fontFamily: FONTS.regular,
     fontSize: FONT_SIZE.xs,
     color: COLORS.textMuted,
     marginTop: 2,
   },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.primary,
-    marginLeft: SPACING[2],
-  },
-  // Menus
-  menuCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.lg,
-    padding: SPACING[4],
-    width: 240,
-    ...SHADOW.md,
-  },
-  menuTitle: {
-    fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.lg,
-    color: COLORS.text,
-    marginBottom: SPACING[3],
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING[2],
-    paddingVertical: SPACING[3],
-    paddingHorizontal: SPACING[3],
-    borderRadius: RADIUS.md,
-  },
-  menuItemActive: {
-    backgroundColor: COLORS.primaryLight,
-  },
-  menuItemText: {
-    fontFamily: FONTS.medium,
-    fontSize: FONT_SIZE.md,
-    color: COLORS.text,
-  },
-  menuItemTextActive: {
-    color: COLORS.primary,
-    fontFamily: FONTS.bold,
-  },
+  unreadDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: COLORS.accent },
+
 });

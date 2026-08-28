@@ -10,7 +10,7 @@ import {
   EmailAuthProvider,
   getAuth,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, deleteDoc, writeBatch, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, writeBatch, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { auth, db, firebaseConfig } from '../firebase';
 
@@ -81,6 +81,7 @@ export function AuthProvider({ children }) {
             role: data.role,
             hostelCode: data.hostelCode,
             recoveryEmail: data.recoveryEmail || null,
+            photoUri: data.photoUri || null,
           });
         } else {
           // An authenticated account with no profile can read and write
@@ -328,6 +329,11 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => firebaseSignOut(auth), []);
 
+  const updateProfile = async (patch) => {
+    await updateDoc(doc(db, 'users', user.uid), patch);
+    setUser(prev => ({ ...prev, ...patch }));
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -340,6 +346,7 @@ export function AuthProvider({ children }) {
         resetCleanerPassword,
         changeOwnPassword,
         requestPasswordReset,
+        updateProfile,
       }}
     >
       {children}

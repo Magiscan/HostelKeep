@@ -107,13 +107,25 @@ export function Button({
   };
 
   const bg =
-    variant === 'primary' ? COLORS.primary :
+    variant === 'primary'   ? COLORS.primary :
     variant === 'secondary' ? COLORS.surface :
-    variant === 'danger' ? COLORS.danger :
+    variant === 'danger'    ? COLORS.dangerLight :
+    variant === 'accent'    ? COLORS.accent :
     COLORS.primary;
 
-  const color = variant === 'secondary' ? COLORS.primary : COLORS.white;
-  const borderColor = variant === 'secondary' ? COLORS.border : 'transparent';
+  const color =
+    variant === 'secondary' ? COLORS.primary :
+    variant === 'danger'    ? COLORS.danger :
+    variant === 'accent'    ? COLORS.primary :
+    COLORS.white;
+
+  const borderColor =
+    variant === 'secondary' ? COLORS.border :
+    variant === 'danger'    ? COLORS.dangerBorder :
+    'transparent';
+
+  // Icons on a navy button are yellow, per the handoff (login, FAB, toast).
+  const iconColor = variant === 'primary' ? COLORS.accent : color;
 
   const paddingV = size === 'lg' ? SPACING[4] : size === 'sm' ? SPACING[2] : SPACING[3];
   const paddingH = size === 'lg' ? SPACING[6] : size === 'sm' ? SPACING[4] : SPACING[5];
@@ -134,13 +146,13 @@ export function Button({
             alignItems: 'center',
             justifyContent: 'center',
             gap: SPACING[2],
-            backgroundColor: disabled ? COLORS.border : bg,
+            backgroundColor: disabled ? COLORS.disabledBg : bg,
             paddingVertical: paddingV,
             paddingHorizontal: paddingH,
             borderRadius: RADIUS.md,
-            borderWidth: variant === 'secondary' ? 1 : 0,
+            borderWidth: variant === 'secondary' || variant === 'danger' ? 1.5 : 0,
             borderColor: disabled ? COLORS.border : borderColor,
-            minHeight: 44,
+            minHeight: size === 'lg' ? 56 : 44,
           },
           glow && !disabled && SHADOW.glow,
           !glow && SHADOW.sm,
@@ -148,20 +160,20 @@ export function Button({
         ]}
       >
         {icon && iconPosition === 'left' && (
-          <Icon name={icon} size={iconSize} color={disabled ? COLORS.textMuted : color} />
+          <Icon name={icon} size={iconSize} color={disabled ? COLORS.textMuted : iconColor} />
         )}
         <Text
           style={{
-            fontFamily: FONTS.bold,
+            fontFamily: FONTS.semiBold,
             fontSize,
             color: disabled ? COLORS.textMuted : color,
-            letterSpacing: 0.2,
+            letterSpacing: 0,
           }}
         >
           {title}
         </Text>
         {icon && iconPosition === 'right' && (
-          <Icon name={icon} size={iconSize} color={disabled ? COLORS.textMuted : color} />
+          <Icon name={icon} size={iconSize} color={disabled ? COLORS.textMuted : iconColor} />
         )}
       </TouchableOpacity>
     </Animated.View>
@@ -177,9 +189,8 @@ export function Card({ children, style, noPadding }) {
           backgroundColor: COLORS.surface,
           borderRadius: RADIUS.lg,
           padding: noPadding ? 0 : SPACING[4],
-          borderWidth: 1,
-          borderColor: COLORS.border,
-          ...SHADOW.sm,
+          borderWidth: 0,          
+          ...SHADOW.card,
         },
         style,
       ]}
@@ -220,16 +231,16 @@ export function Input({
       onBlur={() => setFocused(false)}
       style={[
         {
-          fontFamily: FONTS.regular,
-          backgroundColor: editable === false ? COLORS.background : COLORS.white,
+          fontFamily: FONTS.medium,       // inputs are Rubik 500 / 17px
+          fontSize: 17,
+          backgroundColor: editable === false ? COLORS.disabledBg : COLORS.inputFill,          
           borderRadius: RADIUS.md,
           borderWidth: 1.5,
           borderColor: focused ? COLORS.borderFocus : COLORS.border,
           paddingHorizontal: SPACING[3],
           paddingVertical: Platform.OS === 'ios' ? SPACING[3] : SPACING[2],
-          fontSize: FONT_SIZE.md,
           color: COLORS.text,
-          minHeight: 44,
+          minHeight: 52,
         },
         style,
       ]}
@@ -262,7 +273,7 @@ export function Label({ children, style }) {
 export function Badge({ label, type = 'default' }) {
   const colors = {
     priv:    { bg: COLORS.primaryLight, text: COLORS.primary },
-    dorm:    { bg: COLORS.accentLight,  text: COLORS.amber },
+    dorm:    { bg: COLORS.beige,  text: COLORS.textSecondary },
     clean:   { bg: COLORS.successLight, text: COLORS.success },
     extra:   { bg: COLORS.dangerLight,  text: COLORS.danger },
     pending: { bg: '#F1F5F9',           text: COLORS.textSecondary },
@@ -430,12 +441,12 @@ export function FloorHeader({ label }) {
     }}>
       <View style={{
         width: 5,
-        height: 24,
-        backgroundColor: COLORS.primary,
+        height: 22,
+        backgroundColor: COLORS.accent,
         borderRadius: 3,
         marginRight: SPACING[3],
       }} />
-      <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.lg, color: COLORS.text }}>
+      <Text style={{ fontFamily: FONTS.display, fontSize: 21, color: COLORS.text }}>
         {label}
       </Text>
     </View>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert,
@@ -9,6 +9,8 @@ import { COLORS, FONTS, FONT_SIZE, RADIUS, SPACING, SHADOW } from '../../theme';
 import { Button, Label, Input, SectionTitle, EmptyState, Badge } from '../../components/UI';
 import { useApp } from '../../contexts/AppContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { buildCleanerColors } from '../../utils/cleanerColor';
+import { DISPLAY } from '../../theme/typography';
 
 // ─── Excel helpers (same as AssignScreen.web.js) ────────────────
 const EXTRA_BLANK_ROWS = 5;
@@ -55,6 +57,8 @@ export default function TeamScreen() {
   const [resetError, setResetError] = useState('');
 
   const [expandedCleaner, setExpandedCleaner] = useState(null);
+
+  const colors = useMemo(() => buildCleanerColors(cleaners), [cleaners]);
 
   const closeForm = () => {
     setShowForm(false);
@@ -192,7 +196,8 @@ export default function TeamScreen() {
           <EmptyState icon="👤" title={t('noCleaners')} subtitle={t('addfirstCleaner')} />
         ) : (
           <View style={styles.cleanerGrid}>
-            {cleaners.map(c => {
+            {cleaners.map((c) => {
+              const color = colors[c.id];
               const assignedRooms = rooms.filter(r => r.assignedTo === c.id);
               const done = assignedRooms.filter(r => roomStatus[r.id]?.cleaned).length;
               const total = assignedRooms.length;
@@ -202,7 +207,7 @@ export default function TeamScreen() {
               return (
                 <View key={c.id} style={styles.cleanerCard}>
                   <View style={styles.cleanerCardTop}>
-                    <View style={styles.avatar}>
+                    <View style={[styles.avatar, { backgroundColor: color }]}>
                       <Text style={styles.avatarText}>{c.username?.[0]?.toUpperCase()}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
@@ -374,7 +379,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryLight,
     alignItems: 'center', justifyContent: 'center', marginRight: SPACING[3],
   },
-  avatarText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.md, color: COLORS.primary },
+  avatarText: { fontFamily: DISPLAY.semiBold, fontSize: 17, color: '#FFFFFF' },
   cleanerName: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.md, color: COLORS.text },
   progressCount: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary, marginTop: 2 },
   cardActions: { flexDirection: 'row', gap: 4 },
