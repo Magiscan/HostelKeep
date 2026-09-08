@@ -1,240 +1,189 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+// src/screens/manager/DashboardScreen.web.js
+//
+// REDESIGN — transcribed from the prototype's `isDashboard` branch.
+//
+// Structure: four clickable KPI tiles across the top, then a two-column split —
+// Rooms today + Recent activity on the left (flex 3, basis 560), Housekeepers +
+// Floor progress + Needs attention on the right (flex 1, basis 300).
+//
+// WHAT WENT AWAY
+// Header, KPICard, ProgressCard, SearchBar, RoomTable, CleanerWidget,
+// FloorProgress, RecentActivity and Footer are all gone. The prototype draws
+// these inline and none of them survive the redesign intact — KPICard has no
+// icon square or chevron, RoomTable has no accent bar or status chip, and the
+// Header's buttons are now header actions. If nothing else in the app imports
+// them, they can be deleted.
+//
+// The notification Modal is gone too: ManagerLayout owns notifications now,
+// via the header bell.
+//
+// DROPPED DELIBERATELY: the local generateCSV helper and handleExport. They
+// were defined but never referenced — Header only ever called onSaveDay and
+// onDailyReport. Excel export still works through generateDailyReport.
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  View, ScrollView, StyleSheet, Alert, TouchableOpacity, Text, Modal, Pressable, Image,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, useWindowDimensions,
 } from 'react-native';
+import * as XLSX from 'xlsx';
 import { useApp } from '../../contexts/AppContext';
 import { useNotifications } from '../../contexts/NotificationContext';
-import Header from '../../components/Dashboard/Header';
-import KPICard from '../../components/Dashboard/KPICard';
-import ProgressCard from '../../components/Dashboard/ProgressCard';
-import SearchBar from '../../components/Dashboard/SearchBar';
-import RoomTable from '../../components/Dashboard/RoomTable';
-import CleanerWidget from '../../components/Dashboard/CleanerWidget';
-import FloorProgress from '../../components/Dashboard/FloorProgress';
-import RecentActivity from '../../components/Dashboard/RecentActivity';
-import Footer from '../../components/Dashboard/Footer';
-import AppCard from '../../components/Card/AppCard';
-import { COLORS } from '../../theme/colors';
-import { SPACING } from '../../theme/spacing';
-import { FONTS, FONT_SIZE } from '../../theme/typography';
-import { Badge } from '../../components/UI';   // if Badge is available, else skip
 import Icon from '../../components/Icon';
+import { Drawer, drawerStyles as d } from '../../components/Dashboard/Drawer.web';
+import { FONTS } from '../../theme/typography';
+import { BRAND, NEUTRAL, STATUS, ACCENT } from '../../theme/tokens';
+import { buildCleanerColors } from '../../utils/cleanerColor';
 import { generateDailyReport } from '../../utils/dailyReport';
-import * as XLSX from 'xlsx';
+import Footer from '../../components/Dashboard/Footer';
 
-/* ─── CSV helper (local copy) ──────────────────────────────── */
-const generateCSV = (rooms, roomStatus, cleaners, extraRequests, floors) => {
-  const headers = [
-    'Room', 'Floor', 'Type', 'Cleaner', 'Status',
-    'Notes', 'Extra Time (min)', 'Bed Details', 'Flags', 'Extra Request',
-  ].join(',');
+const SUNKEN = '#F8FAFC';
+const HAIRLINE = '#EEF2F7';
 
-  const rows = rooms.map(room => {
-    const status = roomStatus[room.id] || {};
-    const cleaned = status.cleaned ? 'Cleaned' : 'Pending';
-    const cleaner = cleaners.find(c => c.id === room.assignedTo);
-    const cleanerName = cleaner ? cleaner.username : 'Unassigned';
-    const notes = (status.notes || '').replace(/"/g, '""');
-    const extraTime = status.extraTime || 0;
-    const floor = floors.find(f => f.id === room.floorId);
-    const floorName = floor ? floor.name : '';
+/* Room status → chip + accent. `worst` in the prototype walks the bed states;
+   here the app's simpler model is: cleaned → done, assigned → in progress,
+   otherwise waiting. */
+function roomLook(cleaned, assigned) {
+  if (cleaned) {
+    return {
+      label: 'Done', icon: 'verified', accent: ACCENT.complete,
+      bg: STATUS.inspected.bg, border: STATUS.inspected.border, fg: STATUS.inspected.text,
+    };
+  }
+  if (assigned) {
+    return {
+      label: 'In progress', icon: 'cleaning_services', accent: BRAND.yellow,
+      bg: STATUS.dirty.bg, border: STATUS.dirty.border, fg: STATUS.dirty.text,
+    };
+  }
+  return {
+    label: 'Waiting', icon: 'schedule', accent: NEUTRAL.border,
+    bg: NEUTRAL.slateChip, border: NEUTRAL.border, fg: NEUTRAL.text3,
+  };
+}
 
-    const bedStatus = status.bedStatus || {};
-    const assignment = status.assignmentBedStatus || {};
-    const beds = room.beds || [];
-    const bedDetails = beds
-      .map(bed => {
-        const bStat = bedStatus[bed.id]?.status || 'pending';
-        const aStat = assignment[bed.id]?.status || 'clean';
-        return `${bed.name}:${bStat}(${aStat})`;
-      })
-      .join('; ');
+function activityLook(type) {
+  switch (type) {
+    case 'room_cleaned':  return { icon: 'verified', bg: STATUS.inspected.bg, fg: STATUS.inspected.text };
+    case 'extra_request': return { icon: 'flag', bg: STATUS.dirty.bg, fg: STATUS.dirty.text };
+    default:              return { icon: 'schedule', bg: NEUTRAL.slateChip, fg: NEUTRAL.text2 };
+  }
+}
 
-    const flags = [];
-    if (status.earlyCheckIn) flags.push('Early Check-in');
-    if (status.lateCheckOut) flags.push('Late Check-out');
-    if (status.commonOnly) flags.push('Common Only');
-    if (status.extraCleaning) flags.push('Extra Cleaning');
-    const flagsStr = flags.join('/');
-
-    const extraReq = extraRequests.find(req => req.id === room.id);
-    const extraReqStr = extraReq ? `Requested by ${extraReq.cleanerId}` : '';
-
-    return [
-      `"${room.name}"`, `"${floorName}"`, room.type,
-      `"${cleanerName}"`, cleaned, `"${notes}"`,
-      extraTime, `"${bedDetails}"`, `"${flagsStr}"`, `"${extraReqStr}"`,
-    ].join(',');
-  });
-
-  return [headers, ...rows].join('\n');
+const ATTENTION_LOOK = {
+  request:   { icon: 'flag', bg: STATUS.dirty.bg, fg: STATUS.dirty.text },
+  flag:      { icon: 'schedule', bg: STATUS.late.bg, fg: STATUS.late.text },
+  note:      { icon: 'sticky_note_2', bg: STATUS.cleaned.bg, fg: STATUS.cleaned.text },
+  extraTime: { icon: 'more_time', bg: STATUS.dirty.bg, fg: STATUS.dirty.text },
 };
 
-function RoomDetailModal({ visible, room, roomStatus, cleaners, floors, onClose }) {
+/* ── Room detail ───────────────────────────────────────────────────
+   Reuses the shared Drawer so a row click on the dashboard and a room click on
+   Assign open the same kind of surface. Read-only — editing lives on Assign. */
+function RoomDetailDrawer({ room, roomStatus, cleaners, floors, onClose }) {
   if (!room) return null;
   const status = roomStatus[room.id] || {};
-  const cleaned = status.cleaned || false;
-  const notes = status.notes;
-  const extraTime = status.extraTime || 0;
-  const bedStatus = status.bedStatus || {};
-  const assignmentBedStatus = status.assignmentBedStatus || {};
-  const managerNotes = status.managerNotes;
-  const commonOnly = status.commonOnly || false;
-  const assignmentAttributes = status.assignmentAttributes || {};
   const cleaner = cleaners.find(c => c.id === room.assignedTo);
   const floor = floors.find(f => f.id === room.floorId);
-  const isEarly = status.earlyCheckIn === true;
-  const isLate  = status.lateCheckOut === true;
+  const look = roomLook(!!status.cleaned, !!room.assignedTo);
+
+  const rows = [
+    ['Type', room.type === 'private' ? 'Private' : 'Dormitory'],
+    floor && ['Floor', floor.name],
+    ['Housekeeper', cleaner ? cleaner.username : 'Unassigned'],
+    ['Status', look.label],
+    status.extraTime > 0 && ['Extra time', `+${status.extraTime} min`],
+    status.managerNotes && ['Manager note', status.managerNotes],
+    status.notes && ['Housekeeper note', status.notes],
+  ].filter(Boolean);
+
+  const flags = [];
+  if (status.earlyCheckIn) flags.push('Early check-in');
+  if (status.lateCheckOut) flags.push('Late check-out');
+  if (status.commonOnly) flags.push('Common areas only');
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <Pressable style={styles.modalBackdrop} onPress={onClose}>
-        <Pressable style={styles.modalCard} onPress={() => {}}>
-          <Text style={styles.modalTitle}>{room.name}</Text>
-
-          {/* Type & Floor */}
-          <View style={styles.modalRow}>
-            <Text style={styles.modalLabel}>Type</Text>
-            <Badge label={room.type === 'private' ? 'Private' : 'Dormitory'} type={room.type === 'private' ? 'priv' : 'dorm'} />
+    <Drawer visible onClose={onClose} width={460} title={room.name} subtitle="Today's state">
+      <View style={{ gap: 12 }}>
+        {rows.map(([label, value]) => (
+          <View key={label} style={styles.detailRow}>
+            <Text style={styles.detailLabel}>{label}</Text>
+            <Text style={styles.detailValue}>{value}</Text>
           </View>
-          {floor && (
-            <View style={styles.modalRow}>
-              <Text style={styles.modalLabel}>Floor</Text>
-              <Text style={styles.modalValue}>{floor.name}</Text>
-            </View>
-          )}
+        ))}
+      </View>
 
-          {/* Cleaner */}
-          <View style={styles.modalRow}>
-            <Text style={styles.modalLabel}>Cleaner</Text>
-            <Text style={styles.modalValue}>{cleaner ? cleaner.username : 'Unassigned'}</Text>
+      {flags.length > 0 && (
+        <View>
+          <Text style={d.overline}>Flags</Text>
+          <View style={styles.chipWrap}>
+            {flags.map(f => (
+              <View key={f} style={[styles.chip, { backgroundColor: STATUS.late.bg, borderColor: STATUS.late.border }]}>
+                <Text style={[styles.chipText, { color: STATUS.late.text }]}>{f}</Text>
+              </View>
+            ))}
           </View>
+        </View>
+      )}
 
-          {/* Status */}
-          <View style={styles.modalRow}>
-            <Text style={styles.modalLabel}>Status</Text>
-            <Badge label={cleaned ? 'Cleaned' : 'Pending'} type={cleaned ? 'clean' : 'extra'} />
+      {room.type === 'dorm' && room.beds?.length > 0 && !status.commonOnly && (
+        <View>
+          <Text style={d.overline}>Beds</Text>
+          <View style={styles.chipWrap}>
+            {room.beds.map(bed => {
+              const assignment = (status.assignmentBedStatus || {})[bed.id] || { status: 'clean' };
+              const bedClean = (status.bedStatus || {})[bed.id]?.status === 'cleaned';
+              const skipped = assignment.status === 'stayover' || assignment.status === 'noone';
+              const s = bedClean ? STATUS.inspected : skipped ? STATUS.excluded : STATUS.dirty;
+              return (
+                <View key={bed.id} style={[styles.chip, { backgroundColor: s.bg, borderColor: s.border }]}>
+                  <Text style={[styles.chipText, { color: s.text }]}>
+                    {bed.name} · {bedClean ? 'Cleaned' : skipped ? 'Skipped' : 'To do'}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
-
-          {/* Extra time */}
-          {extraTime > 0 && (
-            <View style={styles.modalRow}>
-              <Text style={styles.modalLabel}>Extra Time</Text>
-              <Text style={styles.modalValue}>+{extraTime} min</Text>
-            </View>
-          )}
-
-          {/* Manager notes */}
-          {managerNotes ? (
-            <View style={styles.modalRow}>
-              <Text style={styles.modalLabel}>Manager Note</Text>
-              <Text style={styles.modalValue}>{managerNotes}</Text>
-            </View>
-          ) : null}
-
-          {/* Cleaner notes */}
-          {notes ? (
-            <View style={styles.modalRow}>
-              <Text style={styles.modalLabel}>Cleaner Note</Text>
-              <Text style={[styles.modalValue, { fontStyle: 'italic' }]}>{notes}</Text>
-            </View>
-          ) : null}
-
-          {/* Beds (dorm only) */}
-          {room.type === 'dorm' && room.beds?.length > 0 && !commonOnly && (
-            <View style={styles.modalRow}>
-              <Text style={styles.modalLabel}>Beds</Text>
-              <View style={{ flex: 1 }}>
-                {room.beds.map(bed => {
-                  const assignment = assignmentBedStatus[bed.id] || { status: 'clean', reason: 'clean' };
-                  const bedClean = bedStatus[bed.id]?.status === 'cleaned';
-                  const isSkipped = assignment.status === 'stayover' || assignment.status === 'noone';
-                  return (
-                    <Text key={bed.id} style={[styles.bedItem, { color: bedClean ? COLORS.success : isSkipped ? COLORS.warning : COLORS.textSecondary }]}>
-                      {bed.name}: {bedClean ? '✓ Cleaned' : isSkipped ? '⊘ Skipped' : '○ To do'}
-                    </Text>
-                  );
-                })}
-              </View>
-            </View>
-          )}
-
-          {/* Common areas only */}
-          {commonOnly && (
-            <View style={styles.modalRow}>
-              <Text style={styles.modalLabel}>Common Areas</Text>
-              <Text style={[styles.modalValue, { color: cleaned ? COLORS.success : COLORS.textSecondary }]}>
-                {cleaned ? 'Cleaned' : 'Not yet cleaned'}
-              </Text>
-            </View>
-          )}
-
-          {/* Assignment attributes (private rooms) */}
-          {room.type === 'private' && Object.keys(assignmentAttributes).length > 0 && (
-            <View style={styles.modalRow}>
-              <Text style={styles.modalLabel}>Features</Text>
-              <View style={{ flex: 1 }}>
-                {Object.entries(assignmentAttributes).map(([attr, val]) => (
-                  <Text key={attr} style={styles.modalValue}>{attr}: {val ? 'Yes' : 'No'}</Text>
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* Early / Late flags */}
-          {(isEarly || isLate) && (
-            <View style={styles.modalRow}>
-              <Text style={styles.modalLabel}>Flags</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                {isEarly && <Badge label="Early Check-in" type="extra" />}
-                {isLate && <Badge label="Late Check-out" type="extra" />}
-              </View>
-            </View>
-          )}
-
-          {/* Close button */}
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <Text style={styles.closeBtnText}>Close</Text>
-          </TouchableOpacity>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </View>
+      )}
+    </Drawer>
   );
 }
 
-/* ─── Main Dashboard Component ────────────────────────────── */
-export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavigate }) {
+/* ── Section shell ─────────────────────────────────────────────── */
+function Panel({ title, action, children, flush }) {
+  return (
+    <View style={styles.panel}>
+      {!!title && (
+        <View style={[styles.panelHead, flush && styles.panelHeadFlush]}>
+          <Text style={styles.panelTitle}>{title}</Text>
+          {action}
+        </View>
+      )}
+      {children}
+    </View>
+  );
+}
+
+export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavigate, onReady }) {
   const {
     rooms = [], roomStatus = {}, hostel = {}, cleaners = [],
     extraRequests = [], floors = [],
     approveExtraRoom, rejectExtraRoom, hostelCode, saveDailyLog, dailyLogExists,
   } = useApp();
   const { t, i18n } = useTranslation();
-  const { notifications, unreadCount, markAsRead, clearAll, deleteAllNotifications } = useNotifications();
-  const [showNotifications, setShowNotifications] = useState(false);
-
-  const recentActivities = notifications.slice(0, 5).map(n => ({
-    id: n.id,
-    text: n.message,
-    time: new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    status: n.type === 'room_cleaned' ? 'Cleaned' : n.type === 'extra_request' ? 'High' : 'Info',
-  }));
+  const { notifications } = useNotifications();
 
   const [search, setSearch] = useState('');
   const [selectedRoom, setSelectedRoom] = useState(null);
-  const [imageViewer, setImageViewer] = useState(null);
-  const pendingExtraRequests = extraRequests.filter(r => r.status === 'pending' || !r.status); // safety: treat missing status as pending
-
-  const filteredRooms = useMemo(() => {
-    if (!search.trim()) return rooms;
-    const term = search.toLowerCase();
-    return rooms.filter(r => r.name.toLowerCase().includes(term));
-  }, [rooms, search]);
-
-  const autoSaveRef = useRef(false);
   const [saveDaySuccess, setSaveDaySuccess] = useState(false);
+  const autoSaveRef = useRef(false);
 
+  const colors = useMemo(() => buildCleanerColors(cleaners), [cleaners]);
+
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;   // adjust threshold as needed
+
+  /* ── Header actions ── */
   const handleSaveDay = useCallback(async () => {
     try {
       await saveDailyLog();
@@ -249,36 +198,33 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
     const wb = generateDailyReport({
       date: new Date().toISOString().slice(0, 10),
       hostelName: hostel.name,
-      rooms,
-      roomStatus,
-      cleaners,
-      floors,
-      extraRequests,
+      rooms, roomStatus, cleaners, floors, extraRequests,
       lang: i18n.language.startsWith('it') ? 'it' : 'en',
     });
     XLSX.writeFile(wb, `KeepClean_Report_${new Date().toISOString().slice(0, 10)}_${hostel.name}.xlsx`);
   }, [hostel.name, rooms, roomStatus, cleaners, floors, extraRequests, i18n.language]);
 
   useEffect(() => {
-    if (!hostelCode || autoSaveRef.current) return;
+    if (!onReady) return;
+    onReady({ saveDay: handleSaveDay, dailyReport: handleDailyReport, saveDaySuccess });
+  }, [onReady, handleSaveDay, handleDailyReport, saveDaySuccess]);
 
+  /* ── Yesterday's autosave (unchanged) ── */
+  useEffect(() => {
+    if (!hostelCode || autoSaveRef.current) return;
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yyyy = yesterday.getFullYear();
     const mm = String(yesterday.getMonth() + 1).padStart(2, '0');
     const dd = String(yesterday.getDate()).padStart(2, '0');
     const yesterdayStr = `${yyyy}-${mm}-${dd}`;
-
     dailyLogExists(yesterdayStr).then(exists => {
-      if (!exists) {
-        saveDailyLog(yesterdayStr);   // ← pass yesterday’s date
-      }
+      if (!exists) saveDailyLog(yesterdayStr);
     });
-
     autoSaveRef.current = true;
   }, [hostelCode, dailyLogExists, saveDailyLog]);
 
-  // Notification highlight effect
+  /* ── Notification deep-link (unchanged) ── */
   useEffect(() => {
     if (highlightRoomId && rooms.length > 0) {
       const room = rooms.find(r => r.id === highlightRoomId);
@@ -289,244 +235,396 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
     }
   }, [highlightRoomId, rooms, onRoomOpened]);
 
-  const handleExport = useCallback(() => {
-    try {
-      const csv = generateCSV(rooms, roomStatus, cleaners, extraRequests, floors);
-      const fileName = `keepclean_report_${new Date().toISOString().slice(0, 10)}.csv`;
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      Alert.alert('Export failed', error.message);
-    }
-  }, [rooms, roomStatus, cleaners, extraRequests, floors]);
+  /* ── Derived (unchanged arithmetic) ── */
+  const filteredRooms = useMemo(() => {
+    if (!search.trim()) return rooms;
+    const term = search.toLowerCase();
+    return rooms.filter(r => r.name.toLowerCase().includes(term));
+  }, [rooms, search]);
 
-  const allRooms = rooms || [];
-  const assignedRooms = allRooms.filter(r => r.assignedTo);
+  const assignedRooms = rooms.filter(r => r.assignedTo);
   const assignedCleaned = assignedRooms.filter(r => roomStatus[r.id]?.cleaned).length;
   const assignedPct = assignedRooms.length
-    ? Math.round((assignedCleaned / assignedRooms.length) * 100)
-    : 0;
-  const pendingCount = assignedRooms.length - assignedCleaned;   
+    ? Math.round((assignedCleaned / assignedRooms.length) * 100) : 0;
+  const unassignedCount = rooms.filter(r => !r.assignedTo).length;
+  const pendingExtraRequests = extraRequests.filter(r => r.status === 'pending' || !r.status);
+  const approvedCount = extraRequests.filter(r => r.status === 'approved').length;
 
   const workingCleaners = cleaners.filter(c => {
     const assigned = rooms.filter(r => r.assignedTo === c.id);
-    if (assigned.length === 0) return false;
-    return assigned.some(r => !roomStatus[r.id]?.cleaned);
+    return assigned.length > 0 && assigned.some(r => !roomStatus[r.id]?.cleaned);
   }).length;
 
-  const finishedCleaners = cleaners.length - workingCleaners;
+  const kpis = [
+    {
+      key: 'rooms', icon: 'meeting_room', value: rooms.length, label: 'Rooms today',
+      chipBg: NEUTRAL.slateChip, chipFg: BRAND.navy,
+      subs: [{ label: `${unassignedCount} unassigned`, bg: STATUS.dirty.bg, fg: STATUS.dirty.text }],
+      onPress: () => onNavigate('rooms'),
+    },
+    {
+      key: 'progress', icon: 'donut_large', value: `${assignedPct}%`, label: 'Shift progress',
+      chipBg: STATUS.early.bg, chipFg: STATUS.early.text,
+      subs: [{ label: `${assignedCleaned} of ${assignedRooms.length} done`, bg: STATUS.inspected.bg, fg: STATUS.inspected.text }],
+      onPress: () => onNavigate('assign'),
+    },
+    {
+      key: 'team', icon: 'group', value: cleaners.length, label: 'Housekeepers on shift',
+      chipBg: STATUS.inspected.bg, chipFg: STATUS.inspected.text,
+      subs: [
+        { label: `${workingCleaners} working`, bg: NEUTRAL.slateChip, fg: NEUTRAL.text2 },
+        { label: `${cleaners.length - workingCleaners} free`, bg: STATUS.inspected.bg, fg: STATUS.inspected.text },
+      ],
+      onPress: () => onNavigate('team'),
+    },
+    {
+      key: 'requests', icon: 'flag', value: pendingExtraRequests.length, label: 'Extra requests',
+      chipBg: STATUS.dirty.bg, chipFg: STATUS.dirty.text,
+      subs: [
+        { label: `${pendingExtraRequests.length} pending`, bg: STATUS.dirty.bg, fg: STATUS.dirty.text },
+        { label: `${approvedCount} approved`, bg: STATUS.inspected.bg, fg: STATUS.inspected.text },
+      ],
+      onPress: () => onNavigate('extraRequests'),
+    },
+  ];
 
-  // Build attention items (requests + flagged rooms)
+  const activity = notifications.slice(0, 5).map(n => ({
+    id: n.id,
+    text: n.message,
+    time: new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    ...activityLook(n.type),
+  }));
+
+  const sortedFloors = useMemo(() => [...floors].sort((a, b) => {
+    const order = name => {
+      if (name === 'Ground Floor') return 0;
+      if (name === 'Garage') return 999;
+      const num = parseInt(name, 10);
+      return isNaN(num) ? 500 : num;
+    };
+    return order(a.name) - order(b.name);
+  }), [floors]);
+
+  /* ── Needs attention (unchanged construction) ── */
   const attentionItems = [];
-
-  // Pending extra requests
-  extraRequests
-    .filter(r => r.status === 'pending' || !r.status)
-    .forEach(req => {
-      const room = rooms.find(r => r.id === req.id);
-      const cleaner = cleaners.find(c => c.id === req.cleanerId);
-      attentionItems.push({
-        type: 'request',
-        id: req.id,
-        roomId: req.id,
-        roomName: room?.name || 'Unknown room',
-        cleanerName: cleaner?.username || 'Unknown cleaner',
-        message: `Extra room requested by ${cleaner?.username || 'Unknown cleaner'}`,
-        request: req,
-      });
+  extraRequests.filter(r => r.status === 'pending' || !r.status).forEach(req => {
+    const room = rooms.find(r => r.id === req.id);
+    const cleaner = cleaners.find(c => c.id === req.cleanerId);
+    attentionItems.push({
+      type: 'request', id: req.id, roomId: req.id,
+      title: room?.name || 'Unknown room',
+      message: `Extra room requested by ${cleaner?.username || 'Unknown housekeeper'}`,
+      request: req,
     });
-
-  // Rooms with early/late flags, notes, or extra time
+  });
   rooms.forEach(room => {
     const status = roomStatus[room.id] || {};
-    const cleaner = cleaners.find(c => c.id === room.assignedTo);
-
-    if (status.earlyCheckIn) {
-      attentionItems.push({
-        type: 'flag',
-        id: `early-${room.id}`,
-        roomId: room.id,
-        roomName: room.name,
-        cleanerName: cleaner?.username || 'Unassigned',
-        message: `Early check‑in for room ${room.name}`,
-      });
-    }
-
-    if (status.lateCheckOut) {
-      attentionItems.push({
-        type: 'flag',
-        id: `late-${room.id}`,
-        roomId: room.id,
-        roomName: room.name,
-        cleanerName: cleaner?.username || 'Unassigned',
-        message: `Late check‑out for room ${room.name}`,
-      });
-    }
-
+    if (status.earlyCheckIn) attentionItems.push({ type: 'flag', id: `early-${room.id}`, roomId: room.id, title: room.name, message: 'Early check-in' });
+    if (status.lateCheckOut) attentionItems.push({ type: 'flag', id: `late-${room.id}`, roomId: room.id, title: room.name, message: 'Late check-out' });
     if (status.notes && status.notes.trim()) {
       attentionItems.push({
-        type: 'note',
-        id: `note-${room.id}`,
-        roomId: room.id,
-        roomName: room.name,
-        cleanerName: cleaner?.username || 'Unassigned',
-        message: `Note on room ${room.name}: "${status.notes.substring(0, 50)}${status.notes.length > 50 ? '…' : ''}"`,
+        type: 'note', id: `note-${room.id}`, roomId: room.id, title: room.name,
+        message: `${status.notes.substring(0, 60)}${status.notes.length > 60 ? '…' : ''}`,
       });
     }
-
     if (status.extraTime > 0) {
       attentionItems.push({
-        type: 'extraTime',
-        id: `extratime-${room.id}`,
-        roomId: room.id,
-        roomName: room.name,
-        cleanerName: cleaner?.username || 'Unassigned',
-        message: `Extra time requested for room ${room.name}: +${status.extraTime} min`,
+        type: 'extraTime', id: `extratime-${room.id}`, roomId: room.id, title: room.name,
+        message: `Extra time requested: +${status.extraTime} min`,
       });
     }
   });
 
   return (
     <View style={styles.container}>
-      <Header
-        hostelName={hostel.name}
-        unreadCount={unreadCount}
-        onNotificationsPress={() => setShowNotifications(true)}
-        onSaveDay={handleSaveDay}
-        saveDaySuccess={saveDaySuccess}
-        onDailyReport={handleDailyReport}
-      />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page}>
 
-      <ScrollView style={styles.scrollArea}>
-        {/* KPI Row */}
-        <View style={styles.kpiRow}>
-          <KPICard
-            icon="🏨" value={allRooms.length} label="Total Rooms"
-            sub={[{ label: `${pendingCount} Pending`, color: COLORS.warning }]}
-            chipColor={COLORS.primary} chipBg={COLORS.primaryLight}
-            chipBg={COLORS.primaryLight}
-            onPress={() => onNavigate('rooms')}
-          />
-          <TouchableOpacity onPress={() => onNavigate('reports')} style={{ flex: 1, minWidth: 220 }} activeOpacity={0.7}>
-            <ProgressCard pct={assignedPct} cleaned={assignedCleaned} total={assignedRooms.length} />
-          </TouchableOpacity>
-          <KPICard
-              icon="👥" value={cleaners.length} label="Cleaners"
-              sub={[
-                { label: `${workingCleaners} Working`, color: COLORS.primary },
-                { label: `${finishedCleaners} Finished`, color: COLORS.success },
-              ]}
-              chipColor={COLORS.primary} chipBg={COLORS.primaryLight}
-              onPress={() => onNavigate('team')}
-            />
-          <KPICard
-            icon="⚠"
-            value={pendingExtraRequests.length}
-            label="Extra Requests"
-            sub={[
-              { label: `${pendingExtraRequests.length} Pending`, color: COLORS.warning },
-              { label: `${extraRequests.filter(r => r.status === 'approved').length} Approved`, color: COLORS.success },
-              { label: `${extraRequests.filter(r => r.status === 'rejected').length} Rejected`, color: COLORS.danger },
-            ]}
-            chipColor={COLORS.warning}
-            chipBg={`${COLORS.warning}22`}
-            onPress={() => onNavigate('extraRequests')}
-          />
+        {/* ── KPI tiles ── */}
+        <View style={styles.kpiGrid}>
+          {kpis.map(kpi => (
+            <TouchableOpacity
+              key={kpi.key}
+              onPress={kpi.onPress}
+              style={styles.kpiCard}
+              activeOpacity={0.85}
+            >
+              <View style={styles.kpiTop}>
+                <View style={[styles.kpiIcon, { backgroundColor: kpi.chipBg }]}>
+                  <Icon name={kpi.icon} size={23} color={kpi.chipFg} />
+                </View>
+                <Icon name="chevron_right" size={20} color={NEUTRAL.text4} />
+              </View>
+              <View>
+                <Text style={styles.kpiValue}>{kpi.value}</Text>
+                <Text style={styles.kpiLabel}>{kpi.label}</Text>
+              </View>
+              <View style={styles.kpiSubs}>
+                {kpi.subs.map(sub => (
+                  <View key={sub.label} style={[styles.kpiSub, { backgroundColor: sub.bg }]}>
+                    <Text style={[styles.kpiSubText, { color: sub.fg }]}>{sub.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {/* Search */}
-        <SearchBar
-          value={search}
-          onChangeText={setSearch}
-          onClear={() => setSearch('')}
-        />
+        <View style={styles.split}>
+          {/* ══ Left column ══ */}
+          <View style={styles.colMain}>
 
-        {/* Main content: Table + Sidebar */}
-        <View style={styles.mainRow}>
-          <View style={styles.tableContainer}>
-            <RoomTable
-              rooms={filteredRooms}
-              roomStatus={roomStatus}
-              cleaners={cleaners}
-              floors={floors}
-              onRoomPress={setSelectedRoom}
-            />
-            <RecentActivity
-              activities={recentActivities}
-              viewAll="View all"
-              onViewAll={() => onNavigate('reports')}
-            />
+            <Panel
+              title="Rooms today"
+              flush
+              action={
+                <View style={styles.tableSearch}>
+                  <Icon name="search" size={19} color={NEUTRAL.text3} />
+                  <TextInput
+                    value={search}
+                    onChangeText={setSearch}
+                    placeholder="Search a room…"
+                    placeholderTextColor={NEUTRAL.text4}
+                    style={styles.tableSearchInput}
+                  />
+                </View>
+              }
+            >
+
+              <View style={styles.thead}>
+                <Text style={[styles.th, styles.cRoom]}>Room</Text>
+                <Text style={[styles.th, styles.cFloor]}>Floor</Text>
+                <Text style={[styles.th, styles.cType]}>Type</Text>
+                <Text style={[styles.th, styles.cHk]}>Housekeeper</Text>
+                <Text style={[styles.th, styles.cStatus]}>Status</Text>
+                <View style={styles.cEnd} />
+              </View>
+              {/* Horizontal scroll keeps the six columns readable rather than
+                  crushing them when the window narrows. */}
+
+              <ScrollView
+                style={styles.tableVerticalScroll}
+                showsVerticalScrollIndicator
+              >
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator
+                  contentContainerStyle={styles.tableContent}
+                >
+                  <View style={styles.tableInner}>
+
+                  {filteredRooms.map(room => {
+                    const status = roomStatus[room.id] || {};
+                    const cleaner = cleaners.find(c => c.id === room.assignedTo);
+                    const floor = floors.find(f => f.id === room.floorId);
+                    const look = roomLook(!!status.cleaned, !!room.assignedTo);
+                    const hasNote = !!(status.notes && status.notes.trim());
+
+                    return (
+                      <TouchableOpacity
+                        key={room.id}
+                        style={styles.tr}
+                        onPress={() => setSelectedRoom(room)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[styles.cRoom, styles.roomCell]}>
+                          <View style={[styles.accent, { backgroundColor: look.accent }]} />
+                          <Text style={styles.roomNumber}>{room.name}</Text>
+                        </View>
+                        <Text style={[styles.cFloor, styles.floorCell]} numberOfLines={1}>
+                          {floor?.name || '—'}
+                        </Text>
+                        <View style={styles.cType}>
+                          <View style={[styles.typePill, {
+                            backgroundColor: room.type === 'dorm' ? NEUTRAL.beigePill : NEUTRAL.slateChip,
+                          }]}>
+                            <Text style={[styles.typePillText, {
+                              color: room.type === 'dorm' ? '#7C4A15' : NEUTRAL.text2,
+                            }]}>
+                              {room.type === 'dorm' ? 'Dorm' : 'Private'}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={[styles.cHk, styles.hkCell]}>
+                          <View style={[styles.hkDot, {
+                            backgroundColor: cleaner ? colors[cleaner.id] : '#CBD5E1',
+                          }]} />
+                          <Text
+                            style={[styles.hkName, !cleaner && { color: NEUTRAL.text4 }]}
+                            numberOfLines={1}
+                          >
+                            {cleaner ? cleaner.username : 'Unassigned'}
+                          </Text>
+                        </View>
+                        <View style={styles.cStatus}>
+                          <View style={[styles.statusChip, {
+                            backgroundColor: look.bg, borderColor: look.border,
+                          }]}>
+                            <Icon name={look.icon} size={16} color={look.fg} />
+                            <Text style={[styles.statusChipText, { color: look.fg }]}>
+                              {look.label}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={[styles.cEnd, styles.endCell]}>
+                          {hasNote && <Icon name="sticky_note_2" size={18} color={BRAND.yellow} />}
+                          <Icon name="chevron_right" size={18} color={NEUTRAL.text4} />
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            </ScrollView>
+            </Panel>
+
+            <Panel
+              title="Recent activity"
+              flush
+              action={
+                <TouchableOpacity onPress={() => onNavigate('history')} activeOpacity={0.7}>
+                  <Text style={styles.viewAll}>View all</Text>
+                </TouchableOpacity>
+              }
+            >
+              <View style={styles.activityList}>
+                {activity.length === 0 ? (
+                  <Text style={styles.emptyLine}>Nothing yet today.</Text>
+                ) : activity.map(a => (
+                  <View key={a.id} style={styles.activityRow}>
+                    <View style={[styles.activityIcon, { backgroundColor: a.bg }]}>
+                      <Icon name={a.icon} size={18} color={a.fg} />
+                    </View>
+                    <Text style={styles.activityText} numberOfLines={1}>{a.text}</Text>
+                    <Text style={styles.activityTime}>{a.time}</Text>
+                  </View>
+                ))}
+              </View>
+            </Panel>
           </View>
-          <View style={styles.sidebar}>
-            <CleanerWidget cleaners={cleaners} roomStatus={roomStatus} rooms={rooms} />
-            <FloorProgress floors={floors} rooms={rooms} roomStatus={roomStatus} />
-            <AppCard style={{ marginBottom: SPACING.md }}>
-              <Text style={{ fontFamily: FONTS.bold, fontSize: FONT_SIZE.md, color: COLORS.text, marginBottom: SPACING.sm }}>
-                Needs Attention
+
+          {/* ══ Right rail ══ */}
+          <View style={styles.colSide}>
+
+            <View style={[styles.panel, styles.panelPadded]}>
+              <Text style={styles.panelTitle}>Housekeepers</Text>
+              <Text style={styles.panelSub}>
+                {workingCleaners} of {cleaners.length} working
               </Text>
-
-              {attentionItems.length === 0 && (
-                <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary }}>
-                  Nothing needs attention right now.
-                </Text>
-              )}
-
-              {attentionItems.map(item => {
-                if (item.type === 'request') {
+              <View style={{ gap: 14 }}>
+                {cleaners.map(c => {
+                  const mine = rooms.filter(r => r.assignedTo === c.id);
+                  const done = mine.filter(r => roomStatus[r.id]?.cleaned).length;
+                  const pct = mine.length ? Math.round((done / mine.length) * 100) : 0;
                   return (
-                    <View key={item.id} style={styles.attentionRow}>
-                      <View style={{ flex: 1 }}>
-                        <TouchableOpacity onPress={() => setSelectedRoom(rooms.find(r => r.id === item.roomId))}>
-                          <Text style={{ fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.sm, color: COLORS.text }}>
-                            {item.roomName}
-                          </Text>
-                          <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary }}>
-                            {item.message}
-                          </Text>
-                        </TouchableOpacity>
+                    <View key={c.id} style={styles.hkBrief}>
+                      <View style={[styles.hkAvatar, { backgroundColor: colors[c.id] }]}>
+                        <Text style={styles.hkAvatarText}>
+                          {c.username?.[0]?.toUpperCase()}
+                        </Text>
                       </View>
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <TouchableOpacity onPress={() => approveExtraRoom(item.request.id, item.request.cleanerId)}>
-                          <Text style={{ color: COLORS.success, fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs }}>Approve</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => rejectExtraRoom(item.request.id)}>
-                          <Text style={{ color: COLORS.danger, fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs }}>Reject</Text>
-                        </TouchableOpacity>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={styles.hkBriefTop}>
+                          <Text style={styles.hkBriefName} numberOfLines={1}>{c.username}</Text>
+                          <Text style={styles.hkBriefLoad}>{done}/{mine.length}</Text>
+                        </View>
+                        <View style={styles.miniTrack}>
+                          <View style={[styles.miniFill, {
+                            width: `${pct}%`,
+                            backgroundColor: pct === 100 && mine.length ? ACCENT.complete : BRAND.yellow,
+                          }]} />
+                        </View>
                       </View>
                     </View>
                   );
-                }
+                })}
+              </View>
+            </View>
 
-                // Flags, notes, extra time – clickable to open room detail
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.attentionRow}
-                    onPress={() => setSelectedRoom(rooms.find(r => r.id === item.roomId))}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.sm, color: COLORS.text }}>
-                        {item.roomName}
-                      </Text>
-                      <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary }}>
-                        {item.message}
-                      </Text>
+            <View style={[styles.panel, styles.panelPadded]}>
+              <Text style={[styles.panelTitle, { marginBottom: 16 }]}>Floor progress</Text>
+              <View style={{ gap: 16 }}>
+                {sortedFloors.map(f => {
+                  const floorRooms = rooms.filter(r => r.floorId === f.id);
+                  const done = floorRooms.filter(r => roomStatus[r.id]?.cleaned).length;
+                  const pct = floorRooms.length ? Math.round((done / floorRooms.length) * 100) : 0;
+                  return (
+                    <View key={f.id}>
+                      <View style={styles.floorTop}>
+                        <Text style={styles.floorName} numberOfLines={1}>{f.name}</Text>
+                        <Text style={styles.floorLabel}>{done}/{floorRooms.length}</Text>
+                      </View>
+                      <View style={styles.floorTrack}>
+                        <View style={[styles.floorFill, {
+                          width: `${pct}%`,
+                          backgroundColor: pct === 100 && floorRooms.length ? ACCENT.complete : BRAND.yellow,
+                        }]} />
+                      </View>
                     </View>
-                    <Icon name="chevron-forward-outline" size={16} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-                );
-              })}
-            </AppCard>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={[styles.panel, styles.panelPadded]}>
+              <Text style={[styles.panelTitle, { marginBottom: 12 }]}>Needs attention</Text>
+              {attentionItems.length === 0 ? (
+                <Text style={styles.emptyLine}>Nothing needs attention right now.</Text>
+              ) : (
+                <View>
+                  {attentionItems.map(item => {
+                    const look = ATTENTION_LOOK[item.type] || ATTENTION_LOOK.note;
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={styles.attentionRow}
+                        activeOpacity={item.type === 'request' ? 1 : 0.7}
+                        onPress={
+                          item.type === 'request'
+                            ? undefined
+                            : () => setSelectedRoom(rooms.find(r => r.id === item.roomId))
+                        }
+                      >
+                        <View style={[styles.attentionIcon, { backgroundColor: look.bg }]}>
+                          <Icon name={look.icon} size={17} color={look.fg} />
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text style={styles.attentionTitle}>{item.title}</Text>
+                          <Text style={styles.attentionMessage}>{item.message}</Text>
+                          {item.type === 'request' && (
+                            <View style={styles.attentionActions}>
+                              <TouchableOpacity
+                                onPress={() => approveExtraRoom(item.request.id, item.request.cleanerId)}
+                                style={[styles.miniBtn, {
+                                  backgroundColor: STATUS.inspected.bg,
+                                  borderColor: STATUS.inspected.border,
+                                }]}
+                                activeOpacity={0.8}
+                              >
+                                <Text style={[styles.miniBtnText, { color: STATUS.inspected.text }]}>
+                                  Approve
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => rejectExtraRoom(item.request.id)}
+                                style={[styles.miniBtn, { borderColor: '#FECACA' }]}
+                                activeOpacity={0.8}
+                              >
+                                <Text style={[styles.miniBtnText, { color: '#B91C1C' }]}>Reject</Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
           </View>
         </View>
       </ScrollView>
-      <RoomDetailModal
-        visible={!!selectedRoom}
+
+      <RoomDetailDrawer
         room={selectedRoom}
         roomStatus={roomStatus}
         cleaners={cleaners}
@@ -534,185 +632,238 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
         onClose={() => setSelectedRoom(null)}
       />
 
-      {/* ── Notification Modal ── */}
-      <Modal visible={showNotifications} transparent animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={() => setShowNotifications(false)}>
-          <View style={[styles.modalCard, { maxWidth: 450, maxHeight: '70%' }]}>
-            <View style={styles.notifHeaderRow}>
-              <Text style={styles.modalTitle}>Notifications</Text>
-              <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-                {unreadCount > 0 && (
-                  <TouchableOpacity onPress={clearAll}>
-                    <Text style={{ fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.primary }}>
-                      Mark all read
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                {notifications.length > 0 && (
-                  <TouchableOpacity onPress={deleteAllNotifications}>
-                    <Text style={{ fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.danger }}>
-                      Delete all
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-            <ScrollView style={{ maxHeight: 300 }}>
-              {notifications.length === 0 ? (
-                <Text style={{ fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, textAlign: 'center', marginTop: 20 }}>
-                  No notifications yet.
-                </Text>
-              ) : (
-                notifications.map(item => (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={[styles.notifItem, item.read && { opacity: 0.6 }]}
-                    onPress={() => {
-                      markAsRead(item.id);
-                      setShowNotifications(false);
-                      setSelectedRoom(rooms.find(r => r.id === item.roomId));
-                    }}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.notifMessage, item.read && { color: COLORS.textMuted }]}>
-                        {item.message}
-                      </Text>
-                      <Text style={styles.notifTime}>
-                        {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </Text>
-                    </View>
-                    {!item.read && <View style={styles.unreadDot} />}
-                  </TouchableOpacity>
-                ))
-              )}
-            </ScrollView>
-            <TouchableOpacity
-              onPress={() => setShowNotifications(false)}
-              style={{ marginTop: SPACING.md, alignSelf: 'center', padding: SPACING.sm }}
-            >
-              <Text style={{ fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.primary }}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Modal>
-
-      <Footer />
+      <Footer compact={isMobile} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  scrollArea: { flex: 1 },
-  kpiRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    marginVertical: SPACING.lg,
+  container: { flex: 1, backgroundColor: NEUTRAL.appBg },
+  page: { paddingTop: 24, paddingHorizontal: 28, paddingBottom: 40, gap: 24 },
+
+  /* KPI tiles */
+  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 20 },
+  kpiCard: {
+    flexGrow: 1, flexBasis: 240, minWidth: 240,
+    gap: 14, padding: 20, borderRadius: 22,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+    shadowColor: BRAND.navy, shadowOpacity: 0.05,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
   },
-  mainRow: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACING.lg,
-    gap: SPACING.lg,
+  kpiTop: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', gap: 12,
   },
-  tableContainer: { flex: 3 },
-  sidebar: { flex: 1, minWidth: 280 },
+  kpiIcon: {
+    width: 44, height: 44, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  kpiValue: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 28, lineHeight: 30,
+    color: NEUTRAL.text, fontVariant: ['tabular-nums'],
+  },
+  kpiLabel: { marginTop: 6, fontFamily: FONTS.regular, fontSize: 14, color: NEUTRAL.text3 },
+  kpiSubs: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  kpiSub: {
+    height: 26, paddingHorizontal: 10, borderRadius: 9,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  kpiSubText: { fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12.5 },
+
+  /* Two-column split */
+  split: { flexDirection: 'row', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' },
+  colMain: { flexGrow: 3, flexShrink: 1, flexBasis: 560, minWidth: 0, gap: 24 },
+  colSide: { flexGrow: 1, flexShrink: 1, flexBasis: 300, minWidth: 0, gap: 24 },
+
+  panel: {
+    borderRadius: 22, overflow: 'hidden',
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+    shadowColor: BRAND.navy, shadowOpacity: 0.05,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+  },
+  panelPadded: { padding: 20 },
+  panelHead: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    gap: 16, flexWrap: 'wrap', paddingVertical: 18, paddingHorizontal: 20,
+  },
+  panelHeadFlush: { borderBottomWidth: 1, borderBottomColor: NEUTRAL.border },
+  panelTitle: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 18, color: NEUTRAL.text,
+  },
+  panelSub: {
+    marginTop: 4, marginBottom: 16,
+    fontFamily: FONTS.regular, fontSize: 12.5, color: NEUTRAL.text3,
+  },
+  viewAll: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 14, color: BRAND.navy,
+  },
+
+  tableSearch: {
+    flexGrow: 1, flexShrink: 1, flexBasis: 200, minWidth: 0, maxWidth: 320,
+    height: 40, flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 14, borderRadius: 12,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.inputFill,
+  },
+  tableSearchInput: {
+    flex: 1, minWidth: 0, outlineStyle: 'none',
+    fontFamily: FONTS.regular, fontSize: 14, color: NEUTRAL.text,
+  },
+
+  /* Table */
+  thead: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, paddingHorizontal: 20,
+    borderBottomWidth: 1, borderBottomColor: NEUTRAL.border,
+    backgroundColor: SUNKEN,
+  },
+  th: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 11,
+    letterSpacing: 0.88, textTransform: 'uppercase', color: NEUTRAL.text3,
+  },
+  tr: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 14, paddingHorizontal: 20,
+    borderBottomWidth: 1, borderBottomColor: HAIRLINE,
+  },
+  cRoom:   { width: 88, flexShrink: 0 },
+  cFloor:  { flexGrow: 1, flexBasis: 0, minWidth: 90 },
+  cType:   { width: 140, flexShrink: 0 },
+  cHk:     { flexGrow: 1.6, flexBasis: 0, minWidth: 120 },
+  cStatus: { width: 132, flexShrink: 0 },
+  cEnd:    { width: 40, flexShrink: 0 },
+
+  roomCell: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  accent: { width: 5, height: 22, borderRadius: 3, flexShrink: 0 },
+  roomNumber: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 17,
+    color: NEUTRAL.text, fontVariant: ['tabular-nums'],
+  },
+  floorCell: { fontFamily: FONTS.regular, fontSize: 14, color: NEUTRAL.text2 },
+  typePill: {
+    height: 24, paddingHorizontal: 10, borderRadius: 9, alignSelf: 'flex-start',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  typePillText: { fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12 },
+  hkCell: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  hkDot: { width: 8, height: 8, borderRadius: 999, flexShrink: 0 },
+  hkName: { flex: 1, minWidth: 0, fontFamily: FONTS.regular, fontSize: 14, color: NEUTRAL.text },
+  statusChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+    height: 28, paddingHorizontal: 11, borderRadius: 10, borderWidth: 1,
+  },
+  statusChipText: { fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12.5 },
+  endCell: { flexDirection: 'row', justifyContent: 'flex-end', gap: 2 },
+
+  /* Activity */
+  activityList: { paddingTop: 6, paddingHorizontal: 20, paddingBottom: 14 },
+  activityRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: HAIRLINE,
+  },
+  activityIcon: {
+    width: 34, height: 34, borderRadius: 12, flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  activityText: { flex: 1, minWidth: 0, fontFamily: FONTS.regular, fontSize: 14, color: NEUTRAL.text2 },
+  activityTime: {
+    flexShrink: 0, fontFamily: FONTS.regular, fontSize: 13,
+    color: NEUTRAL.text4, fontVariant: ['tabular-nums'],
+  },
+
+  /* Housekeepers rail */
+  hkBrief: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  hkAvatar: {
+    width: 34, height: 34, borderRadius: 999, flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  hkAvatarText: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 14, color: '#FFFFFF',
+  },
+  hkBriefTop: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+  },
+  hkBriefName: {
+    flex: 1, minWidth: 0,
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 15, color: NEUTRAL.text,
+  },
+  hkBriefLoad: {
+    flexShrink: 0, fontFamily: FONTS.regular, fontSize: 13,
+    color: NEUTRAL.text2, fontVariant: ['tabular-nums'],
+  },
+  miniTrack: {
+    height: 6, borderRadius: 999, marginTop: 8,
+    backgroundColor: NEUTRAL.slateChip, overflow: 'hidden',
+  },
+  miniFill: { height: '100%', borderRadius: 999 },
+
+  /* Floor progress */
+  floorTop: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', gap: 10, marginBottom: 8,
+  },
+  floorName: {
+    flex: 1, minWidth: 0,
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 14, color: NEUTRAL.text,
+  },
+  floorLabel: {
+    flexShrink: 0, fontFamily: FONTS.regular, fontSize: 13,
+    color: NEUTRAL.text3, fontVariant: ['tabular-nums'],
+  },
+  floorTrack: {
+    height: 8, borderRadius: 999, backgroundColor: NEUTRAL.slateChip, overflow: 'hidden',
+  },
+  floorFill: { height: '100%', borderRadius: 999 },
+
+  /* Needs attention */
   attentionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    paddingVertical: 13, borderTopWidth: 1, borderTopColor: HAIRLINE,
   },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: SPACING.lg,
+  attentionIcon: {
+    width: 30, height: 30, borderRadius: 10, flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center',
   },
-  modalCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 18,
-    padding: SPACING.lg,
-    width: '100%',
-    maxWidth: 500,
-    maxHeight: '80%',
-    overflow: 'auto',
+  attentionTitle: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 14.5, color: NEUTRAL.text,
   },
-  modalTitle: {
-    fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.xl,
-    marginBottom: SPACING.md,
+  attentionMessage: {
+    marginTop: 2, fontFamily: FONTS.regular, fontSize: 13,
+    lineHeight: 18, color: NEUTRAL.text3,
   },
-  modalRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: SPACING.sm,
+  attentionActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  miniBtn: {
+    height: 32, paddingHorizontal: 13, borderRadius: 11, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
   },
-  modalLabel: {
-    width: 100,
-    fontFamily: FONTS.semiBold,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.textSecondary,
-    marginRight: SPACING.md,
+  miniBtnText: { fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 13 },
+
+  emptyLine: { fontFamily: FONTS.regular, fontSize: 14, color: NEUTRAL.text3 },
+
+  /* Room detail drawer */
+  detailRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  detailLabel: {
+    width: 120, flexShrink: 0,
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 13.5, color: NEUTRAL.text3,
   },
-  modalValue: {
-    flex: 1,
-    fontFamily: FONTS.regular,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.text,
+  detailValue: {
+    flex: 1, minWidth: 0,
+    fontFamily: FONTS.regular, fontSize: 14, color: NEUTRAL.text,
   },
-  bedItem: {
-    fontFamily: FONTS.medium,
-    fontSize: FONT_SIZE.sm,
-    marginBottom: 4,
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    height: 28, paddingHorizontal: 11, borderRadius: 10, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
   },
-  closeBtn: {
-    marginTop: SPACING.md,
-    alignSelf: 'flex-end',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: 8,
+  chipText: { fontFamily: FONTS.medium, fontWeight: '500', fontSize: 12.5 },
+  tableVerticalScroll: {
+    maxHeight: 400,  // adjust to your preference (e.g., 400–500)
   },
-  closeBtnText: {
-    fontFamily: FONTS.bold,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.primary,
+  tableContent: {
+    flexGrow: 1,
+    minWidth: 720,
   },
-  notifHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  notifItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  notifMessage: {
-    fontFamily: FONTS.medium,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.text,
-    flex: 1,
-  },
-  notifTime: {
-    fontFamily: FONTS.regular,
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.textMuted,
-    marginTop: 2,
-  },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.primary,
-    marginLeft: SPACING.sm,
+  tableInner: {
+    flexGrow: 1,
+    minWidth: 0,
   },
 });

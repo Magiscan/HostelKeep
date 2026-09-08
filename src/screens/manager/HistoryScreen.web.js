@@ -6,18 +6,12 @@ import {
 import { doc, getDoc } from 'firebase/firestore';
 import { useApp } from '../../contexts/AppContext';
 import { db } from '../../firebase';
-import AppCard from '../../components/Card/AppCard';
-import { Badge, EmptyState } from '../../components/UI';
 import Icon from '../../components/Icon';
-import { COLORS } from '../../theme/colors';
-import { FONTS, FONT_SIZE } from '../../theme/typography';
-import { SPACING, RADIUS } from '../../theme';
+import { FONTS } from '../../theme/typography';
+import { BRAND, NEUTRAL, STATUS, ACCENT } from '../../theme/tokens';
+import { buildCleanerColors } from '../../utils/cleanerColor';
 import * as XLSX from 'xlsx';
 import { generateDailyReport } from '../../utils/dailyReport';
-
-const CLEANER_COLORS = [
-  '#2563EB', '#7C3AED', '#DB2777', '#EA580C', '#0891B2', '#16A34A', '#4F46E5', '#DC2626',
-];
 
 const getToday = () => {
   const now = new Date();
@@ -44,7 +38,7 @@ const getInitials = (name) =>
     ? name.trim().split(/\s+/).slice(0, 2).map(p => p.charAt(0)).join('').toUpperCase()
     : '?';
 
-export default function HistoryScreen() {
+export default function HistoryScreen({ onReady }) {
   const { t, i18n } = useTranslation();
   const {
     hostelCode,
@@ -103,9 +97,13 @@ export default function HistoryScreen() {
     setSearch('');
   };
 
+  // ── Build cleaner stats from history ──────────────────────────
   const cleanerStats = useMemo(() => {
     if (!history?.cleaners) return [];
-    return Object.entries(history.cleaners).map(([cleanerId, cleaner], index) => {
+    const colorMap = buildCleanerColors(
+      Object.keys(history.cleaners).map(id => ({ id }))
+    );
+    return Object.entries(history.cleaners).map(([cleanerId, cleaner]) => {
       const rooms = cleaner.rooms || [];
       const cleaned = rooms.filter(r => r.cleaned).length;
       const total = rooms.length;
@@ -119,11 +117,12 @@ export default function HistoryScreen() {
         total,
         percentage,
         extraTime,
-        color: CLEANER_COLORS[index % CLEANER_COLORS.length],
+        color: colorMap[cleanerId] || '#2563EB',
       };
     });
   }, [history]);
 
+  // ── Search filter ─────────────────────────────────────────────
   const visibleCleaners = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return cleanerStats;
@@ -138,6 +137,7 @@ export default function HistoryScreen() {
     }).filter(Boolean);
   }, [cleanerStats, search]);
 
+  // ── Overall stats ─────────────────────────────────────────────
   const stats = useMemo(() => {
     const total = cleanerStats.reduce((sum, c) => sum + c.total, 0);
     const cleaned = cleanerStats.reduce((sum, c) => sum + c.cleaned, 0);
@@ -159,7 +159,8 @@ export default function HistoryScreen() {
     });
   };
 
-  const exportCSV = () => {
+  // ── Export (memoized) ─────────────────────────────────────────
+  const exportCSV = useCallback(() => {
     if (!history) return;
     try {
       let reportData;
@@ -237,43 +238,31 @@ export default function HistoryScreen() {
         text('exportFailed', 'Could not export the history.')
       );
     }
-  };
+  }, [history, selectedDate, hostel, i18n.language]);
+
+  // ── Expose actions to the layout ──────────────────────────────
+  useEffect(() => {
+    if (!onReady) return;
+    onReady({
+      exportReport: exportCSV,
+      canExport: !!history,
+    });
+  }, [onReady, exportCSV, history]);
 
   return (
     <View style={styles.page}>
-      {/* Toolbar */}
-      <View style={styles.toolbar}>
-        <View>
-          <Text style={styles.pageTitle}>{text('dailyHistory', 'Daily history')}</Text>
-          <Text style={styles.subtitle}>{text('historySubtitle', 'Review completed cleaning work and room activity.')}</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.exportButton}
-          onPress={exportCSV}
-          disabled={!history}
-          activeOpacity={0.8}
-        >
-          <Icon name="download-outline" size={17} color={history ? '#FFFFFF' : COLORS.textMuted} />
-          <Text style={[styles.exportButtonText, !history && styles.disabledButtonText]}>
-            {text('downloadCSV', 'Download Report')}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Controls: date picker + search */}
         <View style={styles.controls}>
           <View style={styles.dateArea}>
-            <Text style={styles.controlLabel}>DATE</Text>
+            <Text style={styles.controlLabel}>Date</Text>
             <View style={styles.dateRow}>
-              {/* Previous day arrow */}
               <TouchableOpacity style={styles.arrowButton} onPress={() => changeDate(-1)} activeOpacity={0.75}>
-                <Icon name="arrow-back" size={18} color={COLORS.text} />
+                <Icon name="arrow_back" size={19} color={NEUTRAL.text} />
               </TouchableOpacity>
 
-              {/* Native date input – allows selecting any date */}
               <View style={styles.dateDisplay}>
-                <Icon name="calendar-outline" size={17} color={COLORS.primary} />
+                <Icon name="calendar_month" size={18} color={BRAND.navy} />
                 <input
                   type="date"
                   value={selectedDate}
@@ -288,18 +277,21 @@ export default function HistoryScreen() {
                 />
               </View>
 
-              {/* Next day arrow */}
               <TouchableOpacity
-                style={[styles.arrowButton, selectedDate === today && styles.disabledArrow]}
+                style={[styles.arrowButton, selectedDate === today && { opacity: 0.4 }]}
                 onPress={() => changeDate(1)}
                 disabled={selectedDate === today}
                 activeOpacity={0.75}
               >
-                <Icon name="arrow-forward" size={18} color={selectedDate === today ? COLORS.textMuted : COLORS.text} />
+                <Icon name="arrow_forward" size={19} color={NEUTRAL.text} />
               </TouchableOpacity>
 
               {selectedDate !== today && (
-                <TouchableOpacity style={styles.todayButton} onPress={() => { setSelectedDate(today); setSearch(''); }} activeOpacity={0.75}>
+                <TouchableOpacity
+                  style={styles.todayButton}
+                  onPress={() => { setSelectedDate(today); setSearch(''); }}
+                  activeOpacity={0.75}
+                >
                   <Text style={styles.todayButtonText}>Today</Text>
                 </TouchableOpacity>
               )}
@@ -307,19 +299,19 @@ export default function HistoryScreen() {
           </View>
 
           <View style={styles.searchContainer}>
-            <Text style={styles.controlLabel}>SEARCH</Text>
+            <Text style={styles.controlLabel}>Search</Text>
             <View style={styles.searchBox}>
-              <Icon name="search-outline" size={18} color={COLORS.textMuted} />
+              <Icon name="search" size={18} color={NEUTRAL.text3} />
               <TextInput
                 value={search}
                 onChangeText={setSearch}
-                placeholder="Search rooms or cleaners..."
-                placeholderTextColor={COLORS.textMuted}
+                placeholder="Search rooms or housekeepers…"
+                placeholderTextColor={NEUTRAL.text4}
                 style={styles.searchInput}
               />
               {search.length > 0 && (
                 <TouchableOpacity onPress={() => setSearch('')}>
-                  <Icon name="close-circle" size={17} color={COLORS.textMuted} />
+                  <Icon name="cancel" size={17} color={NEUTRAL.text3} />
                 </TouchableOpacity>
               )}
             </View>
@@ -336,9 +328,6 @@ export default function HistoryScreen() {
         {/* No history */}
         {!loading && !history && (
           <View style={styles.noHistory}>
-            <View style={styles.emptyIcon}>
-              <Icon name="calendar-outline" size={30} color={COLORS.primary} />
-            </View>
             <Text style={styles.emptyTitle}>No history for this date</Text>
             <Text style={styles.emptyText}>
               There is no cleaning activity recorded for {formatDate(selectedDate)}.
@@ -349,11 +338,11 @@ export default function HistoryScreen() {
         {/* History content */}
         {!loading && history && (
           <>
-            {/* Progress */}
-            <AppCard style={styles.progressCard}>
+            {/* Progress Card */}
+            <View style={styles.progressCard}>
               <View style={styles.progressHeader}>
                 <View>
-                  <Text style={styles.cardEyebrow}>TODAY'S PROGRESS</Text>
+                  <Text style={styles.cardEyebrow}>Progress on this day</Text>
                   <View style={styles.progressNumberRow}>
                     <Text style={styles.progressNumber}>{stats.percentage}%</Text>
                     <Text style={styles.progressDescription}>
@@ -361,56 +350,55 @@ export default function HistoryScreen() {
                     </Text>
                   </View>
                 </View>
-                <View style={[styles.progressStatus, stats.percentage === 100 && styles.progressStatusDone]}>
+                <View style={[styles.progressStatus, {
+                  backgroundColor: stats.percentage === 100 ? STATUS.inspected.bg : STATUS.dirty.bg,
+                }]}>
                   <Icon
-                    name={stats.percentage === 100 ? 'checkmark' : 'time-outline'}
-                    size={15}
-                    color={stats.percentage === 100 ? COLORS.success : COLORS.warning}
+                    name={stats.percentage === 100 ? 'check' : 'schedule'}
+                    size={16}
+                    color={stats.percentage === 100 ? STATUS.inspected.text : STATUS.dirty.text}
                   />
-                  <Text style={[styles.progressStatusText, stats.percentage === 100 && styles.progressStatusDoneText]}>
+                  <Text style={[styles.progressStatusText, {
+                    color: stats.percentage === 100 ? STATUS.inspected.text : STATUS.dirty.text,
+                  }]}>
                     {stats.percentage === 100 ? 'Complete' : 'In progress'}
                   </Text>
                 </View>
               </View>
 
               <View style={styles.bigProgressTrack}>
-                <View style={[styles.bigProgressFill, { width: `${Math.max(0, Math.min(100, stats.percentage))}%` }]} />
+                <View style={[styles.bigProgressFill, {
+                  width: `${Math.max(0, Math.min(100, stats.percentage))}%`,
+                  backgroundColor: stats.percentage === 100 ? ACCENT.complete : BRAND.yellow,
+                }]} />
               </View>
 
               <View style={styles.statGrid}>
-                <View style={styles.stat}>
-                  <Text style={styles.statValue}>{stats.total}</Text>
-                  <Text style={styles.statLabel}>Total rooms</Text>
-                </View>
-                <View style={styles.stat}>
-                  <Text style={[styles.statValue, { color: COLORS.success }]}>{stats.cleaned}</Text>
-                  <Text style={styles.statLabel}>Cleaned</Text>
-                </View>
-                <View style={styles.stat}>
-                  <Text style={[styles.statValue, { color: COLORS.warning }]}>{stats.pending}</Text>
-                  <Text style={styles.statLabel}>Pending</Text>
-                </View>
-                <View style={styles.stat}>
-                  <Text style={[styles.statValue, { color: COLORS.primary }]}>+{stats.extraTime}m</Text>
-                  <Text style={styles.statLabel}>Extra time</Text>
-                </View>
+                {[
+                  { label: 'Total rooms', value: stats.total, color: NEUTRAL.text },
+                  { label: 'Cleaned', value: stats.cleaned, color: STATUS.inspected.text },
+                  { label: 'Pending', value: stats.pending, color: STATUS.dirty.text },
+                  { label: 'Extra time', value: `+${stats.extraTime}m`, color: BRAND.navy },
+                ].map(s => (
+                  <View key={s.label} style={styles.stat}>
+                    <Text style={[styles.statValue, { color: s.color }]}>{s.value}</Text>
+                    <Text style={styles.statLabel}>{s.label}</Text>
+                  </View>
+                ))}
               </View>
-            </AppCard>
+            </View>
 
             {/* Cleaner section */}
             <View style={styles.sectionHeader}>
-              <View>
-                <Text style={styles.sectionTitle}>Cleaner activity</Text>
-                <Text style={styles.sectionSubtitle}>
-                  {visibleCleaners.length} {visibleCleaners.length === 1 ? 'cleaner' : 'cleaners'} · Select a cleaner to view their rooms
-                </Text>
-              </View>
+              <Text style={styles.sectionTitle}>Cleaner activity</Text>
+              <Text style={styles.sectionSubtitle}>
+                {visibleCleaners.length} {visibleCleaners.length === 1 ? 'housekeeper' : 'housekeepers'} · Select one to see their rooms
+              </Text>
             </View>
 
             {/* Search empty */}
             {visibleCleaners.length === 0 && (
               <View style={styles.searchEmpty}>
-                <Icon name="search-outline" size={28} color={COLORS.textMuted} />
                 <Text style={styles.searchEmptyTitle}>No rooms found</Text>
                 <Text style={styles.searchEmptyText}>Try another room or cleaner name.</Text>
               </View>
@@ -421,7 +409,7 @@ export default function HistoryScreen() {
               {visibleCleaners.map(cleaner => {
                 const expanded = expandedCleaners.has(cleaner.id);
                 return (
-                  <AppCard key={cleaner.id} style={styles.cleanerCard}>
+                  <View key={cleaner.id} style={styles.cleanerCard}>
                     <TouchableOpacity style={styles.cleanerHeader} onPress={() => toggleCleaner(cleaner.id)} activeOpacity={0.8}>
                       <View style={styles.cleanerLeft}>
                         <View style={[styles.avatar, { backgroundColor: cleaner.color }]}>
@@ -436,29 +424,25 @@ export default function HistoryScreen() {
                       </View>
 
                       <View style={styles.cleanerRight}>
-                        <View style={styles.cleanerProgress}>
-                          <View style={styles.cleanerProgressTrack}>
-                            <View
-                              style={[
-                                styles.cleanerProgressFill,
-                                {
-                                  width: `${cleaner.percentage}%`,
-                                  backgroundColor: cleaner.percentage === 100 ? COLORS.success : COLORS.primary,
-                                },
-                              ]}
-                            />
-                          </View>
-                          <Text style={[styles.cleanerPercentage, cleaner.percentage === 100 && styles.completedPercentage]}>
-                            {cleaner.percentage}%
-                          </Text>
-                        </View>
-                        <View style={styles.chevron}>
-                          <Icon
-                            name={expanded ? 'chevron-up' : 'chevron-down'}
-                            size={17}
-                            color={COLORS.textSecondary}
+                        <View style={styles.cleanerProgressTrack}>
+                          <View
+                            style={[
+                              styles.cleanerProgressFill,
+                              {
+                                width: `${Math.min(cleaner.percentage, 100)}%`,
+                                backgroundColor: cleaner.percentage === 100 ? ACCENT.complete : BRAND.yellow,
+                              },
+                            ]}
                           />
                         </View>
+                        <Text style={[styles.cleanerPercentage, cleaner.percentage === 100 && styles.completedPercentage]}>
+                          {cleaner.percentage}%
+                        </Text>
+                        <Icon
+                          name={expanded ? 'expand_less' : 'expand_more'}
+                          size={17}
+                          color={NEUTRAL.text3}
+                        />
                       </View>
                     </TouchableOpacity>
 
@@ -466,11 +450,13 @@ export default function HistoryScreen() {
                       <View style={styles.roomsContainer}>
                         {cleaner.rooms.map((room, index) => (
                           <View key={room.roomId || `${room.roomName}-${index}`} style={styles.roomRow}>
-                            <View style={[styles.roomStatus, room.cleaned ? styles.roomStatusDone : styles.roomStatusPending]}>
+                            <View style={[styles.roomStatus, {
+                              backgroundColor: room.cleaned ? STATUS.inspected.bg : STATUS.dirty.bg,
+                            }]}>
                               <Icon
-                                name={room.cleaned ? 'checkmark' : 'time-outline'}
-                                size={14}
-                                color={room.cleaned ? COLORS.success : COLORS.warning}
+                                name={room.cleaned ? 'check' : 'schedule'}
+                                size={16}
+                                color={room.cleaned ? STATUS.inspected.text : STATUS.dirty.text}
                               />
                             </View>
                             <View style={styles.roomMain}>
@@ -486,12 +472,21 @@ export default function HistoryScreen() {
                                 </View>
                               )}
                             </View>
-                            <Badge label={room.cleaned ? 'Cleaned' : 'Pending'} type={room.cleaned ? 'clean' : 'extra'} />
+                            <View style={[styles.roomPill, {
+                              backgroundColor: room.cleaned ? STATUS.inspected.bg : STATUS.dirty.bg,
+                              borderColor: room.cleaned ? STATUS.inspected.border : STATUS.dirty.border,
+                            }]}>
+                              <Text style={[styles.roomPillText, {
+                                color: room.cleaned ? STATUS.inspected.text : STATUS.dirty.text,
+                              }]}>
+                                {room.cleaned ? 'Cleaned' : 'Pending'}
+                              </Text>
+                            </View>
                           </View>
                         ))}
                       </View>
                     )}
-                  </AppCard>
+                  </View>
                 );
               })}
             </View>
@@ -503,185 +498,211 @@ export default function HistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: COLORS.background },
-
-  toolbar: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: SPACING[6], paddingVertical: SPACING[4],
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-    flexWrap: 'wrap', gap: SPACING[3],
-  },
-  pageTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text },
-  subtitle: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginTop: 2 },
-
-  exportButton: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: COLORS.primary, paddingHorizontal: 17, height: 42, borderRadius: 11,
-  },
-  exportButtonText: { fontFamily: FONTS.semiBold, fontSize: 13, color: '#FFFFFF' },
-  disabledButtonText: { color: COLORS.textMuted },
-
+  page: { flex: 1, backgroundColor: NEUTRAL.appBg },
   scroll: { flex: 1 },
   content: {
-    width: '100%',
-    maxWidth: 1280,
-    alignSelf: 'center',
-    paddingHorizontal: SPACING[6],
-    paddingTop: SPACING[4],
-    paddingBottom: SPACING[10],
+    width: '100%', maxWidth: 1280, alignSelf: 'flex-start',
+    paddingTop: 22, paddingHorizontal: 28, paddingBottom: 40, gap: 18,
   },
 
   controls: {
-    flexDirection: 'row', alignItems: 'flex-end', gap: SPACING[4],
-    backgroundColor: COLORS.surface,
-    borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: RADIUS.lg,
-    padding: SPACING[4],
-    marginBottom: SPACING[4],
+    flexDirection: 'row', alignItems: 'flex-end', gap: 18, flexWrap: 'wrap',
+    padding: 18, borderRadius: 20,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
   },
-  dateArea: { flex: 1 },
-  searchContainer: { width: 330 },
-  controlLabel: { fontFamily: FONTS.bold, fontSize: 10, letterSpacing: 1, color: COLORS.textMuted, marginBottom: 8 },
-  dateRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  dateArea: { flexGrow: 1, flexBasis: 320, minWidth: 0 },
+  searchContainer: { flexGrow: 0, flexShrink: 1, flexBasis: 330, minWidth: 0 },
+  controlLabel: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 10,
+    letterSpacing: 1, textTransform: 'uppercase',
+    color: NEUTRAL.text4, marginBottom: 9,
+  },
+  dateRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   arrowButton: {
-    width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border,
+    width: 40, height: 40, flexShrink: 0, borderRadius: 11,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.inputFill,
+    alignItems: 'center', justifyContent: 'center',
   },
-  disabledArrow: { opacity: 0.4 },
   dateDisplay: {
-    flex: 1, height: 40, flexDirection: 'row', alignItems: 'center', gap: 9,
-    paddingHorizontal: 13, borderRadius: 10,
-    backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border,
+    flex: 1, minWidth: 0, height: 40, flexDirection: 'row', alignItems: 'center', gap: 9,
+    paddingHorizontal: 13, borderRadius: 11,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.inputFill,
   },
   dateInput: {
-    flex: 1,
-    border: 'none',
+    flex: 1, minWidth: 0, border: 'none', outline: 'none', padding: 0,
     backgroundColor: 'transparent',
-    fontFamily: FONTS.medium,
-    fontSize: 13,
-    color: COLORS.text,
-    outline: 'none',
-    padding: 0,
+    fontFamily: FONTS.medium, fontWeight: 500, fontSize: 13.5, color: NEUTRAL.text,
   },
   todayButton: {
-    height: 40, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center',
-    borderRadius: 10, backgroundColor: COLORS.primaryLight,
+    height: 40, paddingHorizontal: 15, borderRadius: 11, flexShrink: 0,
+    backgroundColor: NEUTRAL.slateChip,
+    alignItems: 'center', justifyContent: 'center',
   },
-  todayButtonText: { fontFamily: FONTS.semiBold, fontSize: 12, color: COLORS.primary },
-
+  todayButtonText: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12.5, color: BRAND.navy,
+  },
   searchBox: {
     height: 40, flexDirection: 'row', alignItems: 'center', gap: 9,
-    paddingHorizontal: 12, borderRadius: 10,
-    backgroundColor: COLORS.background, borderWidth: 1, borderColor: COLORS.border,
+    paddingHorizontal: 12, borderRadius: 11,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.inputFill,
   },
   searchInput: {
-    flex: 1, padding: 0,
-    outline: 'none', border: 'none',
-    fontFamily: FONTS.regular, fontSize: 13, color: COLORS.text,
+    flex: 1, minWidth: 0, padding: 0, outlineStyle: 'none',
+    fontFamily: FONTS.regular, fontSize: 13.5, color: NEUTRAL.text,
   },
 
-  loadingBox: {
-    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: RADIUS.lg, padding: 35, alignItems: 'center',
+  progressCard: {
+    padding: 22, borderRadius: 20,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+    shadowColor: BRAND.navy, shadowOpacity: 0.05,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
   },
-  loadingText: { fontFamily: FONTS.medium, fontSize: 14, color: COLORS.textSecondary },
-
-  noHistory: {
-    minHeight: 360, backgroundColor: COLORS.surface,
-    borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.lg,
-    alignItems: 'center', justifyContent: 'center', padding: 40,
+  progressHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    gap: 16, flexWrap: 'wrap', marginBottom: 18,
   },
-  emptyIcon: {
-    width: 64, height: 64, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: COLORS.primaryLight, marginBottom: 15,
+  cardEyebrow: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 10,
+    letterSpacing: 1, textTransform: 'uppercase',
+    color: NEUTRAL.text4, marginBottom: 6,
   },
-  emptyTitle: { fontFamily: FONTS.semiBold, fontSize: 19, color: COLORS.text },
-  emptyText: {
-    maxWidth: 420, textAlign: 'center', marginTop: 7,
-    fontFamily: FONTS.regular, fontSize: 13, lineHeight: 20, color: COLORS.textSecondary,
+  progressNumberRow: {
+    flexDirection: 'row', alignItems: 'baseline', gap: 11, flexWrap: 'wrap',
   },
-
-  progressCard: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.lg, padding: 22, marginBottom: SPACING[4] },
-  progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 },
-  cardEyebrow: { fontFamily: FONTS.bold, fontSize: 10, letterSpacing: 1, color: COLORS.textMuted, marginBottom: 5 },
-  progressNumberRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
-  progressNumber: { fontFamily: FONTS.bold, fontSize: 28, color: COLORS.text },
-  progressDescription: { fontFamily: FONTS.regular, fontSize: 13, color: COLORS.textSecondary },
+  progressNumber: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 30, lineHeight: 30,
+    color: NEUTRAL.text, fontVariant: ['tabular-nums'],
+  },
+  progressDescription: { fontFamily: FONTS.regular, fontSize: 13.5, color: NEUTRAL.text3 },
   progressStatus: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 10, paddingVertical: 7, borderRadius: 20,
-    backgroundColor: COLORS.warningLight || '#FFF7E8',
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    height: 34, paddingHorizontal: 13, borderRadius: 999,
   },
-  progressStatusDone: { backgroundColor: COLORS.successLight },
-  progressStatusText: { fontFamily: FONTS.semiBold, fontSize: 11, color: COLORS.warning },
-  progressStatusDoneText: { color: COLORS.success },
+  progressStatusText: { fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12 },
 
-  bigProgressTrack: { height: 9, borderRadius: 6, backgroundColor: COLORS.border, overflow: 'hidden' },
-  bigProgressFill: { height: '100%', borderRadius: 6, backgroundColor: COLORS.success },
+  bigProgressTrack: {
+    height: 9, borderRadius: 6, backgroundColor: NEUTRAL.slateChip, overflow: 'hidden',
+  },
+  bigProgressFill: { height: '100%', borderRadius: 6 },
 
   statGrid: {
-    flexDirection: 'row', marginTop: 22, paddingTop: 17,
-    borderTopWidth: 1, borderTopColor: COLORS.border,
+    flexDirection: 'row', flexWrap: 'wrap', gap: 14,
+    marginTop: 22, paddingTop: 17,
+    borderTopWidth: 1, borderTopColor: NEUTRAL.border,
   },
-  stat: { flex: 1, alignItems: 'center' },
-  statValue: { fontFamily: FONTS.bold, fontSize: 18, color: COLORS.text },
-  statLabel: { marginTop: 3, fontFamily: FONTS.regular, fontSize: 11, color: COLORS.textMuted },
+  stat: { flexGrow: 1, flexBasis: 120, alignItems: 'center' },
+  statValue: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 20,
+    fontVariant: ['tabular-nums'],
+  },
+  statLabel: { marginTop: 4, fontFamily: FONTS.regular, fontSize: 11.5, color: NEUTRAL.text4 },
 
-  sectionHeader: { marginBottom: 13 },
-  sectionTitle: { fontFamily: FONTS.bold, fontSize: 20, color: COLORS.text },
-  sectionSubtitle: { marginTop: 4, fontFamily: FONTS.regular, fontSize: 12, color: COLORS.textSecondary },
+  sectionHeader: {
+    marginBottom: 0,
+  },
+  sectionTitle: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 20, color: NEUTRAL.text,
+  },
+  sectionSubtitle: {
+    marginTop: 4, fontFamily: FONTS.regular, fontSize: 12.5, color: NEUTRAL.text3,
+  },
 
   cleanerList: { gap: 10 },
-  cleanerCard: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.lg, overflow: 'hidden' },
+  cleanerCard: {
+    borderRadius: 20, overflow: 'hidden',
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+    shadowColor: BRAND.navy, shadowOpacity: 0.05,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+  },
   cleanerHeader: {
-    minHeight: 82, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 18, paddingVertical: 14,
+    minHeight: 82, flexDirection: 'row', alignItems: 'center',
+    gap: 16, flexWrap: 'wrap', paddingVertical: 14, paddingHorizontal: 18,
   },
-  cleanerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  cleanerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flexGrow: 1, flexBasis: 180, minWidth: 0 },
   avatar: {
-    width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginRight: 12,
+    width: 44, height: 44, borderRadius: 999, flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center',
   },
-  avatarText: { fontFamily: FONTS.bold, fontSize: 14, color: '#FFFFFF' },
-  cleanerDetails: { flex: 1 },
-  cleanerName: { fontFamily: FONTS.semiBold, fontSize: 15, color: COLORS.text },
-  cleanerRooms: { marginTop: 4, fontFamily: FONTS.regular, fontSize: 12, color: COLORS.textMuted },
-
-  cleanerRight: { flexDirection: 'row', alignItems: 'center', gap: 16, width: 270 },
-  cleanerProgress: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  cleanerProgressTrack: { flex: 1, height: 7, borderRadius: 5, backgroundColor: COLORS.border, overflow: 'hidden' },
+  avatarText: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 15, color: '#FFFFFF',
+  },
+  cleanerDetails: { flex: 1, minWidth: 0 },
+  cleanerName: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 15.5, color: NEUTRAL.text,
+  },
+  cleanerRooms: {
+    marginTop: 4, fontFamily: FONTS.regular, fontSize: 12.5,
+    color: NEUTRAL.text4, fontVariant: ['tabular-nums'],
+  },
+  cleanerRight: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    flexGrow: 0, flexShrink: 1, flexBasis: 260, minWidth: 150,
+  },
+  cleanerProgressTrack: {
+    flex: 1, minWidth: 0, height: 7, borderRadius: 5,
+    backgroundColor: NEUTRAL.slateChip, overflow: 'hidden',
+  },
   cleanerProgressFill: { height: '100%', borderRadius: 5 },
-  cleanerPercentage: { width: 38, textAlign: 'right', fontFamily: FONTS.bold, fontSize: 13, color: COLORS.primary },
-  completedPercentage: { color: COLORS.success },
-  chevron: {
-    width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center',
-    backgroundColor: COLORS.background,
+  cleanerPercentage: {
+    width: 40, flexShrink: 0, textAlign: 'right',
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 13,
+    color: BRAND.navy, fontVariant: ['tabular-nums'],
   },
+  completedPercentage: { color: STATUS.inspected.text },
 
   roomsContainer: {
-    backgroundColor: COLORS.background,
-    borderTopWidth: 1, borderTopColor: COLORS.border,
-    paddingHorizontal: 18, paddingVertical: 4,
+    backgroundColor: '#F8FAFC',
+    borderTopWidth: 1, borderTopColor: NEUTRAL.border,
+    paddingHorizontal: 18,
   },
   roomRow: {
-    minHeight: 57, flexDirection: 'row', alignItems: 'center', gap: 11,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    minHeight: 57, flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: '#EEF2F7',
   },
   roomStatus: {
-    width: 29, height: 29, borderRadius: 9, alignItems: 'center', justifyContent: 'center',
+    width: 29, height: 29, flexShrink: 0, borderRadius: 9,
+    alignItems: 'center', justifyContent: 'center',
   },
-  roomStatusDone: { backgroundColor: COLORS.successLight },
-  roomStatusPending: { backgroundColor: COLORS.warningLight || '#FFF7E8' },
   roomMain: { flex: 1, minWidth: 0 },
-  roomName: { fontFamily: FONTS.medium, fontSize: 13, color: COLORS.text },
-  roomExtras: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 3 },
-  roomNote: { maxWidth: 400, fontFamily: FONTS.regular, fontSize: 11, color: COLORS.textMuted },
-  extraTime: { fontFamily: FONTS.semiBold, fontSize: 11, color: COLORS.warning },
-
-  searchEmpty: {
-    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border,
-    borderRadius: RADIUS.lg, paddingVertical: 65, alignItems: 'center', marginBottom: 20,
+  roomName: {
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 13.5, color: NEUTRAL.text,
   },
-  searchEmptyTitle: { marginTop: 12, fontFamily: FONTS.semiBold, fontSize: 17, color: COLORS.text },
-  searchEmptyText: { marginTop: 5, fontFamily: FONTS.regular, fontSize: 12, color: COLORS.textMuted },
+  roomExtras: { flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 3 },
+  roomNote: { maxWidth: 400, fontFamily: FONTS.regular, fontSize: 11.5, color: NEUTRAL.text4 },
+  extraTime: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 11.5, color: STATUS.dirty.text,
+  },
+  roomPill: {
+    height: 26, paddingHorizontal: 10, borderRadius: 9, borderWidth: 1, flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  roomPillText: { fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12 },
+
+  /* Empty states – dashed border */
+  noHistory: {
+    alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 60,
+    borderRadius: 20, borderWidth: 1, borderStyle: 'dashed', borderColor: '#CBD5E1',
+  },
+  searchEmpty: {
+    alignItems: 'center', gap: 10, paddingVertical: 60,
+    borderRadius: 20, borderWidth: 1, borderStyle: 'dashed', borderColor: '#CBD5E1',
+  },
+  emptyTitle: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 17, color: NEUTRAL.text,
+  },
+  emptyText: {
+    maxWidth: 420, textAlign: 'center',
+    fontFamily: FONTS.regular, fontSize: 12.5, lineHeight: 19, color: NEUTRAL.text3,
+  },
+  searchEmptyTitle: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 17, color: NEUTRAL.text,
+  },
+  searchEmptyText: { fontFamily: FONTS.regular, fontSize: 12.5, color: NEUTRAL.text3 },
+
+  loadingBox: {
+    alignItems: 'center', padding: 35, borderRadius: 20,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+  },
+  loadingText: { fontFamily: FONTS.regular, fontSize: 14, color: NEUTRAL.text3 },
 });

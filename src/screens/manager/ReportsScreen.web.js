@@ -1,63 +1,118 @@
-import React from 'react';
+// src/screens/manager/ReportsScreen.web.js
+//
+// Live activities.
+//
+// NOT IN THE PROTOTYPE. The handoff's nav is Dashboard / Rooms / Assign / Team /
+// Extra requests / History / Roles, with no equivalent of this screen — it
+// predates the redesign. So rather than invent a new visual language, this is
+// built entirely from parts the other screens already established: the KPI tile
+// from Dashboard, the Panel shell, the gold→green progress bars from Team and
+// the History accordion, and the activity rows from Dashboard's Recent activity.
+//
+// The distinction from Dashboard is deliberate: Dashboard answers "what should I
+// do next" (needs attention, unassigned rooms, pending requests). This answers
+// "how is the shift going" — completion, per-person pace, per-floor coverage, and
+// the full activity feed rather than the last five.
+//
+// All arithmetic is unchanged from the previous version.
+import React, { useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useApp } from '../../contexts/AppContext';
 import { useNotifications } from '../../contexts/NotificationContext';
-import AppCard from '../../components/Card/AppCard';
-import { COLORS } from '../../theme/colors';
-import { FONTS, FONT_SIZE } from '../../theme/typography';
-import { SPACING } from '../../theme/spacing';
+import Icon from '../../components/Icon';
+import { FONTS } from '../../theme/typography';
+import { BRAND, NEUTRAL, STATUS, ACCENT } from '../../theme/tokens';
+import { buildCleanerColors } from '../../utils/cleanerColor';
+import useBreakpoint from '../../hooks/useBreakpoint';
 
-/* ── Correct SVG progress ring (fixes the old half-border hack) ── */
-function ProgressRing({ pct = 0, size = 88, strokeWidth = 8, color = COLORS.primary }) {
+const SUNKEN = '#F8FAFC';
+const HAIRLINE = '#EEF2F7';
+
+/* Progress ring. SVG via raw <svg> because react-native-svg's web build adds a
+   wrapper that fights the flex sizing here, and this is a web-only file. */
+function ProgressRing({ pct = 0, size = 132, stroke = 12 }) {
   const clamped = Math.max(0, Math.min(100, pct));
-  const radius = (size - strokeWidth) / 2;
+  const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (clamped / 100) * circumference;
+  const color = clamped === 100 ? ACCENT.complete : BRAND.yellow;
 
   return (
-    <div style={{ position: 'relative', width: size, height: size }}>
+    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
       <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
         <circle
           cx={size / 2} cy={size / 2} r={radius}
-          stroke={COLORS.border} strokeWidth={strokeWidth} fill="none"
+          stroke={NEUTRAL.slateChip} strokeWidth={stroke} fill="none"
         />
         <circle
           cx={size / 2} cy={size / 2} r={radius}
-          stroke={color} strokeWidth={strokeWidth} fill="none"
+          stroke={color} strokeWidth={stroke} fill="none"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           strokeLinecap="round"
-          style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+          style={{ transition: 'stroke-dashoffset .35s ease, stroke .35s ease' }}
         />
       </svg>
-      <div
-        style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}
-      >
-        <Text style={[styles.donutText, { color }]}>{clamped}%</Text>
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Text style={styles.ringValue}>{clamped}%</Text>
+        <Text style={styles.ringLabel}>complete</Text>
       </div>
     </div>
   );
 }
 
-/* ── Timeline with continuous line ─────────────────────────── */
-function Timeline({ items }) {
+function Panel({ title, subtitle, children, padded = true }) {
   return (
-    <View style={styles.timelineContainer}>
-      <View style={styles.timelineLine} />
-      {items.map((item, idx) => (
-        <View key={idx} style={styles.timelineRow}>
-          <View style={styles.timelineDot} />
-          <View style={styles.timelineContent}>
-            <Text style={styles.timelineTime}>{item.time}</Text>
-            <Text style={styles.timelineText}>{item.text}</Text>
-          </View>
+    <View style={styles.panel}>
+      {!!title && (
+        <View style={styles.panelHead}>
+          <Text style={styles.panelTitle}>{title}</Text>
+          {!!subtitle && <Text style={styles.panelSub}>{subtitle}</Text>}
         </View>
-      ))}
+      )}
+      <View style={padded ? styles.panelBody : undefined}>{children}</View>
     </View>
   );
+}
+
+/* One labelled progress row — used for both housekeepers and floors so the two
+   lists read as the same kind of thing. */
+function ProgressRow({ label, done, total, color }) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  const complete = pct === 100 && total > 0;
+  return (
+    <View>
+      <View style={styles.rowTop}>
+        <View style={styles.rowLabelCell}>
+          {!!color && <View style={[styles.rowDot, { backgroundColor: color }]} />}
+          <Text style={styles.rowLabel} numberOfLines={1}>{label}</Text>
+        </View>
+        <Text style={styles.rowMeta}>
+          {done}/{total}
+          <Text style={styles.rowPct}>{`  ${pct}%`}</Text>
+        </Text>
+      </View>
+      <View style={styles.track}>
+        <View style={[styles.fill, {
+          width: `${pct}%`,
+          backgroundColor: complete ? ACCENT.complete : BRAND.yellow,
+        }]} />
+      </View>
+    </View>
+  );
+}
+
+function activityLook(type) {
+  switch (type) {
+    case 'room_cleaned':  return { icon: 'verified', bg: STATUS.inspected.bg, fg: STATUS.inspected.text };
+    case 'extra_request': return { icon: 'flag', bg: STATUS.dirty.bg, fg: STATUS.dirty.text };
+    case 'issue':         return { icon: 'build', bg: STATUS.late.bg, fg: STATUS.late.text };
+    default:              return { icon: 'schedule', bg: NEUTRAL.slateChip, fg: NEUTRAL.text2 };
+  }
 }
 
 export default function ReportsScreen() {
@@ -65,147 +120,189 @@ export default function ReportsScreen() {
     rooms = [], roomStatus = {}, cleaners = [], floors = [], extraRequests = [],
   } = useApp();
   const { notifications } = useNotifications();
+  const { isMobile } = useBreakpoint();
+
+  const colors = useMemo(() => buildCleanerColors(cleaners), [cleaners]);
 
   const assignedRooms = rooms.filter(r => r.assignedTo);
   const cleanedRooms = assignedRooms.filter(r => roomStatus[r.id]?.cleaned).length;
   const pendingRooms = assignedRooms.length - cleanedRooms;
   const progressPct = assignedRooms.length
-    ? Math.round((cleanedRooms / assignedRooms.length) * 100)
-    : 0;
+    ? Math.round((cleanedRooms / assignedRooms.length) * 100) : 0;
 
   const pendingRequests = extraRequests.filter(r => r.status === 'pending' || !r.status).length;
+  const approvedRequests = extraRequests.filter(r => r.status === 'approved').length;
+  const rejectedRequests = extraRequests.filter(r => r.status === 'rejected').length;
 
-  const cleanerStats = cleaners.map(c => {
+  const cleanerStats = useMemo(() => cleaners.map(c => {
     const assigned = rooms.filter(r => r.assignedTo === c.id);
     const done = assigned.filter(r => roomStatus[r.id]?.cleaned).length;
-    const pct = assigned.length ? Math.round((done / assigned.length) * 100) : 0;
-    return { username: c.username, done, total: assigned.length, pct };
-  }).sort((a, b) => b.total - a.total);
+    return { id: c.id, username: c.username, done, total: assigned.length };
+  }).sort((a, b) => b.total - a.total), [cleaners, rooms, roomStatus]);
 
-  const sortedFloors = [...floors].sort((a, b) => {
-    const order = (name) => {
-      if (name === 'Ground Floor') return 0;
-      if (name === 'Garage') return 999;
-      const num = parseInt(name, 10);
-      if (!isNaN(num)) return num;
-      return 500;
-    };
-    return order(a.name) - order(b.name);
-  });
+  const floorStats = useMemo(() => {
+    const sorted = [...floors].sort((a, b) => {
+      const order = name => {
+        if (name === 'Ground Floor') return 0;
+        if (name === 'Garage') return 999;
+        const num = parseInt(name, 10);
+        return isNaN(num) ? 500 : num;
+      };
+      return order(a.name) - order(b.name);
+    });
+    return sorted.map(f => {
+      const floorRooms = rooms.filter(r => r.floorId === f.id);
+      const done = floorRooms.filter(r => roomStatus[r.id]?.cleaned).length;
+      return { id: f.id, name: f.name, done, total: floorRooms.length };
+    });
+  }, [floors, rooms, roomStatus]);
 
-  const floorStats = sortedFloors.map(f => {
-    const floorRooms = rooms.filter(r => r.floorId === f.id);
-    const done = floorRooms.filter(r => roomStatus[r.id]?.cleaned).length;
-    const pct = floorRooms.length ? Math.round((done / floorRooms.length) * 100) : 0;
-    return { name: f.name, done, total: floorRooms.length, pct };
-  });
-
-  const recentActivity = notifications.slice(0, 10).map(n => ({
+  /* The full feed, not Dashboard's top five — this is the screen you open when
+     you want the whole picture. Capped at 40 so a long shift doesn't render
+     hundreds of rows. */
+  const activity = notifications.slice(0, 40).map(n => ({
+    id: n.id,
     text: n.message,
-    time: new Date(n.timestamp).toLocaleString(),
+    time: new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    ...activityLook(n.type),
   }));
 
+  const kpis = [
+    {
+      key: 'total', icon: 'meeting_room', value: rooms.length, label: 'Rooms today',
+      chipBg: NEUTRAL.slateChip, chipFg: BRAND.navy,
+    },
+    {
+      key: 'cleaned', icon: 'verified', value: cleanedRooms, label: 'Cleaned',
+      chipBg: STATUS.inspected.bg, chipFg: STATUS.inspected.text,
+    },
+    {
+      key: 'pending', icon: 'cleaning_services', value: pendingRooms, label: 'Still to do',
+      chipBg: STATUS.dirty.bg, chipFg: STATUS.dirty.text,
+    },
+    {
+      key: 'requests', icon: 'flag', value: pendingRequests, label: 'Requests waiting',
+      chipBg: STATUS.early.bg, chipFg: STATUS.early.text,
+    },
+  ];
+
   return (
-    <View style={styles.safe}>
-      {/* ── Toolbar ── */}
-      <View style={styles.toolbar}>
-        <View>
-          <Text style={styles.title}>Reports</Text>
-          <Text style={styles.subtitle}>Overview of cleaning performance</Text>
-        </View>
-      </View>
-
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {/* ── Overview cards ── */}
-        <View style={styles.cardRow}>
-          <AppCard style={styles.statCard}>
-            <Text style={styles.statNumber}>{rooms.length}</Text>
-            <Text style={styles.statLabel}>Total Rooms</Text>
-          </AppCard>
-          <AppCard style={styles.statCard}>
-            <Text style={[styles.statNumber, { color: COLORS.success }]}>{cleanedRooms}</Text>
-            <Text style={styles.statLabel}>Cleaned</Text>
-          </AppCard>
-          <AppCard style={styles.statCard}>
-            <Text style={[styles.statNumber, { color: COLORS.warning }]}>{pendingRooms}</Text>
-            <Text style={styles.statLabel}>Pending</Text>
-          </AppCard>
-          <AppCard style={styles.statCard}>
-            <ProgressRing pct={progressPct} color={progressPct === 100 ? COLORS.success : COLORS.primary} />
-            <Text style={styles.statLabel}>Completion</Text>
-          </AppCard>
+    <View style={styles.container}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[styles.page, isMobile && styles.pageMobile]}
+      >
+        <View style={styles.kpiGrid}>
+          {kpis.map(kpi => (
+            <View key={kpi.key} style={styles.kpiCard}>
+              <View style={[styles.kpiIcon, { backgroundColor: kpi.chipBg }]}>
+                <Icon name={kpi.icon} size={22} color={kpi.chipFg} />
+              </View>
+              <View>
+                <Text style={styles.kpiValue}>{kpi.value}</Text>
+                <Text style={styles.kpiLabel}>{kpi.label}</Text>
+              </View>
+            </View>
+          ))}
         </View>
 
-        <View style={styles.mainRow}>
-          <View style={styles.mainCol}>
-            {/* ── Cleaner performance ── */}
-            <AppCard style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Cleaner Performance</Text>
-              {cleanerStats.map(c => (
-                <View key={c.username} style={styles.perfRow}>
-                  <View style={styles.perfLabel}>
-                    <Text style={styles.perfName}>{c.username}</Text>
-                    <Text style={styles.perfCount}>{c.done}/{c.total} rooms</Text>
+        <View style={styles.split}>
+          <View style={styles.colMain}>
+            <Panel title="Shift completion" subtitle="Across every assigned room">
+              <View style={[styles.ringRow, isMobile && { flexDirection: 'column' }]}>
+                <ProgressRing pct={progressPct} />
+                <View style={styles.ringStats}>
+                  <View style={styles.ringStat}>
+                    <Text style={[styles.ringStatValue, { color: STATUS.inspected.text }]}>
+                      {cleanedRooms}
+                    </Text>
+                    <Text style={styles.ringStatLabel}>Cleaned</Text>
                   </View>
-                  <View style={styles.perfBar}>
-                    <View style={[styles.perfFill, { width: `${c.pct}%`, backgroundColor: c.pct === 100 ? COLORS.success : COLORS.primary }]} />
+                  <View style={styles.ringStat}>
+                    <Text style={[styles.ringStatValue, { color: STATUS.dirty.text }]}>
+                      {pendingRooms}
+                    </Text>
+                    <Text style={styles.ringStatLabel}>Pending</Text>
                   </View>
-                </View>
-              ))}
-              {cleanerStats.length === 0 && <Text style={styles.empty}>No cleaners.</Text>}
-            </AppCard>
-
-            {/* ── Floor breakdown ── */}
-            <AppCard style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Floor Progress</Text>
-              {floorStats.map(f => (
-                <View key={f.name} style={styles.perfRow}>
-                  <View style={styles.perfLabel}>
-                    <Text style={styles.perfName}>{f.name}</Text>
-                    <Text style={styles.perfCount}>{f.done}/{f.total} rooms</Text>
+                  <View style={styles.ringStat}>
+                    <Text style={styles.ringStatValue}>{assignedRooms.length}</Text>
+                    <Text style={styles.ringStatLabel}>Assigned</Text>
                   </View>
-                  <View style={styles.perfBar}>
-                    <View style={[styles.perfFill, { width: `${f.pct}%`, backgroundColor: f.pct === 100 ? COLORS.success : COLORS.primary }]} />
+                  <View style={styles.ringStat}>
+                    <Text style={[styles.ringStatValue, { color: NEUTRAL.text3 }]}>
+                      {rooms.length - assignedRooms.length}
+                    </Text>
+                    <Text style={styles.ringStatLabel}>Unassigned</Text>
                   </View>
-                </View>
-              ))}
-              {floorStats.length === 0 && <Text style={styles.empty}>No floors.</Text>}
-            </AppCard>
-
-            {/* ── Extra requests summary ── */}
-            <AppCard style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Extra Requests</Text>
-              <View style={styles.cardRow}>
-                <View style={styles.miniStat}>
-                  <Text style={[styles.miniNumber, { color: COLORS.warning }]}>{pendingRequests}</Text>
-                  <Text style={styles.miniLabel}>Pending</Text>
-                </View>
-                <View style={styles.miniStat}>
-                  <Text style={[styles.miniNumber, { color: COLORS.success }]}>
-                    {extraRequests.filter(r => r.status === 'approved').length}
-                  </Text>
-                  <Text style={styles.miniLabel}>Approved</Text>
-                </View>
-                <View style={styles.miniStat}>
-                  <Text style={[styles.miniNumber, { color: COLORS.danger }]}>
-                    {extraRequests.filter(r => r.status === 'rejected').length}
-                  </Text>
-                  <Text style={styles.miniLabel}>Rejected</Text>
                 </View>
               </View>
-            </AppCard>
+            </Panel>
+
+            <Panel title="Housekeeper pace" subtitle={`${cleanerStats.length} on the roster`}>
+              {cleanerStats.length === 0 ? (
+                <Text style={styles.empty}>Nobody on the team yet.</Text>
+              ) : (
+                <View style={{ gap: 16 }}>
+                  {cleanerStats.map(c => (
+                    <ProgressRow
+                      key={c.id}
+                      label={c.username}
+                      done={c.done}
+                      total={c.total}
+                      color={colors[c.id]}
+                    />
+                  ))}
+                </View>
+              )}
+            </Panel>
+
+            <Panel title="Floor coverage">
+              {floorStats.length === 0 ? (
+                <Text style={styles.empty}>No floors set up.</Text>
+              ) : (
+                <View style={{ gap: 16 }}>
+                  {floorStats.map(f => (
+                    <ProgressRow key={f.id} label={f.name} done={f.done} total={f.total} />
+                  ))}
+                </View>
+              )}
+            </Panel>
           </View>
 
-          {/* ── Recent activity timeline ── */}
-          <View style={styles.sidebarCol}>
-            <AppCard style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>Recent Activity</Text>
-              {recentActivity.length > 0 ? (
-                <Timeline items={recentActivity} />
-              ) : (
-                <Text style={styles.empty}>No activity yet.</Text>
-              )}
-            </AppCard>
+          <View style={styles.colSide}>
+            <Panel title="Extra requests">
+              <View style={styles.miniGrid}>
+                {[
+                  { label: 'Pending', value: pendingRequests, ...STATUS.dirty },
+                  { label: 'Approved', value: approvedRequests, ...STATUS.inspected },
+                  { label: 'Rejected', value: rejectedRequests, ...STATUS.error },
+                ].map(s => (
+                  <View key={s.label} style={[styles.miniStat, { backgroundColor: s.bg }]}>
+                    <Text style={[styles.miniValue, { color: s.text }]}>{s.value}</Text>
+                    <Text style={[styles.miniLabel, { color: s.text }]}>{s.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </Panel>
+
+            <Panel title="Activity" subtitle="Everything logged today" padded={false}>
+              <View style={styles.activityList}>
+                {activity.length === 0 ? (
+                  <Text style={styles.empty}>Nothing logged yet today.</Text>
+                ) : activity.map((a, i) => (
+                  <View
+                    key={a.id}
+                    style={[styles.activityRow, i === activity.length - 1 && { borderBottomWidth: 0 }]}
+                  >
+                    <View style={[styles.activityIcon, { backgroundColor: a.bg }]}>
+                      <Icon name={a.icon} size={17} color={a.fg} />
+                    </View>
+                    <Text style={styles.activityText}>{a.text}</Text>
+                    <Text style={styles.activityTime}>{a.time}</Text>
+                  </View>
+                ))}
+              </View>
+            </Panel>
           </View>
         </View>
       </ScrollView>
@@ -214,45 +311,116 @@ export default function ReportsScreen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.background },
-  toolbar: {
-    paddingHorizontal: SPACING.lg, paddingVertical: SPACING.lg,
-    backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border,
+  container: { flex: 1, backgroundColor: NEUTRAL.appBg },
+  page: { paddingTop: 24, paddingHorizontal: 28, paddingBottom: 40, gap: 24 },
+  pageMobile: { paddingHorizontal: 16 },
+
+  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  kpiCard: {
+    flexGrow: 1, flexBasis: 200,
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    padding: 18, borderRadius: 22,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+    shadowColor: BRAND.navy, shadowOpacity: 0.05,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
   },
-  title: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text },
-  subtitle: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginTop: 2 },
+  kpiIcon: {
+    width: 44, height: 44, borderRadius: 14, flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  kpiValue: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 26, lineHeight: 28,
+    color: NEUTRAL.text, fontVariant: ['tabular-nums'],
+  },
+  kpiLabel: { marginTop: 2, fontFamily: FONTS.regular, fontSize: 13, color: NEUTRAL.text3 },
 
-  scroll: { padding: SPACING.lg },
-  cardRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.md, marginBottom: SPACING.lg },
-  statCard: { flex: 1, minWidth: 160, alignItems: 'center', padding: SPACING.md },
-  statNumber: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xxl, color: COLORS.text },
-  statLabel: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginTop: 4 },
+  split: { flexDirection: 'row', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' },
+  colMain: { flexGrow: 3, flexShrink: 1, flexBasis: 520, minWidth: 0, gap: 24 },
+  colSide: { flexGrow: 1, flexShrink: 1, flexBasis: 300, minWidth: 0, gap: 24 },
 
-  mainRow: { flexDirection: 'row', gap: SPACING.lg, alignItems: 'flex-start' },
-  mainCol: { flex: 2, minWidth: 320 },
-  sidebarCol: { flex: 1, minWidth: 280 },
+  panel: {
+    borderRadius: 22, overflow: 'hidden',
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+    shadowColor: BRAND.navy, shadowOpacity: 0.05,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+  },
+  panelHead: {
+    paddingVertical: 18, paddingHorizontal: 20,
+    borderBottomWidth: 1, borderBottomColor: NEUTRAL.border,
+  },
+  panelTitle: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 18, color: NEUTRAL.text,
+  },
+  panelSub: {
+    marginTop: 4, fontFamily: FONTS.regular, fontSize: 12.5, color: NEUTRAL.text3,
+  },
+  panelBody: { padding: 20 },
 
-  sectionCard: { marginBottom: SPACING.lg, padding: SPACING.lg },
-  sectionTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.lg, marginBottom: SPACING.md, color: COLORS.text },
-  perfRow: { marginBottom: SPACING.sm },
-  perfLabel: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  perfName: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.text },
-  perfCount: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary },
-  perfBar: { height: 6, borderRadius: 3, backgroundColor: COLORS.border, overflow: 'hidden' },
-  perfFill: { height: '100%', borderRadius: 3 },
-  empty: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginTop: 8 },
+  ringRow: { flexDirection: 'row', alignItems: 'center', gap: 24 },
+  ringValue: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 30, lineHeight: 32,
+    color: NEUTRAL.text, fontVariant: ['tabular-nums'],
+  },
+  ringLabel: { fontFamily: FONTS.regular, fontSize: 12, color: NEUTRAL.text3 },
+  ringStats: {
+    flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', gap: 16,
+  },
+  ringStat: { flexGrow: 1, flexBasis: 110 },
+  ringStatValue: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 22,
+    color: NEUTRAL.text, fontVariant: ['tabular-nums'],
+  },
+  ringStatLabel: {
+    marginTop: 2, fontFamily: FONTS.regular, fontSize: 12.5, color: NEUTRAL.text3,
+  },
 
-  miniStat: { flex: 1, alignItems: 'center' },
-  miniNumber: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl },
-  miniLabel: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary, marginTop: 2 },
+  rowTop: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', gap: 12, marginBottom: 8,
+  },
+  rowLabelCell: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1, minWidth: 0 },
+  rowDot: { width: 8, height: 8, borderRadius: 999, flexShrink: 0 },
+  rowLabel: {
+    flex: 1, minWidth: 0,
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 14, color: NEUTRAL.text,
+  },
+  rowMeta: {
+    flexShrink: 0, fontFamily: FONTS.regular, fontSize: 13,
+    color: NEUTRAL.text3, fontVariant: ['tabular-nums'],
+  },
+  rowPct: { fontFamily: FONTS.semiBold, fontWeight: '600', color: NEUTRAL.text2 },
+  track: {
+    height: 8, borderRadius: 999, backgroundColor: NEUTRAL.slateChip, overflow: 'hidden',
+  },
+  fill: { height: '100%', borderRadius: 999 },
 
-  donutText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.md },
+  miniGrid: { flexDirection: 'row', gap: 10 },
+  miniStat: {
+    flex: 1, alignItems: 'center', paddingVertical: 14, borderRadius: 16,
+  },
+  miniValue: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 22,
+    fontVariant: ['tabular-nums'],
+  },
+  miniLabel: { marginTop: 2, fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12 },
 
-  timelineContainer: { paddingLeft: 24, position: 'relative' },
-  timelineLine: { position: 'absolute', left: 11, top: 0, bottom: 0, width: 2, backgroundColor: COLORS.border },
-  timelineRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: SPACING.md },
-  timelineDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: COLORS.primary, marginRight: SPACING.md, marginTop: 4, zIndex: 1 },
-  timelineContent: { flex: 1 },
-  timelineTime: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary },
-  timelineText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.text, marginTop: 2 },
+  activityList: { paddingHorizontal: 20, paddingVertical: 6, maxHeight: 520 },
+  activityRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: HAIRLINE,
+  },
+  activityIcon: {
+    width: 32, height: 32, borderRadius: 11, flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  activityText: {
+    flex: 1, minWidth: 0,
+    fontFamily: FONTS.regular, fontSize: 13.5, color: NEUTRAL.text2,
+  },
+  activityTime: {
+    flexShrink: 0, fontFamily: FONTS.regular, fontSize: 12.5,
+    color: NEUTRAL.text4, fontVariant: ['tabular-nums'],
+  },
+
+  empty: { fontFamily: FONTS.regular, fontSize: 14, color: NEUTRAL.text3 },
 });

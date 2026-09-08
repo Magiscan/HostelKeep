@@ -1,36 +1,90 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Modal, useWindowDimensions,
 } from 'react-native';
-// NOTE: switched from the plain 'xlsx' package to 'xlsx-js-style'. Same API
-// (utils.book_new, aoa_to_sheet, writeFile, etc.) but it actually WRITES cell
-// styles (bold, borders, fills) into the .xlsx file — the vanilla community
-// 'xlsx' package silently drops styling on write. Run `npm install xlsx-js-style`.
 import XLSX from 'xlsx-js-style';
 import Icon from '../../components/Icon';
 import { COLORS, RADIUS, FONTS, FONT_SIZE, SPACING, SHADOW } from '../../theme';
 import { DISPLAY } from '../../theme/typography';
-import {
-  FloorHeader, EmptyState, Badge, Avatar, Label, Input,
-} from '../../components/UI';
 import { useApp } from '../../contexts/AppContext';
 import { roomNeedsAssignment, effectiveAttributes } from '../../utils/assignment';
-import { STATUS } from '../../theme/colors';
+import { BRAND, NEUTRAL, STATUS, ACCENT, GLASS } from '../../theme/tokens';
 import { buildCleanerColors } from '../../utils/cleanerColor';
 import { Pressable } from 'react-native';
 import { BunkBedIcon } from '../../components/brand/Pieces';
+import { Drawer, drawerStyles as d } from '../../components/Dashboard/Drawer.web';
+import { EmptyState } from '../../components/UI';
 
+// ─── Bed state definitions ────────────────────────────────────────
 const BED_STATES = [
-  { key: 'clean',    label: 'To clean',   color: STATUS.dirty.text,    bg: STATUS.dirty.bg,    border: STATUS.dirty.border },
-  { key: 'stayover', label: 'Stay‑over',  color: STATUS.cleaned.text,  bg: STATUS.cleaned.bg,  border: STATUS.cleaned.border },
-  { key: 'late',     label: 'Late c/out', color: STATUS.late.text,     bg: STATUS.late.bg,     border: STATUS.late.border },
-  { key: 'early',    label: 'Early c/in', color: STATUS.early.text,    bg: STATUS.early.bg,    border: STATUS.early.border },
-  { key: 'noone',    label: 'Inspected',  color: STATUS.excluded.text, bg: STATUS.excluded.bg, border: STATUS.excluded.border },
+  { key: 'clean',    short: 'Dirty',  label: 'To clean',   icon: 'cleaning_services', bg: STATUS.dirty.bg,    border: STATUS.dirty.border,    text: STATUS.dirty.text,    accent: BRAND.yellow },
+  { key: 'stayover', short: 'Stay',   label: 'Stay-over',  icon: 'bed',               bg: STATUS.cleaned.bg,   border: STATUS.cleaned.border,   text: STATUS.cleaned.text,   accent: STATUS.cleaned.border },
+  { key: 'late',     short: 'Late',   label: 'Late c/out', icon: 'hourglass_top',     bg: STATUS.late.bg,      border: STATUS.late.border,      text: STATUS.late.text,      accent: STATUS.late.border },
+  { key: 'early',    short: 'Early',  label: 'Early c/in', icon: 'login',             bg: STATUS.early.bg,     border: STATUS.early.border,     text: STATUS.early.text,     accent: STATUS.early.border },
+  { key: 'noone',    short: 'Done',   label: 'Inspected',  icon: 'check_circle',      bg: STATUS.excluded.bg,  border: STATUS.excluded.border,  text: STATUS.excluded.text,  accent: ACCENT.complete },
 ];
-const BED_CYCLE = ['noone', 'clean', 'stayover', 'early', 'late'];
-const BED_STATE_LABELS = Object.fromEntries(BED_STATES.map(s => [s.key, s.label]));
+const BED_BY_KEY = Object.fromEntries(BED_STATES.map(s => [s.key, s]));
+// Rank: stayover and noone are both "no work", but stayover should not outrank dirty.
+const BED_RANK = { stayover: 0, noone: 1, clean: 2, early: 3, late: 4 };
 
+/* ─── Accent colour for the room card ────────────────────────── */
+function accentFor(room, status) {
+  if (status.cleaned) return ACCENT.complete;
+  const assigns = status.assignmentBedStatus || {};
+  const beds = room.beds || [];
+  if (!beds.length) return BRAND.yellow;
+  const worst = beds.reduce((acc, b) => {
+    const s = assigns[b.id]?.status || 'noone';
+    return BED_RANK[s] > BED_RANK[acc] ? s : acc;
+  }, 'noone');
+  return BED_BY_KEY[worst].accent;
+}
+
+// ─── Confirm dialog ──────────────────────────────────────────────
+function ConfirmDialog({ visible, title, message, confirmLabel, onConfirm, onCancel }) {
+  if (!visible) return null;
+  return (
+    <View style={confirmStyles.overlay}>
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onCancel} />
+      <View style={confirmStyles.card}>
+        <Text style={confirmStyles.title}>{title}</Text>
+        <Text style={confirmStyles.message}>{message}</Text>
+        <View style={confirmStyles.actions}>
+          <TouchableOpacity onPress={onCancel} style={[confirmStyles.halfBtn, confirmStyles.halfBtnGhost]}>
+            <Text style={confirmStyles.halfBtnGhostText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onConfirm} style={[confirmStyles.halfBtn, { backgroundColor: COLORS.danger }]}>
+            <Text style={confirmStyles.halfBtnText}>{confirmLabel || 'Confirm'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const confirmStyles = StyleSheet.create({
+  overlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center', justifyContent: 'center',
+    padding: SPACING[6], zIndex: 60,
+  },
+  card: {
+    width: '100%', maxWidth: 400,
+    backgroundColor: COLORS.surface, borderRadius: 20,
+    padding: SPACING[5], ...SHADOW.md,
+  },
+  title: { fontFamily: DISPLAY.semiBold, fontSize: 25, color: COLORS.text, marginBottom: SPACING[2] },
+  message: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.textSecondary, marginBottom: SPACING[5] },
+  actions: { flexDirection: 'row', gap: SPACING[3] },
+  halfBtn: { flex: 1, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  halfBtnGhost: { backgroundColor: COLORS.surfaceMuted },
+  halfBtnGhostText: { fontFamily: DISPLAY.semiBold, fontSize: 17, color: COLORS.primary },
+  halfBtnText: { fontFamily: DISPLAY.semiBold, fontSize: 17, color: COLORS.onPrimary },
+});
+
+// ─── Excel export helpers ─────────────────────────────────────
 const EXTRA_BLANK_ROWS = 4;
 function formatDateIT(d) {
   const day = String(d.getDate()).padStart(2, '0');
@@ -42,7 +96,6 @@ function sanitizeSheetName(name) {
   return cleaned.slice(0, 31) || 'Cleaner';
 }
 
-/* ─── Excel export styling ─────────────────────────────────────── */
 const XLS_BORDER_THIN = { style: 'thin', color: { rgb: 'FFCBD5E1' } };
 const XLS_BORDER_ALL = { top: XLS_BORDER_THIN, bottom: XLS_BORDER_THIN, left: XLS_BORDER_THIN, right: XLS_BORDER_THIN };
 const XLS_BORDER_BOTTOM_THICK = { bottom: { style: 'medium', color: { rgb: 'FF334155' } } };
@@ -101,51 +154,7 @@ const xlsStyles = {
   },
 };
 
-
-// ─── Simple "are you sure?" confirmation dialog ──────────────────
-function ConfirmDialog({ visible, title, message, confirmLabel, onConfirm, onCancel }) {
-  if (!visible) return null;
-  return (
-    <View style={confirmStyles.overlay}>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onCancel} />
-      <View style={confirmStyles.card}>
-        <Text style={confirmStyles.title}>{title}</Text>
-        <Text style={confirmStyles.message}>{message}</Text>
-        <View style={confirmStyles.actions}>
-          <TouchableOpacity onPress={onCancel} style={[confirmStyles.halfBtn, confirmStyles.halfBtnGhost]}>
-            <Text style={confirmStyles.halfBtnGhostText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onConfirm} style={[confirmStyles.halfBtn, { backgroundColor: COLORS.danger }]}>
-            <Text style={confirmStyles.halfBtnText}>{confirmLabel || 'Confirm'}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-const confirmStyles = StyleSheet.create({
-  overlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    alignItems: 'center', justifyContent: 'center',
-    padding: SPACING[6], zIndex: 60,
-  },
-  card: {
-    width: '100%', maxWidth: 400,
-    backgroundColor: COLORS.surface, borderRadius: 20,
-    padding: SPACING[5], ...SHADOW.md,
-  },
-  title: { fontFamily: DISPLAY.semiBold, fontSize: 25, color: COLORS.text, marginBottom: SPACING[2] },
-  message: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.textSecondary, marginBottom: SPACING[5] },
-  actions: { flexDirection: 'row', gap: SPACING[3] },
-  halfBtn: { flex: 1, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  halfBtnGhost: { backgroundColor: COLORS.surfaceMuted },
-  halfBtnGhostText: { fontFamily: DISPLAY.semiBold, fontSize: 17, color: COLORS.primary },
-  halfBtnText: { fontFamily: DISPLAY.semiBold, fontSize: 17, color: COLORS.onPrimary },
-});
-
-export default function AssignScreen() {
+export default function AssignScreen({ onReady }) {
   const { t } = useTranslation();
   const { width } = useWindowDimensions();
   const isNarrow = width < 900;
@@ -155,13 +164,10 @@ export default function AssignScreen() {
   } = useApp();
 
   const [search, setSearch] = useState('');
-  // Filters the room list down to rooms that actually have something to do —
-  // useful when a second manager assigns bed states first and a different
-  // manager assigns rooms to cleaners afterwards.
   const [filter, setFilter] = useState('all');   // 'all' | 'todo' | 'unassigned'
   const [showMore, setShowMore] = useState(false);
   const [selectedRoomIds, setSelectedRoomIds] = useState(new Set());
-  const [roomType, setRoomType] = useState(null); 
+  const [roomType, setRoomType] = useState(null);
   const [activeCleanerIds, setActiveCleanerIds] = useState(new Set(cleaners.map(c => c.id)));
 
   const [panelOpen, setPanelOpen] = useState(false);
@@ -173,20 +179,17 @@ export default function AssignScreen() {
   const [assignmentAttributes, setAssignmentAttributes] = useState({});
   const [earlyCheckIn, setEarlyCheckIn] = useState(false);
   const [lateCheckOut, setLateCheckOut] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [teamOpen, setTeamOpen] = useState(true);
+  const [expandedFloors, setExpandedFloors] = useState({});
 
-  // Pending cleaner chosen for a bulk (multi-room) assignment — not applied until
-  // the manager taps "Confirm" in the selection bar.
   const [bulkCleanerId, setBulkCleanerId] = useState(null);
-
-  // Which "are you sure?" dialog is open: null | 'clearAll' | 'resetBeds'
+  const [bulkPickerOpen, setBulkPickerOpen] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
 
   const colors = useMemo(() => buildCleanerColors(cleaners), [cleaners]);
 
-    // Counted over ALL rooms, before search and type filtering — a count that
-  // changes as you type tells you nothing, and the numbers jumping around
-  // while you narrow is more distracting than useful.
+  // ── Counts (unfiltered) ──────────────────────────────────────
   const counts = useMemo(() => {
     const c = { all: 0, todo: 0, unassigned: 0 };
     rooms.forEach(r => {
@@ -198,12 +201,17 @@ export default function AssignScreen() {
     return c;
   }, [rooms, roomStatus]);
 
-  const FILTERS = useMemo(() => [
-    { key: 'all',        label: t('filterAll')        || 'All',        count: counts.all },
-    { key: 'todo',       label: t('filterToPrepare')  || 'To prepare', count: counts.todo },
-    { key: 'unassigned', label: t('filterUnassigned') || 'Unassigned', count: counts.unassigned },
-  ], [t, counts]);
+  // ── Dirty beds (for glance) ──────────────────────────────────
+  const dirtyBeds = useMemo(() => rooms.reduce((n, r) => {
+    if (r.type !== 'dorm' || (roomStatus[r.id] || {}).commonOnly) return n;
+    const assigns = (roomStatus[r.id] || {}).assignmentBedStatus || {};
+    return n + (r.beds || []).filter(b => {
+      const s = assigns[b.id]?.status || 'noone';
+      return s !== 'noone' && s !== 'stayover';
+    }).length;
+  }, 0), [rooms, roomStatus]);
 
+  // ── Filtered rooms ───────────────────────────────────────────
   const filteredRooms = useMemo(() => {
     let list = rooms;
     if (search.trim()) {
@@ -212,11 +220,11 @@ export default function AssignScreen() {
     }
     if (roomType) list = list.filter(r => r.type === roomType);
     if (filter !== 'all') {
-        list = list.filter(r => {
-          const hasWork = roomNeedsAssignment(r, roomStatus[r.id] || {});
-          return filter === 'todo' ? hasWork : (hasWork && !r.assignedTo);
-        });
-      }
+      list = list.filter(r => {
+        const hasWork = roomNeedsAssignment(r, roomStatus[r.id] || {});
+        return filter === 'todo' ? hasWork : (hasWork && !r.assignedTo);
+      });
+    }
     return list;
   }, [rooms, search, filter, roomType, roomStatus]);
 
@@ -235,14 +243,12 @@ export default function AssignScreen() {
 
   const activeCleaners = cleaners.filter(c => activeCleanerIds.has(c.id));
 
+  // ── Handlers ──────────────────────────────────────────────────
   const toggleBedState = useCallback(async (roomId, bedId) => {
     const status = roomStatus[roomId] || {};
     const assignments = status.assignmentBedStatus || {};
-    // Default to inspected if no assignment exists yet
     const current = assignments[bedId]?.status || 'noone';
-    // Toggle only between 'clean' (To clean) and 'noone' (Inspected)
     const nextStatus = current === 'clean' ? 'noone' : 'clean';
-
     await updateRoomStatus(roomId, {
       assignmentBedStatus: {
         ...assignments,
@@ -292,10 +298,8 @@ export default function AssignScreen() {
     await updateRoomStatus(roomId, { assignmentAttributes: attrs });
   }, [rooms, roomStatus, updateRoomStatus]);
 
-  // FIXED: now also blanks out assignmentAttributes on private rooms. Without
-  // this, a room cleared here could still have leftover checked attributes and
-  // wrongly keep passing the "needs assignment" filter above.
-  const clearAll = () => {
+  // ── Clear all & reset beds ──────────────────────────────────
+  const clearAll = useCallback(() => {
     rooms.forEach(room => {
       unassignRoom(room.id);
       if (room.type === 'private') {
@@ -306,7 +310,7 @@ export default function AssignScreen() {
         updateRoomStatus(room.id, { assignmentAttributes: attrs });
       }
     });
-  };
+  }, [rooms, unassignRoom, updateRoomStatus]);
 
   const resetBedStates = useCallback(async () => {
     const updates = [];
@@ -314,40 +318,30 @@ export default function AssignScreen() {
       if (room.type === 'dorm' && room.beds?.length) {
         const defaultAssignments = {};
         room.beds.forEach(bed => {
-          // Default state = Inspected (noone)
           defaultAssignments[bed.id] = { status: 'noone', reason: 'noone' };
         });
-
-        updates.push(
-          updateRoomStatus(room.id, { assignmentBedStatus: defaultAssignments })
-        );
+        updates.push(updateRoomStatus(room.id, { assignmentBedStatus: defaultAssignments }));
       }
-
       if (room.type === 'private') {
         const attrs = {};
         Object.keys(room.attributes || {}).forEach(key => {
           if (room.attributes[key]) attrs[key] = false;
         });
-
-        updates.push(
-          updateRoomStatus(room.id, { assignmentAttributes: attrs })
-        );
+        updates.push(updateRoomStatus(room.id, { assignmentAttributes: attrs }));
       }
     });
-
     await Promise.all(updates);
   }, [rooms, updateRoomStatus]);
 
-  const handleExportSheets = () => {
+  // ── Export sheets (memoized) ─────────────────────────────────
+  const handleExportSheets = useCallback(() => {
     const orphaned = rooms.filter(r =>
       !r.assignedTo && roomNeedsAssignment(r, roomStatus[r.id] || {})
     );
-
     if (orphaned.length) {
       const names = orphaned.map(r => r.name).join(', ');
       const msg = `${names}\n\n` + (t('unassignedWarningMsg')
         || "These won't appear on any sheet. Assign them first, or print anyway.");
-
       const proceed = window.confirm(msg + '\n\nPrint anyway?');
       if (!proceed) return;
     }
@@ -367,20 +361,10 @@ export default function AssignScreen() {
       if (!cleaner) return;
       const assigned = rooms.filter(r => r.assignedTo === cleanerId).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-      // Build plain values first; we'll style cell-by-cell afterwards.
       const aoa = [];
       aoa.push([`${cleaner.username} – ${dateStr}`]);
       aoa.push(COLS);
-
-      // Track per-row metadata needed for styling/row-height (kept in the
-      // same order as aoa data rows).
       const rowMeta = [];
-      // FIXED: this is now the single source of truth for "which rooms ended
-      // up on the sheet". Every downstream row-index calculation (dataEndRow,
-      // blank rows, signature row, the per-row styling pass) reads from THIS
-      // array's length — never from `assigned` — which is what keeps rowMeta
-      // and the printed rows in sync once rooms with nothing to clean are
-      // skipped below.
       const printedRooms = [];
 
       assigned.forEach(room => {
@@ -394,8 +378,6 @@ export default function AssignScreen() {
           bedsText = 'Common areas only';
         } else if (room.type === 'dorm' && room.beds?.length) {
           const assign = status.assignmentBedStatus || {};
-          // 'noone' (inspected) and 'stayover' both mean nothing to clean —
-          // both are left off the printed sheet entirely, not just labelled.
           const lines = room.beds
             .filter(b => {
               const s = assign[b.id]?.status || 'noone';
@@ -403,10 +385,7 @@ export default function AssignScreen() {
             })
             .map(b => {
               const bedState = assign[b.id]?.status || 'clean';
-              // "To clean" is the default expected action, so just the bed
-              // name is enough; anything else (late, early) gets its state
-              // spelled out right next to the bed.
-              return bedState === 'clean' ? b.name : `${b.name} — ${BED_STATE_LABELS[bedState]}`;
+              return bedState === 'clean' ? b.name : `${b.name} — ${BED_BY_KEY[bedState].label}`;
             });
           bedsText = lines.join('\n');
           hasActionableWork = lines.length > 0;
@@ -416,16 +395,12 @@ export default function AssignScreen() {
           hasActionableWork = selected.length > 0;
         }
 
-        // Safety net: if there's nothing to clean here and it isn't a
-        // common-only room, leave the room off this cleaner's sheet entirely
-        // rather than printing an empty/confusing row.
         if (!isCommonOnly && !hasActionableWork) return;
 
         const flagParts = [];
         if (status.earlyCheckIn) flagParts.push('Early check-in');
         if (status.lateCheckOut) flagParts.push('Late check-out');
         const flagsText = flagParts.join('\n');
-
         const notesText = status.managerNotes || '';
 
         aoa.push([room.name, bedsText, flagsText, notesText, '']);
@@ -441,17 +416,14 @@ export default function AssignScreen() {
         printedRooms.push(room);
       });
 
-      // A cleaner whose entire shift turned out to be stayovers/inspected
-      // beds gets no sheet at all, rather than an empty one.
       if (printedRooms.length === 0) return;
 
-      const dataStartRow = 2; // 0-indexed: row 0 = title, row 1 = header
+      const dataStartRow = 2;
       const dataEndRow = dataStartRow + printedRooms.length - 1;
 
       for (let i = 0; i < EXTRA_BLANK_ROWS; i++) aoa.push(['', '', '', '', '']);
       const blankStartRow = dataEndRow + 1;
       const blankEndRow = blankStartRow + EXTRA_BLANK_ROWS - 1;
-
       const signatureRow = blankEndRow + 1;
       aoa.push(['Signature:', '', '', 'End Time:', '']);
 
@@ -462,7 +434,7 @@ export default function AssignScreen() {
       ];
       ws['!cols'] = [{ wch: 12 }, { wch: 32 }, { wch: 16 }, { wch: 32 }, { wch: 9 }];
 
-      // ── Title row ──
+      // Title row
       for (let c = 0; c < COL_COUNT; c++) {
         const addr = XLSX.utils.encode_cell({ r: 0, c });
         if (!ws[addr]) ws[addr] = { t: 's', v: '' };
@@ -471,14 +443,13 @@ export default function AssignScreen() {
       ws['!rows'] = ws['!rows'] || [];
       ws['!rows'][0] = { hpt: 24 };
 
-      // ── Header row ──
+      // Header row
       for (let c = 0; c < COL_COUNT; c++) {
         const addr = XLSX.utils.encode_cell({ r: 1, c });
         ws[addr].s = xlsStyles.header;
       }
       ws['!rows'][1] = { hpt: 20 };
 
-      // ── Data rows ── (iterate printedRooms, NOT the original `assigned`)
       printedRooms.forEach((room, i) => {
         const r = dataStartRow + i;
         const meta = rowMeta[i];
@@ -495,8 +466,6 @@ export default function AssignScreen() {
         ws['!rows'][r] = { hpt: Math.max(18, meta.lineCount * 14) };
       });
 
-      // ── Blank spacer rows (still gridded, so managers/cleaners can jot
-      //     down extra notes by hand if needed) ──
       for (let r = blankStartRow; r <= blankEndRow; r++) {
         for (let c = 0; c < COL_COUNT; c++) {
           const addr = XLSX.utils.encode_cell({ r, c });
@@ -505,7 +474,6 @@ export default function AssignScreen() {
         }
       }
 
-      // ── Signature / end-time row ──
       {
         const addrSigLabel = XLSX.utils.encode_cell({ r: signatureRow, c: 0 });
         const addrSigLine = XLSX.utils.encode_cell({ r: signatureRow, c: 1 });
@@ -520,7 +488,6 @@ export default function AssignScreen() {
         ws['!rows'][signatureRow] = { hpt: 26 };
       }
 
-      // ── Print setup: one page wide, landscape, small margins ──
       ws['!pageSetup'] = { orientation: 'landscape', fitToWidth: 1, fitToHeight: 0, scale: 95 };
       ws['!margins'] = { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 };
 
@@ -531,27 +498,32 @@ export default function AssignScreen() {
       XLSX.utils.book_append_sheet(wb, ws, unique);
     });
     XLSX.writeFile(wb, `assignment_sheets_${new Date().toISOString().slice(0, 10)}.xlsx`);
-  };
+  }, [cleaners, rooms, roomStatus, t]);
 
+  // ── Register header actions ──────────────────────────────────
+  useEffect(() => {
+    if (!onReady) return;
+    onReady({
+      print: handleExportSheets,
+      clearAll: () => setConfirmDialog('clearAll'),
+    });
+  }, [onReady, handleExportSheets]);
 
+  // ── Panel handlers ───────────────────────────────────────────
   const openDetail = (room) => {
     const currentCleaner = cleaners.find(c => c.id === room.assignedTo);
     setSelectedRoom(room);
-    setSelectedCleaner(currentCleaner || null);   // unassigned → null
+    setSelectedCleaner(currentCleaner || null);
     const existing = roomStatus[room.id] || {};
     const beds = {};
     if (room.type === 'dorm' && room.beds) {
-        room.beds.forEach(b => {
+      room.beds.forEach(b => {
         beds[b.id] = (existing.assignmentBedStatus || {})[b.id] || { status: 'noone', reason: 'noone' };
-        });
+      });
     }
     setBedAssignments(beds);
     setCommonOnly(existing.commonOnly || false);
 
-    // Reconcile with the room's CURRENT attribute configuration (Rooms/Setup is the
-    // source of truth for which attributes apply to this room). We only reuse a
-    // true/false choice from a previous assignment for attributes that still exist
-    // on the room today; anything new or changed since then defaults to selected.
     const roomOwnAttrs = room.attributes
       ? Object.keys(room.attributes).filter(k => room.attributes[k])
       : [];
@@ -563,18 +535,17 @@ export default function AssignScreen() {
         : true;
     });
     setAssignmentAttributes(reconciledAttrs);
-
     setEarlyCheckIn(existing.earlyCheckIn || false);
     setLateCheckOut(existing.lateCheckOut || false);
     setManagerNotes(existing.managerNotes || '');
     setPanelOpen(true);
-    };
+  };
 
-    const closePanel = () => {
+  const closePanel = () => {
     setPanelOpen(false);
     setSelectedRoom(null);
     setSelectedCleaner(null);
-    };
+  };
 
   const handleAssignFromPanel = async () => {
     if (!selectedRoom || !selectedCleaner) return;
@@ -588,12 +559,6 @@ export default function AssignScreen() {
     closePanel();
   };
 
-  // Lets the manager save the bed/attribute state for a room WITHOUT assigning
-  // it to a cleaner yet — useful for prepping several rooms' bed states first
-  // and deciding who cleans what afterwards.
-  // Safety net: if a cleaner IS already selected (e.g. the manager picked one
-  // and then tapped this button by mistake, expecting it to assign), treat it
-  // as a real assign instead of silently leaving the room unassigned.
   const handleSaveStateFromPanel = async () => {
     if (!selectedRoom) return;
     if (selectedCleaner) {
@@ -617,17 +582,30 @@ export default function AssignScreen() {
     closePanel();
   };
 
+  // ── Bulk bar handlers ────────────────────────────────────────
+  const bulkSetBeds = useCallback(async (state) => {
+    const updates = [];
+    selectedRoomIds.forEach(id => {
+      const room = rooms.find(r => r.id === id);
+      if (!room || room.type !== 'dorm' || !room.beds?.length) return;
+      const next = {};
+      room.beds.forEach(b => { next[b.id] = { status: state, reason: state }; });
+      updates.push(updateRoomStatus(id, { assignmentBedStatus: next }));
+    });
+    await Promise.all(updates);
+  }, [selectedRoomIds, rooms, updateRoomStatus]);
+
+  const bulkToggleCommon = useCallback(async () => {
+    const ids = Array.from(selectedRoomIds);
+    const turnOn = ids.some(id => !(roomStatus[id] || {}).commonOnly);
+    await Promise.all(ids.map(id => updateRoomStatus(id, { commonOnly: turnOn })));
+  }, [selectedRoomIds, roomStatus, updateRoomStatus]);
+
   const selectedRoomsList = useMemo(
     () => rooms.filter(r => selectedRoomIds.has(r.id)),
     [rooms, selectedRoomIds]
   );
 
-  if (!rooms.length) return <EmptyState icon="📋" title={t('noRoomsToAssign')} subtitle={t('addRoomsFirst')} />;
-  if (!cleaners.length) return <EmptyState icon="👤" title={t('noCleaners')} subtitle={t('addCleanersFirst')} />;
-
-  // If every currently-selected room already happens to be assigned to the
-  // same cleaner (e.g. the manager assigned them one-by-one via the side
-  // panel), pre-fill that as the bulk cleaner so Confirm works right away.
   const autoDetectedCleanerId = (() => {
     if (!selectedRoomsList.length) return null;
     const assignedIds = selectedRoomsList.map(r => r.assignedTo).filter(Boolean);
@@ -637,176 +615,96 @@ export default function AssignScreen() {
   const displayCleanerId = bulkCleanerId || autoDetectedCleanerId;
   const displayCleaner = cleaners.find(c => c.id === displayCleanerId) || null;
 
-  const handleConfirmBulkAssign = async () => {
-    if (!displayCleanerId) return;
-    await bulkAssign(displayCleanerId);
-  };
-
   const handleClearSelection = () => {
     setSelectedRoomIds(new Set());
     setBulkCleanerId(null);
   };
 
+  const toggleFloor = (floorId) => {
+    setExpandedFloors(prev => ({ ...prev, [floorId]: !prev[floorId] }));
+  };
+
+  if (!rooms.length) return <EmptyState icon="📋" title={t('noRoomsToAssign')} subtitle={t('addRoomsFirst')} />;
+  if (!cleaners.length) return <EmptyState icon="👤" title={t('noCleaners')} subtitle={t('addCleanersFirst')} />;
+
   return (
     <View style={styles.container}>
-      {/* Toolbar */}
-        <View style={styles.toolbar}>
-        {/* Row 1 — identity and actions */}
-        <View style={styles.toolbarRow}>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.pageTitle}>{t('assignments')}</Text>
-            <Text style={styles.subtitle}>{t('tapToAssign')}</Text>
-          </View>
-
-          <View style={styles.searchBar}>
-            <Icon name="search" size={19} color={COLORS.textMuted} />
-            <TextInput
-              value={search}
-              onChangeText={setSearch}
-              placeholder={t('search')}
-              placeholderTextColor={COLORS.textMuted}
-              style={styles.searchInput}
-            />
-            {search.length > 0 && (
-              <TouchableOpacity onPress={() => setSearch('')} style={{ padding: 2 }}>
-                <Icon name="cancel" size={18} color={COLORS.textMuted} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <TouchableOpacity onPress={handleExportSheets} style={styles.primaryBtn} activeOpacity={0.85}>
-            <Icon name="print" size={19} color={COLORS.accent} />
-            <Text style={styles.primaryBtnText}>{t('printSheets') || 'Print'}</Text>
-          </TouchableOpacity>
-
-          <View style={{ position: 'relative' }}>
-            <TouchableOpacity
-              onPress={() => setShowMore(true)}   // always open
-              style={styles.iconBtn}
-              activeOpacity={0.7}
-              accessibilityLabel={t('bulkActions') || 'More actions'}
-            >
-              <Icon name="more_horiz" size={20} color={COLORS.textTertiary} />
-            </TouchableOpacity>
-          </View>
+      {/* ── Filter bar ── */}
+      <View style={styles.filterBar}>
+        <View style={styles.search}>
+          <Icon name="search" size={19} color={NEUTRAL.text3} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search a room…"
+            placeholderTextColor={NEUTRAL.text4}
+            style={styles.searchInput}
+          />
         </View>
 
-        {/* Row 2 — filtering */}
-        <View style={styles.toolbarRow}>
-          <View style={styles.segment}>
-            {FILTERS.map(f => {
-              const active = filter === f.key;
-              return (
-                <TouchableOpacity
-                  key={f.key}
-                  onPress={() => setFilter(f.key)}
-                  style={[styles.segmentItem, active && styles.segmentItemActive]}
-                  activeOpacity={0.8}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: active }}
-                >
-                  <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
-                    {f.label}
-                  </Text>
-                  <View style={[styles.segmentCount, active && styles.segmentCountActive]}>
-                    <Text style={[styles.segmentCountText, active && styles.segmentCountTextActive]}>
-                      {f.count}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <TouchableOpacity
-            onPress={() => setRoomType(v => (v === 'private' ? null : 'private'))}
-            style={[styles.typeBtn, roomType === 'private' && styles.typeBtnActive]}
-            activeOpacity={0.7}
-          >
-            <Icon
-              name="single_bed"
-              size={18}
-              color={roomType === 'private' ? COLORS.primary : COLORS.textTertiary}
-            />
-            <Text style={[styles.typeBtnText, roomType === 'private' && styles.typeBtnTextActive]}>
-              {t('private')}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setRoomType(v => (v === 'dorm' ? null : 'dorm'))}
-            style={[styles.typeBtn, roomType === 'dorm' && styles.typeBtnActive]}
-            activeOpacity={0.7}
-          >
-            <BunkBedIcon
-              size={18}
-              color={roomType === 'dorm' ? COLORS.primary : COLORS.textTertiary}
-            />
-            <Text style={[styles.typeBtnText, roomType === 'dorm' && styles.typeBtnTextActive]}>
-              {t('dormitory')}
-            </Text>
-          </TouchableOpacity>
-
-          <View style={{ flex: 1 }} />
-
-          <Text style={styles.resultCount}>
-            {filteredRooms.length} {t('rooms')}
-          </Text>
-        </View>
-      </View>
-
-      {/* Main content */}
-      <View style={styles.body}>
-        <View style={styles.roomAreaWrapper}>
-          {/* Persistent selection bar – improved design */}
-          {selectedRoomIds.size > 0 && (
-            <View style={styles.selectionBar}>
-              <View style={styles.selectionBarInner}>
-                <View style={styles.selectionLeft}>
-                  <Icon name="checkbox-outline" size={18} color={COLORS.primary} style={{ marginRight: SPACING[2] }} />
-                  <Text style={styles.selectionBarTitle}>
-                    {t('selectedRooms', { count: selectedRoomIds.size }) || `${selectedRoomIds.size} room${selectedRoomIds.size > 1 ? 's' : ''} selected`}
+        <View style={styles.segment}>
+          {[
+            { key: 'all',        label: t('filterAll')       || 'All',        count: counts.all },
+            { key: 'todo',       label: t('filterToPrepare') || 'To prepare', count: counts.todo },
+            { key: 'unassigned', label: t('filterUnassigned')|| 'Unassigned', count: counts.unassigned },
+          ].map(f => {
+            const active = filter === f.key;
+            return (
+              <TouchableOpacity
+                key={f.key}
+                onPress={() => setFilter(f.key)}
+                style={[styles.segmentItem, active && styles.segmentItemActive]}
+                activeOpacity={0.8}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+              >
+                <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
+                  {f.label}
+                </Text>
+                <View style={[styles.segmentCount, active && styles.segmentCountActive]}>
+                  <Text style={[styles.segmentCountText, active && styles.segmentCountTextActive]}>
+                    {f.count}
                   </Text>
                 </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectionScroll}>
-                  {selectedRoomsList.map(room => {
-                    const roomCleaner = cleaners.find(c => c.id === room.assignedTo);
-                    return (
-                      <TouchableOpacity key={room.id} style={styles.selectionChip} onPress={() => toggleRoomSelection(room.id)}>
-                        <Text style={styles.selectionChipText}>
-                          {room.name}{roomCleaner ? ` · ${roomCleaner.username}` : ''}
-                        </Text>
-                        <Icon name="close" size={12} color={COLORS.primary} style={{ marginLeft: 4 }} />
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-                {displayCleaner && (
-                  <View style={styles.pendingCleanerTag}>
-                    <View style={[styles.cleanerDot, { backgroundColor: colors[displayCleaner.id] }]} />
-                    <Text style={styles.pendingCleanerText}>
-                      {(t('assigningTo') || 'Assigning to') + ': ' + displayCleaner.username}
-                    </Text>
-                  </View>
-                )}
-                <TouchableOpacity
-                  style={[styles.confirmSelectionBtn, !displayCleanerId && styles.confirmSelectionBtnDisabled]}
-                  onPress={handleConfirmBulkAssign}
-                  disabled={!displayCleanerId}
-                  activeOpacity={0.7}
-                >
-                  {/* <Icon name="checkmark-circle-outline" size={16} color={displayCleanerId ? COLORS.white : COLORS.textMuted} /> */}
-                  <Text style={[styles.confirmSelectionText, !displayCleanerId && { color: COLORS.textMuted }]}>
-                    {t('confirm') || 'Confirm'}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.clearSelectionBtn} onPress={handleClearSelection}>
-                  <Text style={styles.clearSelectionText}>{t('clearSelection') || 'Clear'}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
+        <TouchableOpacity
+          onPress={() => setRoomType(v => (v === 'private' ? null : 'private'))}
+          style={[styles.typeBtn, roomType === 'private' && styles.typeBtnOn]}
+          activeOpacity={0.8}
+        >
+          <Icon name="king_bed" size={18} color={roomType === 'private' ? BRAND.navy : NEUTRAL.text3} />
+          <Text style={[styles.typeBtnText, roomType === 'private' && { color: BRAND.navy }]}>
+            {t('private')}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setRoomType(v => (v === 'dorm' ? null : 'dorm'))}
+          style={[styles.typeBtn, roomType === 'dorm' && styles.typeBtnOn]}
+          activeOpacity={0.8}
+        >
+          <BunkBedIcon size={18} color={roomType === 'dorm' ? BRAND.navy : NEUTRAL.text3} />
+          <Text style={[styles.typeBtnText, roomType === 'dorm' && { color: BRAND.navy }]}>
+            {t('dormitory')}
+          </Text>
+        </TouchableOpacity>
+
+        <View style={{ flex: 1 }} />
+
+        <Text style={styles.resultCount}>{filteredRooms.length} {t('rooms')}</Text>
+
+        <TouchableOpacity onPress={() => setShowMore(true)} style={styles.moreBtn} activeOpacity={0.7}>
+          <Icon name="more_horiz" size={20} color={NEUTRAL.text3} />
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Main content ── */}
+      <View style={styles.body}>
+        <View style={styles.roomAreaWrapper}>
           <ScrollView style={styles.roomArea} contentContainerStyle={styles.roomAreaContent}>
             {filteredRooms.length === 0 && (search.trim() !== '' || filter !== 'all' || roomType) && (
               <EmptyState icon="🔍" title={t('noResults')} subtitle="" />
@@ -814,179 +712,202 @@ export default function AssignScreen() {
             {sortedFloors.map(floor => {
               const floorRooms = filteredRooms.filter(r => r.floorId === floor.id);
               if (!floorRooms.length) return null;
+              const isFloorExpanded = expandedFloors[floor.id] !== false;
               return (
-                <View key={floor.id} style={{ marginBottom: SPACING[8] }}>
-                  <FloorHeader label={floor.name} />
-                  <View style={styles.roomGrid}>
-                    {floorRooms.map(room => {
-                      const currentCleaner = cleaners.find(c => c.id === room.assignedTo);
-                      const isSelected = selectedRoomIds.has(room.id);
-                      const status = roomStatus[room.id] || {};
-                      const bedAssigns = status.assignmentBedStatus || {};
-                      const beds = room.beds || [];
-                      const cardColor = currentCleaner
-                        ? colors[currentCleaner.id]
-                        : COLORS.border;
-                      const isFrozen = status.commonOnly;
+                <View key={floor.id} style={{ marginBottom: SPACING[6] }}>
+                  <TouchableOpacity
+                    onPress={() => toggleFloor(floor.id)}
+                    style={styles.floorRowHead}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.floorBar} />
+                    <Text style={styles.floorName}>{floor.name}</Text>
+                    <Text style={styles.floorMeta}>
+                      {floorRooms.length} {floorRooms.length !== 1 ? 'rooms' : 'room'}
+                    </Text>
+                    <View style={{ flex: 1 }} />
+                    <Icon
+                      name={isFloorExpanded ? 'expand_less' : 'expand_more'}
+                      size={22}
+                      color={NEUTRAL.text3}
+                    />
+                  </TouchableOpacity>
 
-                      return (
-                        <View
-                          key={room.id}
-                          style={[
-                            styles.roomCard,
-                            isSelected && styles.roomCardSelected,
-                            currentCleaner && { borderLeftWidth: 4, borderLeftColor: cardColor },
-                            isNarrow && { width: '100%' },
-                          ]}
-                        >
-                          {/* Top row: name, more button, selection checkbox */}
-                          <View style={styles.cardTopRow}>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.roomName}>{room.name}</Text>
-                              <View style={{ flexDirection: 'row', gap: SPACING[2], marginTop: 4 }}>
-                                <View style={styles.typePill}>
-                                  <Text style={styles.typePillText}>
-                                    {room.type === 'dorm'
-                                      ? `${t('dormitory')} · ${beds.length} ${t('beds')}`
-                                      : t('private')}
-                                  </Text>
-                                </View>
-                              </View>
-                            </View>
-                            <View style={styles.cardTopActions}>
-                              <TouchableOpacity style={styles.iconBtn} onPress={() => openDetail(room)} activeOpacity={0.7}>
-                                <Icon name="create-outline" size={18} color={COLORS.textSecondary} />
-                              </TouchableOpacity>
-                              {!currentCleaner && (
+                  {isFloorExpanded && (
+                    <View style={styles.roomGrid}>
+                      {floorRooms.map(room => {
+                        const status = roomStatus[room.id] || {};
+                        const isSelected = selectedRoomIds.has(room.id);
+                        const currentCleaner = cleaners.find(c => c.id === room.assignedTo);
+                        const beds = room.beds || [];
+                        const isFrozen = status.commonOnly;
+                        const cardColor = currentCleaner ? colors[currentCleaner.id] : '#CBD5E1';
+                        const accent = accentFor(room, status);
+
+                        return (
+                          <View key={room.id} style={styles.roomCard}>
+                            {/* <View style={[styles.cardAccent, { backgroundColor: accent }]} /> */}
+                            {isSelected && <View style={styles.cardSelected} pointerEvents="none" />}
+
+                            <View style={styles.cardHead}>
+                              <View style={styles.cardHeadLeft}>
                                 <TouchableOpacity
                                   onPress={() => toggleRoomSelection(room.id)}
-                                  style={styles.selectCheckbox}
+                                  style={[styles.checkbox, isSelected && styles.checkboxOn]}
+                                  activeOpacity={0.7}
+                                  accessibilityLabel="Select room"
                                 >
-                                  <View style={[styles.checkbox, isSelected && styles.checkboxActive]}>
-                                    {isSelected && <Icon name="checkmark" size={16} color={COLORS.white} />}
-                                  </View>
+                                  {isSelected && <Icon name="check" size={15} color="#FFFFFF" />}
                                 </TouchableOpacity>
-                              )}
+                                <Text style={styles.roomNumber}>{room.name}</Text>
+                                <View style={[styles.typePill, {
+                                  backgroundColor: room.type === 'dorm' ? NEUTRAL.beigePill : NEUTRAL.slateChip,
+                                }]}>
+                                  <Text style={[styles.typePillText, {
+                                    color: room.type === 'dorm' ? '#7C4A15' : NEUTRAL.text2,
+                                  }]}>
+                                    {room.type === 'dorm' ? 'Dorm' : 'Private'}
+                                  </Text>
+                                </View>
+                                <Text style={styles.bedsLabel} numberOfLines={1}>
+                                  {room.type === 'dorm' ? `${beds.length} ${t('beds')}` : ''}
+                                </Text>
+                              </View>
+                              <View style={styles.cardHeadRight}>
+                                {!!status.managerNotes && (
+                                  <Icon name="sticky_note_2" size={19} color={BRAND.yellow} />
+                                )}
+                                <TouchableOpacity onPress={() => openDetail(room)} style={styles.editBtn} activeOpacity={0.7}>
+                                  <Icon name="edit" size={19} color={NEUTRAL.text3} />
+                                </TouchableOpacity>
+                              </View>
                             </View>
-                          </View>
 
-                          {/* Bed toggles (dorm only) – frozen when commonOnly */}
-                          {room.type === 'dorm' && beds.length > 0 && (
-                            <View style={styles.bedList}>
-                              {beds.map(bed => {
-                                const state = bedAssigns[bed.id]?.status || 'noone';
-                                const st = BED_STATES.find(s => s.key === state) || BED_STATES[0];
-                                return (
-                                  <TouchableOpacity
-                                    key={bed.id}
-                                    style={[
-                                      styles.bedChip,
-                                      { backgroundColor: st.bg, borderColor: st.border },
-                                      isFrozen && styles.bedChipFrozen,
-                                    ]}
-                                    onPress={() => toggleBedState(room.id, bed.id)}
-                                    disabled={isFrozen}
-                                    activeOpacity={isFrozen ? 1 : 0.7}
-                                  >
-                                    <Text
-                                      style={[styles.bedChipName, { color: isFrozen ? COLORS.textMuted : st.color }]}
-                                      numberOfLines={1}
-                                      ellipsizeMode="tail"
-                                    >
-                                      {bed.name}
-                                    </Text>
-                                    <Text
-                                      style={[styles.bedChipState, { color: isFrozen ? COLORS.textMuted : st.color }]}
-                                      numberOfLines={1}
-                                      ellipsizeMode="tail"
-                                    >
-                                      {t('bedState_' + state)}
-                                    </Text>
-                                  </TouchableOpacity>
-                                );
-                              })}
-                            </View>
-                          )}
+                            {(status.earlyCheckIn || status.lateCheckOut) && (
+                              <View style={styles.flagRow}>
+                                {status.earlyCheckIn && (
+                                  <View style={[styles.flag, { backgroundColor: STATUS.early.bg, borderColor: STATUS.early.border }]}>
+                                    <Icon name="login" size={15} color={STATUS.early.text} />
+                                    <Text style={[styles.flagText, { color: STATUS.early.text }]}>Early c/in</Text>
+                                  </View>
+                                )}
+                                {status.lateCheckOut && (
+                                  <View style={[styles.flag, { backgroundColor: STATUS.late.bg, borderColor: STATUS.late.border }]}>
+                                    <Icon name="hourglass_top" size={15} color={STATUS.late.text} />
+                                    <Text style={[styles.flagText, { color: STATUS.late.text }]}>Late c/out</Text>
+                                  </View>
+                                )}
+                              </View>
+                            )}
 
-                          {/* Private room attributes – clickable toggles (ONLY the ones
-                              actually configured for THIS room in Setup → Rooms) */}
-                          {room.type === 'private' && (() => {
-                            const roomOwnAttrs = room.attributes
-                              ? Object.keys(room.attributes).filter(a => room.attributes[a])
-                              : [];
-                            if (roomOwnAttrs.length === 0) return null;
-                            const activeAttrs = new Set(effectiveAttributes(room, status));
-                            return (
-                              <View style={styles.attributeList}>
-                                {roomOwnAttrs.map(attr => {
-                                  const isActive = activeAttrs.has(attr);
+                            {room.type === 'dorm' && beds.length > 0 && !isFrozen && (
+                              <View style={styles.bedGrid}>
+                                {beds.map(bed => {
+                                  const assigns = status.assignmentBedStatus || {};
+                                  const st = BED_BY_KEY[assigns[bed.id]?.status || 'noone'];
                                   return (
                                     <TouchableOpacity
-                                      key={attr}
-                                      style={[styles.attrChip, isActive && styles.attrChipActive]}
-                                      onPress={() => toggleRoomAttribute(room.id, attr)}
-                                      disabled={isFrozen}
+                                      key={bed.id}
+                                      onPress={() => toggleBedState(room.id, bed.id)}
+                                      style={[styles.bedChip, { backgroundColor: st.bg, borderColor: st.border }]}
                                       activeOpacity={0.7}
                                     >
-                                      <Icon
-                                        name={isActive ? 'checkmark-circle' : 'ellipse-outline'}
-                                        size={14}
-                                        color={isActive ? COLORS.primary : (isFrozen ? COLORS.textMuted : COLORS.textSecondary)}
-                                        style={{ marginRight: 4 }}
-                                      />
-                                      <Text style={[styles.attrChipText, isActive && { color: COLORS.primary }, isFrozen && { color: COLORS.textMuted }]}>
-                                        {attr}
+                                      <Text style={[styles.bedLetter, { color: st.text }]}>{bed.name}</Text>
+                                      <Icon name={st.icon} size={16} color={st.text} />
+                                      <Text style={[styles.bedLabel, { color: st.text }]} numberOfLines={1}>
+                                        {st.short}
                                       </Text>
                                     </TouchableOpacity>
                                   );
                                 })}
                               </View>
-                            );
-                          })()}
+                            )}
 
-                          {/* Common areas checkbox – always active */}
-                          <View style={styles.commonRow}>
+                            {room.type === 'private' && !isFrozen && (() => {
+                              const own = room.attributes
+                                ? Object.keys(room.attributes).filter(a => room.attributes[a]) : [];
+                              if (!own.length) return null;
+                              const active = new Set(effectiveAttributes(room, status));
+                              return (
+                                <View style={styles.attrRow}>
+                                  {own.map(attr => {
+                                    const on = active.has(attr);
+                                    return (
+                                      <TouchableOpacity
+                                        key={attr}
+                                        onPress={() => toggleRoomAttribute(room.id, attr)}
+                                        disabled={isFrozen}
+                                        style={[styles.attrChip, on && {
+                                          backgroundColor: STATUS.dirty.bg, borderColor: STATUS.dirty.border,
+                                        }]}
+                                        activeOpacity={0.7}
+                                      >
+                                        <Icon
+                                          name={on ? 'check_circle' : 'radio_button_unchecked'}
+                                          size={16}
+                                          color={on ? STATUS.dirty.text : NEUTRAL.text4}
+                                        />
+                                        <Text style={[styles.attrChipText, on && { color: STATUS.dirty.text }]}>
+                                          {attr}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    );
+                                  })}
+                                </View>
+                              );
+                            })()}
+
+                            {/* ── Common areas only – now shown for ALL rooms ── */}
                             <TouchableOpacity
-                              style={styles.commonCheckRow}
                               onPress={() => toggleCommonOnly(room.id)}
+                              style={styles.commonToggle}
                               activeOpacity={0.7}
                             >
-                              <View style={[styles.checkbox, status.commonOnly && styles.checkboxActive]}>
-                                {status.commonOnly && <Icon name="checkmark" size={16} color={COLORS.white} />}
+                              <View style={[styles.checkboxSm, isFrozen && styles.checkboxOn]}>
+                                {isFrozen && <Icon name="check" size={14} color="#FFFFFF" />}
                               </View>
-                              <Text style={styles.commonLabel}>{t('commonOnly')}</Text>
+                              <Text style={styles.commonToggleText}>Clean common areas only</Text>
                             </TouchableOpacity>
-                          </View>
 
-                          {/* Assigned cleaner + actions */}
-                          <View style={styles.cardBottom}>
-                            <View style={styles.cleanerInfo}>
-                              {currentCleaner ? (
-                                <View style={styles.cleanerRow}>
-                                  <View style={[styles.cleanerDot, { backgroundColor: cardColor }]} />
-                                  <Text style={styles.cleanerNameSmall}>{currentCleaner.username}</Text>
-                                </View>
-                              ) : (
-                                <Text style={styles.unassigned}>—</Text>
-                              )}
-                            </View>
-                            <View style={styles.cardActions}>
-                              {currentCleaner && (
-                                <TouchableOpacity
-                                  style={[styles.cardBtn, { borderColor: COLORS.danger }]}
-                                  onPress={() => handleUnassign(room.id)}
-                                  activeOpacity={0.7}
+                            <View style={styles.cardFoot}>
+                              <View style={styles.hkCell}>
+                                <View style={[styles.hkDot, {
+                                  backgroundColor: currentCleaner ? cardColor : '#CBD5E1',
+                                }]} />
+                                <Text
+                                  style={[styles.hkName, !currentCleaner && { color: NEUTRAL.text4 }]}
+                                  numberOfLines={1}
                                 >
-                                  <Icon name="close" size={15} color={COLORS.danger} />
-                                  <Text style={[styles.cardBtnText, { color: COLORS.danger }]}>{t('unassign')}</Text>
+                                  {currentCleaner ? currentCleaner.username : 'Unassigned'}
+                                </Text>
+                              </View>
+                              <View style={styles.footBtns}>
+                                {currentCleaner && (
+                                  <TouchableOpacity
+                                    onPress={() => handleUnassign(room.id)}
+                                    style={styles.unassignBtn}
+                                    activeOpacity={0.8}
+                                  >
+                                    <Text style={styles.unassignText}>{t('unassign')}</Text>
+                                  </TouchableOpacity>
+                                )}
+                                <TouchableOpacity
+                                  onPress={() => openDetail(room)}
+                                  style={styles.assignBtn}
+                                  activeOpacity={0.8}
+                                >
+                                  <Icon name="person_add" size={17} color={BRAND.navy} />
+                                  <Text style={styles.assignText}>
+                                    {currentCleaner ? 'Reassign' : t('assign')}
+                                  </Text>
                                 </TouchableOpacity>
-                              )}
+                              </View>
                             </View>
                           </View>
-                        </View>
-                      );
-                    })}
-                  </View>
+                        );
+                      })}
+                    </View>
+                  )}
                 </View>
               );
             })}
@@ -994,736 +915,1071 @@ export default function AssignScreen() {
           </ScrollView>
         </View>
 
-        {/* Collapsed rail — reopens the sidebar */}
-        {!isNarrow && selectedRoomIds.size === 0 && !sidebarOpen && (
-          <TouchableOpacity
-            style={styles.sidebarRail}
-            onPress={() => setSidebarOpen(true)}
-            activeOpacity={0.7}
-          >
-            <Icon name="chevron-left" size={18} color={COLORS.textMuted} />
-            <Icon name="people-outline" size={20} color={COLORS.textSecondary} style={{ marginTop: SPACING[3] }} />
-          </TouchableOpacity>
-        )}
-        {!isNarrow && (selectedRoomIds.size > 0 || sidebarOpen) && (
-        <View style={styles.sidebar}>
-          {selectedRoomIds.size > 0 ? (
-            <View style={[styles.bulkSection, { borderBottomWidth: 0, marginBottom: 0, flex: 1 }]}>
-              <Text style={styles.bulkLabel}>{t('assignSelected', { count: selectedRoomIds.size }) || `Assign ${selectedRoomIds.size} rooms`}</Text>
-              <Text style={styles.bulkHint}>
-                {t('bulkPickHint') || 'Pick a cleaner, then hit Confirm in the bar above.'}
-              </Text>
-              <ScrollView style={styles.bulkCleanerScroll} nestedScrollEnabled>
-                <View style={styles.bulkCleanerCard}>
-                  {[...activeCleaners]
-                    .sort((a, b) => a.username.localeCompare(b.username))
-                    .map((cleaner, i, arr) => {
-                      const isPicked = displayCleanerId === cleaner.id;
-                      const color = colors[cleaner.id];
-                      const isLast = i === arr.length - 1;
-                      return (
+        {/* ── Shift Panel (rail) ── */}
+        {!isNarrow && (
+          <View style={[styles.rail, sidebarOpen ? styles.railOpen : styles.railClosed]}>
+            {!sidebarOpen ? (
+              <View style={styles.railIcons}>
+                <TouchableOpacity onPress={() => setSidebarOpen(true)} style={styles.railBtn} activeOpacity={0.7}>
+                  <Icon name="left_panel_open" size={21} color={BRAND.navy} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setSidebarOpen(true)} style={styles.railBtn} activeOpacity={0.7}>
+                  <Icon name="groups" size={21} color={BRAND.navy} />
+                  <View style={styles.railBadge}>
+                    <Text style={styles.railBadgeText}>{activeCleaners.length}</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setSidebarOpen(true)} style={styles.railBtn} activeOpacity={0.7}>
+                  <Icon name="insights" size={21} color={BRAND.navy} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={{ flex: 1 }}>
+                <View style={styles.railHead}>
+                  <Text style={styles.railOverline}>Shift panel</Text>
+                  <TouchableOpacity onPress={() => setSidebarOpen(false)} style={styles.railClose} activeOpacity={0.7}>
+                    <Icon name="right_panel_close" size={19} color={NEUTRAL.text3} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.railBody}>
+                  <TouchableOpacity
+                    onPress={() => setTeamOpen(o => !o)}
+                    style={styles.railSection}
+                    activeOpacity={0.8}
+                  >
+                    <Icon name="groups" size={20} color={BRAND.navy} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.railSectionTitle}>Working today</Text>
+                      <Text style={styles.railSectionSub}>
+                        {activeCleaners.length} on shift
+                      </Text>
+                    </View>
+                    <Icon name={teamOpen ? 'expand_less' : 'expand_more'} size={22} color={NEUTRAL.text3} />
+                  </TouchableOpacity>
+
+                  {teamOpen && (
+                    <View style={{ gap: 10, marginTop: 12 }}>
+                      <View style={styles.railHint}>
+                        <Text style={styles.railHintText}>Tap a name to put them on shift.</Text>
                         <TouchableOpacity
-                          key={cleaner.id}
-                          style={[
-                            styles.bulkCleanerRow,
-                            isLast && { borderBottomWidth: 0 },
-                            isPicked && styles.bulkCleanerRowActive,
-                          ]}
-                          onPress={() => setBulkCleanerId(cleaner.id)}
+                          onPress={() => setActiveCleanerIds(new Set(cleaners.map(c => c.id)))}
                           activeOpacity={0.7}
                         >
-                          <View style={[styles.bulkCleanerAvatar, { backgroundColor: color }]}>
-                            <Text style={styles.bulkCleanerAvatarText}>
-                              {cleaner.username.charAt(0).toUpperCase()}
-                            </Text>
-                          </View>
-                          <Text style={[styles.bulkCleanerRowText, isPicked && styles.bulkCleanerRowTextActive]}>
-                            {cleaner.username}
-                          </Text>
-                          <View style={[styles.radioOuter, isPicked && styles.radioOuterActive]}>
-                            {isPicked && <View style={styles.radioInner} />}
-                          </View>
+                          <Text style={styles.railAllOn}>All on</Text>
                         </TouchableOpacity>
-                      );
-                    })}
-                </View>
-              </ScrollView>
-            </View>
-          ) : (
-            <>
-              <TouchableOpacity
-                onPress={() => setSidebarOpen(false)}
-                style={styles.sidebarHeader}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.sidebarTitle}>{t('workingToday') || 'Working Today'}</Text>
-                <Icon name="chevron-right" size={18} color={COLORS.textMuted} />
-              </TouchableOpacity>
-              
-                <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.sidebarScrollContent}>
-                  {cleaners.map((cleaner, idx) => {
-                    const isActive = activeCleanerIds.has(cleaner.id);
-                    const color = colors[cleaner.id];
-                    return (
-                      <TouchableOpacity
-                        key={cleaner.id}
-                        style={styles.cleanerItem}
-                        onPress={() => {
-                          setActiveCleanerIds(prev => {
-                            const next = new Set(prev);
-                            isActive ? next.delete(cleaner.id) : next.add(cleaner.id);
-                            return next;
-                          });
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <View style={[styles.cleanerColorDot, { backgroundColor: color }]} />
-                        <Text style={[styles.cleanerItemName, !isActive && { color: COLORS.textMuted }]}>{cleaner.username}</Text>
-                        <View style={[styles.checkboxMini, isActive && styles.checkboxMiniActive]}>
-                          {isActive && <Icon name="checkmark" size={12} color={COLORS.white} />}
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
+                      </View>
+
+                      {cleaners.map(c => {
+                        const on = activeCleanerIds.has(c.id);
+                        const mine = rooms.filter(r => r.assignedTo === c.id);
+                        const done = mine.filter(r => roomStatus[r.id]?.cleaned).length;
+                        const pct = mine.length ? Math.round((done / mine.length) * 100) : 0;
+                        return (
+                          <TouchableOpacity
+                            key={c.id}
+                            onPress={() => setActiveCleanerIds(prev => {
+                              const next = new Set(prev);
+                              on ? next.delete(c.id) : next.add(c.id);
+                              return next;
+                            })}
+                            style={[styles.hkRow, on ? styles.hkRowOn : styles.hkRowOff]}
+                            activeOpacity={0.8}
+                          >
+                            <View style={[
+                              styles.hkAvatar,
+                              { backgroundColor: on ? colors[c.id] : NEUTRAL.slateChip },
+                            ]}>
+                              <Text style={[styles.hkAvatarText, !on && { color: NEUTRAL.text4 }]}>
+                                {c.username?.[0]?.toUpperCase()}
+                              </Text>
+                            </View>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <View style={styles.hkRowTop}>
+                                <Text style={styles.hkRowName} numberOfLines={1}>{c.username}</Text>
+                                <Text style={styles.hkRowLoad}>{done}/{mine.length}</Text>
+                              </View>
+                              <View style={styles.hkTrack}>
+                                <View style={[styles.hkFill, {
+                                  width: `${pct}%`,
+                                  backgroundColor: pct === 100 && mine.length ? ACCENT.complete : BRAND.yellow,
+                                }]} />
+                              </View>
+                            </View>
+                            <Icon
+                              name={on ? 'check_circle' : 'radio_button_unchecked'}
+                              size={20}
+                              color={on ? BRAND.navy : NEUTRAL.text4}
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  <View style={styles.glance}>
+                    <Text style={styles.railOverline}>Today at a glance</Text>
+                    <View style={{ gap: 12, marginTop: 14 }}>
+                      <View style={styles.glanceRow}>
+                        <Text style={styles.glanceLabel}>Rooms in play</Text>
+                        <Text style={styles.glanceValue}>{counts.all}</Text>
+                      </View>
+                      <View style={styles.glanceRow}>
+                        <Text style={styles.glanceLabel}>Needs assignment</Text>
+                        <Text style={[styles.glanceValue, { color: STATUS.waiting.text }]}>
+                          {counts.unassigned}
+                        </Text>
+                      </View>
+                      <View style={styles.glanceRow}>
+                        <Text style={styles.glanceLabel}>Beds to clean</Text>
+                        <Text style={[styles.glanceValue, { color: STATUS.dirty.text }]}>
+                          {dirtyBeds}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
                 </ScrollView>
-              
-            </>
-          )}
-        </View>
+              </View>
+            )}
+          </View>
         )}
       </View>
 
-      {/* Side panel — now blocks interaction with the rest of the screen while open */}
-      {panelOpen && (
-        <View style={styles.panelOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closePanel} />
-          <View style={styles.panel}>
-            <View style={styles.panelHeader}>
-            <View style={{ flex: 1 }}>
-                <Text style={styles.panelTitle}>{t('assign')} {selectedRoom?.name}</Text>
-                <Text style={styles.panelSubtitle}>
-                {t('cleaner')}: {selectedCleaner?.username || t('unassigned')}
-                </Text>
+            {/* ── Floating bulk bar ── */}
+      {selectedRoomIds.size > 0 && (
+        <View style={styles.bulkBar}>
+          {/* Count */}
+          <View style={styles.bulkCount}>
+            <View style={styles.bulkBadge}>
+              <Text style={styles.bulkBadgeText}>{selectedRoomIds.size}</Text>
             </View>
-            <TouchableOpacity onPress={closePanel} style={styles.panelClose}>
-                <Icon name="close" size={20} color={COLORS.textMuted} />
-            </TouchableOpacity>
-            </View>
+            <Text style={styles.bulkCountText}>selected</Text>
+          </View>
 
-            <ScrollView style={styles.panelBody} contentContainerStyle={{ paddingBottom: SPACING[6] }}>
-            {/* Cleaner picker – shown when unassigned or to change */}
-            <View style={{ marginBottom: SPACING[5] }}>
-                <Label>{t('assignTo') || 'Assign to'}</Label>
-                {selectedCleaner ? (
-                <View style={styles.assignedCleanerRow}>
-                    <View style={styles.cleanerRow}>
-                    <View style={[styles.cleanerDot, { backgroundColor: colors[selectedCleaner.id] }]} />
-                    <Text style={styles.cleanerNameSmall}>{selectedCleaner.username}</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => setSelectedCleaner(null)}>
-                    <Text style={{ color: COLORS.danger, fontFamily: FONTS.medium, fontSize: FONT_SIZE.xs }}>{t('change') || 'Change'}</Text>
-                    </TouchableOpacity>
-                </View>
-                ) : (
-                <View style={styles.cleanerPickerList}>
-                    {activeCleaners.map((cleaner, idx) => (
-                    <TouchableOpacity
-                        key={cleaner.id}
-                        style={styles.cleanerPickerChip}
-                        onPress={() => setSelectedCleaner(cleaner)}
-                        activeOpacity={0.7}
-                    >
-                        <View style={[styles.cleanerDot, { backgroundColor: colors[cleaner.id] }]} />
-                        <Text style={styles.cleanerPickerChipText}>{cleaner.username}</Text>
-                    </TouchableOpacity>
-                    ))}
-                </View>
-                )}
-            </View>
+          {/* Divider */}
+          <View style={styles.bulkDivider} />
 
-            {selectedRoom?.type === 'dorm' && selectedRoom.beds?.length > 0 && (
-                <View style={{ marginBottom: SPACING[5] }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING[2] }}>
-                    <Label>{t('commonOnly')}</Label>
-                    <TouchableOpacity onPress={() => setCommonOnly(!commonOnly)} style={[styles.checkbox, commonOnly && styles.checkboxActive]}>
-                    {commonOnly && <Icon name="checkmark" size={16} color={COLORS.white} />}
-                    </TouchableOpacity>
-                </View>
-                <Text style={styles.helperText}>{commonOnly ? t('commonOnly') : t('scrollToSeeOptions')}</Text>
-
-                {!commonOnly && (
-                    <View style={{ marginTop: SPACING[3], gap: SPACING[4] }}>
-                    {selectedRoom.beds.map(bed => {
-                        const current = bedAssignments[bed.id] || { status: 'noone', reason: 'noone' };
-                        return (
-                        <View key={bed.id} style={styles.bedGroup}>
-                            <Text style={styles.bedName}>{bed.name}</Text>
-                            <View style={styles.toggleRow}>
-                            {BED_STATES.map(state => {
-                                const isActive = current.status === state.key;
-                                return (
-                                <TouchableOpacity
-                                    key={state.key}
-                                    style={[styles.toggleBtn, { backgroundColor: isActive ? state.bg : COLORS.white }, isActive && { borderColor: state.color, borderWidth: 2 }]}
-                                    onPress={() => setBedAssignments(prev => ({ ...prev, [bed.id]: { status: state.key, reason: state.key } }))}
-                                >
-                                    <Text style={[styles.toggleText, { fontWeight: isActive ? '700' : '400' }, isActive && { color: state.color }]} numberOfLines={1}>
-                                    {t('bedState_' + state.key)}
-                                    </Text>
-                                </TouchableOpacity>
-                                );
-                            })}
-                            </View>
-                        </View>
-                        );
-                    })}
-                    </View>
-                )}
-                </View>
-            )}
-
-            {selectedRoom?.type === 'private' && Object.keys(assignmentAttributes).length > 0 && (
-                <View style={{ marginBottom: SPACING[5] }}>
-                <Label>{t('roomFeatures')}</Label>
-                {Object.keys(assignmentAttributes).map(attr => {
-                    const isActive = assignmentAttributes[attr];
-                    return (
-                    <TouchableOpacity key={attr} style={styles.attributeRow} onPress={() => setAssignmentAttributes(prev => ({ ...prev, [attr]: !prev[attr] }))}>
-                        <View style={[styles.checkbox, isActive && styles.checkboxActive]}>
-                        {isActive && <Icon name="checkmark" size={16} color={COLORS.white} />}
-                        </View>
-                        <Text style={styles.attributeLabel}>{attr}</Text>
-                    </TouchableOpacity>
-                    );
-                })}
-                </View>
-            )}
-
-            <Label>{t('roomFlags')}</Label>
-            <View style={{ flexDirection: 'row', gap: SPACING[3], marginBottom: SPACING[5] }}>
-                <TouchableOpacity style={[styles.flagBtn, earlyCheckIn && { backgroundColor: '#FFFBEB', borderColor: '#D97706' }]} onPress={() => setEarlyCheckIn(!earlyCheckIn)}>
-                <Text style={[styles.flagText, earlyCheckIn && { color: '#D97706' }]}>{t('earlyCheckInFlag')}</Text>
+          {/* ── Scrollable selection chips ── */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.bulkChipScroll}
+            contentContainerStyle={styles.bulkChipRow}
+          >
+            {selectedRoomsList.map(room => {
+              const hk = cleaners.find(c => c.id === room.assignedTo);
+              return (
+                <TouchableOpacity
+                  key={room.id}
+                  onPress={() => toggleRoomSelection(room.id)}
+                  style={styles.bulkChip}
+                  activeOpacity={0.7}
+                  accessibilityLabel={`Deselect room ${room.name}`}
+                >
+                  {!!hk && (
+                    <View style={[styles.bulkChipDot, { backgroundColor: colors[hk.id] }]} />
+                  )}
+                  <Text style={styles.bulkChipText}>{room.name}</Text>
+                  <Icon name="close" size={13} color={NEUTRAL.text3} />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.flagBtn, lateCheckOut && { backgroundColor: COLORS.dangerLight, borderColor: COLORS.danger }]} onPress={() => setLateCheckOut(!lateCheckOut)}>
-                <Text style={[styles.flagText, lateCheckOut && { color: COLORS.danger }]}>{t('lateCheckOutFlag')}</Text>
-                </TouchableOpacity>
-            </View>
+              );
+            })}
+          </ScrollView>
 
-            <Label>{t('notesPlaceholder1')}</Label>
-            <Input value={managerNotes} onChangeText={setManagerNotes} placeholder={t('notesPlaceholder2')} multiline style={{ marginBottom: SPACING[2] }} />
-            </ScrollView>
+          <View style={styles.bulkDivider} />
 
-            <View style={[styles.panelFooter, { flexWrap: 'wrap' }]}>
-            <TouchableOpacity onPress={closePanel} style={[styles.panelBtn, styles.panelBtnCancel]}>
-                <Text style={styles.panelBtnText}>{t('cancel')}</Text>
-            </TouchableOpacity>
-            {!selectedCleaner && (
+          {/* Assign button */}
+          <TouchableOpacity
+            onPress={() => setBulkPickerOpen(true)}
+            style={styles.bulkPrimary}
+            activeOpacity={0.9}
+          >
+            <Icon name="person_add" size={18} color={BRAND.yellow} />
+            <Text style={styles.bulkPrimaryText}>
+              {displayCleaner ? `Assign to ${displayCleaner.username}` : 'Assign to…'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Clear assign */}
+          <TouchableOpacity
+            onPress={() => selectedRoomIds.forEach(id => unassignRoom(id))}
+            style={styles.bulkDanger}
+            activeOpacity={0.8}
+          >
+            <Icon name="person_remove" size={18} color="#B91C1C" />
+            <Text style={styles.bulkDangerText}>Clear assign</Text>
+          </TouchableOpacity>
+
+          {/* Divider */}
+          <View style={styles.bulkDivider} />
+
+          {/* Bulk actions */}
+          <TouchableOpacity onPress={() => bulkSetBeds('clean')} style={styles.bulkGhost} activeOpacity={0.8}>
+            <Icon name="cleaning_services" size={18} color={NEUTRAL.text2} />
+            <Text style={styles.bulkGhostText}>All dirty</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => bulkSetBeds('noone')} style={styles.bulkGhost} activeOpacity={0.8}>
+            <Icon name="verified" size={18} color={NEUTRAL.text2} />
+            <Text style={styles.bulkGhostText}>Reset states</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={bulkToggleCommon} style={styles.bulkGhost} activeOpacity={0.8}>
+            <Icon name="layers" size={18} color={NEUTRAL.text2} />
+            <Text style={styles.bulkGhostText}>Common only</Text>
+          </TouchableOpacity>
+
+          {/* Close */}
+          <TouchableOpacity onPress={handleClearSelection} style={styles.bulkClose} activeOpacity={0.7}>
+            <Icon name="close" size={18} color={NEUTRAL.text3} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* ── Bulk picker modal ── */}
+      <Modal visible={bulkPickerOpen} transparent animationType="fade" onRequestClose={() => setBulkPickerOpen(false)}>
+        <Pressable style={styles.pickerScrim} onPress={() => setBulkPickerOpen(false)}>
+          <Pressable style={styles.pickerCard} onPress={() => {}}>
+            <Text style={styles.pickerTitle}>
+              Assign {selectedRoomIds.size} {selectedRoomIds.size === 1 ? 'room' : 'rooms'} to
+            </Text>
+            {activeCleaners.map(c => (
               <TouchableOpacity
-                  onPress={handleSaveStateFromPanel}
-                  style={[styles.panelBtn, styles.panelBtnSecondary]}
+                key={c.id}
+                onPress={async () => {
+                  setBulkPickerOpen(false);
+                  setBulkCleanerId(c.id);
+                  await bulkAssign(c.id);
+                }}
+                style={styles.pickerRow}
+                activeOpacity={0.7}
               >
-                  <Text style={[styles.panelBtnText, { color: COLORS.primary }]}>{t('saveState') || 'Save state'}</Text>
+                <View style={[styles.hkPickDot, { backgroundColor: colors[c.id] }]} />
+                <Text style={styles.pickerRowText}>{c.username}</Text>
               </TouchableOpacity>
-            )}
-            <TouchableOpacity
-                onPress={handleAssignFromPanel}
-                disabled={!selectedCleaner}
-                style={[styles.panelBtn, styles.panelBtnPrimary, !selectedCleaner && { opacity: 0.5 }]}
-            >
-                <Text style={[styles.panelBtnText, { color: COLORS.white }]}>{t('assign')}</Text>
-            </TouchableOpacity>
-            </View>
-            {!selectedCleaner && (
-              <Text style={styles.panelFooterHint}>
-                {t('saveStateHint') || "No cleaner picked yet — \"Save state\" keeps your bed setup without assigning anyone."}
+            ))}
+            {activeCleaners.length === 0 && (
+              <Text style={styles.pickerEmpty}>
+                Nobody is on shift — turn someone on in the shift panel.
               </Text>
             )}
-        </View>
-        </View>
-        )}
+          </Pressable>
+        </Pressable>
+      </Modal>
 
-        <Modal
-          visible={showMore}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowMore(false)}
+      {/* ── Room drawer ── */}
+      {panelOpen && selectedRoom && (
+        <Drawer
+          visible
+          onClose={closePanel}
+          width={580}
+          title={`Room ${selectedRoom.name}`}
+          subtitle={`${selectedRoom.type === 'dorm'
+            ? `Dorm · ${selectedRoom.beds?.length || 0} ${t('beds')}`
+            : t('private')}${selectedCleaner ? ` · ${selectedCleaner.username}` : ' · Unassigned'}`}
+          footer={
+            <>
+              <TouchableOpacity onPress={closePanel} style={d.btnGhost} activeOpacity={0.8}>
+                <Text style={d.btnGhostText}>{t('cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSaveStateFromPanel}
+                style={styles.saveStatesBtn}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.saveStatesText}>Save states only</Text>
+              </TouchableOpacity>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity
+                onPress={handleAssignFromPanel}
+                disabled={!selectedCleaner}
+                style={[d.btnPrimary, !selectedCleaner && styles.assignBtnOff]}
+                activeOpacity={0.9}
+              >
+                <Icon
+                  name="assignment_turned_in"
+                  size={20}
+                  color={selectedCleaner ? BRAND.yellow : NEUTRAL.text4}
+                />
+                <Text style={[d.btnPrimaryText, !selectedCleaner && { color: NEUTRAL.text4 }]}>
+                  {selectedCleaner ? `Assign to ${selectedCleaner.username}` : 'Pick a housekeeper first'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          }
         >
-          <Pressable
-            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' }}
-            onPress={() => setShowMore(false)}
+          {/* ── Housekeeper ── */}
+          <View>
+            <Text style={d.overline}>Housekeeper</Text>
+            <View style={styles.hkPickRow}>
+              {activeCleaners.map(c => {
+                const on = selectedCleaner?.id === c.id;
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    onPress={() => setSelectedCleaner(on ? null : c)}
+                    style={[styles.hkPick, on && styles.hkPickOn]}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.hkPickDot, { backgroundColor: colors[c.id] }]} />
+                    <Text style={[styles.hkPickText, on && { color: '#FFFFFF' }]}>
+                      {c.username}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* ── Common areas only ── */}
+          <TouchableOpacity
+            onPress={() => setCommonOnly(v => !v)}
+            style={[styles.commonCard, commonOnly && styles.commonCardOn]}
+            activeOpacity={0.85}
           >
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalCard}>
+            <View style={[styles.checkbox, commonOnly && styles.checkboxOn]}>
+              {commonOnly && <Icon name="check" size={15} color="#FFFFFF" />}
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.commonCardTitle}>Clean common areas only</Text>
+              <Text style={styles.commonCardSub}>Bed states are ignored for today.</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* ── Bed states ── */}
+          {selectedRoom.type === 'dorm' && selectedRoom.beds?.length > 0 && !commonOnly && (
+            <View>
+              <View style={styles.sectionHead}>
+                <Text style={[d.overline, { marginBottom: 0 }]}>Bed states</Text>
                 <TouchableOpacity
-                  style={styles.menuItem}
-                  onPress={() => { setShowMore(false); setConfirmDialog('resetBeds'); }}
+                  onPress={() => setBedAssignments(prev => {
+                    const next = { ...prev };
+                    selectedRoom.beds.forEach(b => {
+                      next[b.id] = { status: 'clean', reason: 'clean' };
+                    });
+                    return next;
+                  })}
                   activeOpacity={0.7}
                 >
-                  <Icon name="refresh" size={19} color={COLORS.textTertiary} />
-                  <Text style={styles.menuItemText}>{t('resetBeds') || 'Reset beds'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.menuItem}
-                  onPress={() => { setShowMore(false); setConfirmDialog('clearAll'); }}
-                  activeOpacity={0.7}
-                >
-                  <Icon name="cancel" size={19} color={COLORS.danger} />
-                  <Text style={[styles.menuItemText, { color: COLORS.danger }]}>
-                    {t('clearAll')}
-                  </Text>
+                  <Text style={styles.sectionAction}>Set all to dirty</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          </Pressable>
-        </Modal>
 
-        <ConfirmDialog
-          visible={!!confirmDialog}
-          title={
-            confirmDialog === 'clearAll'
-              ? (t('clearAllConfirmTitle') || 'Clear all assignments?')
-              : (t('resetBedsConfirmTitle') || 'Reset all bed states?')
-          }
-          message={
-            confirmDialog === 'clearAll'
-              ? (t('clearAllConfirmMsg') || "This will unassign every room from its cleaner and clear any private-room features you'd checked. This can't be undone.")
-              : (t('resetBedsConfirmMsg') || "This will reset every dorm bed back to Inspected for all rooms. This can't be undone.")
-          }
-          confirmLabel={t('confirm') || 'Confirm'}
-          onCancel={() => setConfirmDialog(null)}
-          onConfirm={async () => {
-            if (confirmDialog === 'clearAll') clearAll();
-            else if (confirmDialog === 'resetBeds') await resetBedStates();
-            setConfirmDialog(null);
-          }}
-        />
+              <View style={styles.bedTable}>
+                {selectedRoom.beds.map((bed, i) => {
+                  const current = bedAssignments[bed.id]?.status || 'noone';
+                  const last = i === selectedRoom.beds.length - 1;
+                  return (
+                    <View key={bed.id} style={[styles.bedTableRow, last && { borderBottomWidth: 0 }]}>
+                      <View style={styles.bedLetterBox}>
+                        <Text style={styles.bedLetterBoxText}>{bed.name}</Text>
+                      </View>
+                      <View style={styles.bedOptions}>
+                        {BED_STATES.map(st => {
+                          const on = current === st.key;
+                          return (
+                            <TouchableOpacity
+                              key={st.key}
+                              onPress={() => setBedAssignments(prev => ({
+                                ...prev,
+                                [bed.id]: { status: st.key, reason: st.key },
+                              }))}
+                              style={[
+                                styles.bedOption,
+                                on
+                                  ? { backgroundColor: st.bg, borderColor: st.border }
+                                  : { backgroundColor: NEUTRAL.surface, borderColor: NEUTRAL.border },
+                              ]}
+                              activeOpacity={0.8}
+                              accessibilityLabel={`${bed.name}: ${st.label}`}
+                            >
+                              <Icon name={st.icon} size={15} color={on ? st.text : NEUTRAL.text4} />
+                              <Text
+                                style={[styles.bedOptionText, { color: on ? st.text : NEUTRAL.text4 }]}
+                                numberOfLines={1}
+                              >
+                                {st.short}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {/* ── What to clean (private) ── */}
+          {selectedRoom.type === 'private' && !commonOnly && Object.keys(assignmentAttributes).length > 0 && (
+            <View>
+              <Text style={d.overline}>What to clean</Text>
+              <View style={styles.hkPickRow}>
+                {Object.keys(assignmentAttributes).map(attr => {
+                  const on = !!assignmentAttributes[attr];
+                  return (
+                    <TouchableOpacity
+                      key={attr}
+                      onPress={() => setAssignmentAttributes(prev => ({ ...prev, [attr]: !prev[attr] }))}
+                      style={[
+                        styles.attrPick,
+                        on && { backgroundColor: STATUS.dirty.bg, borderColor: STATUS.dirty.border },
+                      ]}
+                      activeOpacity={0.8}
+                    >
+                      <Icon
+                        name={on ? 'check_circle' : 'radio_button_unchecked'}
+                        size={17}
+                        color={on ? STATUS.dirty.text : NEUTRAL.text4}
+                      />
+                      <Text style={[styles.attrPickText, on && { color: STATUS.dirty.text }]}>
+                        {attr}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {/* ── Room flags ── */}
+          <View>
+            <Text style={d.overline}>Room flags</Text>
+            <View style={styles.flagBtnRow}>
+              <TouchableOpacity
+                onPress={() => setEarlyCheckIn(v => !v)}
+                style={[
+                  styles.flagBtn,
+                  earlyCheckIn && { backgroundColor: STATUS.early.bg, borderColor: STATUS.early.border },
+                ]}
+                activeOpacity={0.85}
+              >
+                <Icon name="login" size={18} color={earlyCheckIn ? STATUS.early.text : NEUTRAL.text2} />
+                <Text style={[styles.flagBtnText, earlyCheckIn && { color: STATUS.early.text }]}>
+                  Early check-in
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setLateCheckOut(v => !v)}
+                style={[
+                  styles.flagBtn,
+                  lateCheckOut && { backgroundColor: STATUS.late.bg, borderColor: STATUS.late.border },
+                ]}
+                activeOpacity={0.85}
+              >
+                <Icon name="hourglass_top" size={18} color={lateCheckOut ? STATUS.late.text : NEUTRAL.text2} />
+                <Text style={[styles.flagBtnText, lateCheckOut && { color: STATUS.late.text }]}>
+                  Late check-out
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* ── Note ── */}
+          <View>
+            <Text style={d.overline}>Note for the housekeeper</Text>
+            <TextInput
+              value={managerNotes}
+              onChangeText={setManagerNotes}
+              placeholder="e.g. missing towel, broken lock…"
+              placeholderTextColor={NEUTRAL.text4}
+              multiline
+              numberOfLines={3}
+              textAlignVertical="top"
+              style={styles.noteInput}
+            />
+          </View>
+        </Drawer>
+      )}
+
+      {/* ── Overflow menu ── */}
+      <Modal
+        visible={showMore}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMore(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)' }}
+          onPress={() => setShowMore(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => { setShowMore(false); setConfirmDialog('resetBeds'); }}
+                activeOpacity={0.7}
+              >
+                <Icon name="refresh" size={19} color={NEUTRAL.text2} />
+                <Text style={styles.menuItemText}>{t('resetBeds') || 'Reset beds'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => { setShowMore(false); setConfirmDialog('clearAll'); }}
+                activeOpacity={0.7}
+              >
+                <Icon name="cancel" size={19} color="#B91C1C" />
+                <Text style={[styles.menuItemText, { color: '#B91C1C' }]}>
+                  {t('clearAll')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <ConfirmDialog
+        visible={!!confirmDialog}
+        title={
+          confirmDialog === 'clearAll'
+            ? (t('clearAllConfirmTitle') || 'Clear all assignments?')
+            : (t('resetBedsConfirmTitle') || 'Reset all bed states?')
+        }
+        message={
+          confirmDialog === 'clearAll'
+            ? (t('clearAllConfirmMsg') || "This will unassign every room from its cleaner and clear any private-room features you'd checked. This can't be undone.")
+            : (t('resetBedsConfirmMsg') || "This will reset every dorm bed back to Inspected for all rooms. This can't be undone.")
+        }
+        confirmLabel={t('confirm') || 'Confirm'}
+        onCancel={() => setConfirmDialog(null)}
+        onConfirm={async () => {
+          if (confirmDialog === 'clearAll') clearAll();
+          else if (confirmDialog === 'resetBeds') await resetBedStates();
+          setConfirmDialog(null);
+        }}
+      />
     </View>
   );
 }
 
-/* ─── Styles ───────────────────────────────────────────────────── */
+// ─── Styles ──────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-
-  toolbar: {
-    paddingHorizontal: 24, paddingVertical: 16, gap: 12,
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-    zIndex: 10,                       // keeps the overflow menu above the list
+  // ── Container and filter bar ──
+  container: { flex: 1, backgroundColor: NEUTRAL.appBg },
+  filterBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+    paddingVertical: 12, paddingHorizontal: 28,
+    backgroundColor: NEUTRAL.surface,
+    borderBottomWidth: 1, borderBottomColor: NEUTRAL.border,
+    zIndex: 10,
   },
-  toolbarRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    flexWrap: 'wrap', minWidth: 0,
-  },
-  pageTitle: { fontFamily: DISPLAY.semiBold, fontSize: 27, color: COLORS.primary },
-  subtitle: { fontFamily: FONTS.regular, fontSize: 14, color: COLORS.textTertiary, marginTop: 2 },
-  toolbarRight: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING[3], flexWrap: 'wrap',
-    flex: 1, minWidth: 0, justifyContent: 'flex-end',
-  },
-  searchBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 9,
-    flex: 1, minWidth: 180, maxWidth: 320,
-    minHeight: 46, paddingHorizontal: 14,
-    borderRadius: 14, borderWidth: 1, borderColor: COLORS.border,
-    backgroundColor: COLORS.surfaceAlt,
+  search: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    height: 40, minWidth: 200, paddingHorizontal: 14, borderRadius: 12,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.inputFill,
   },
   searchInput: {
-    flex: 1, minWidth: 0,
-    fontFamily: FONTS.medium, fontSize: 15, color: COLORS.text,
-    outlineStyle: 'none',            // web only — kills the browser focus ring
+    flex: 1, minWidth: 0, outlineStyle: 'none',
+    fontFamily: FONTS.regular, fontSize: 14, color: NEUTRAL.text,
   },
-  toolBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: SPACING[3], paddingVertical: SPACING[2],
-    backgroundColor: COLORS.primaryLight, borderRadius: RADIUS.sm,
-    borderWidth: 1, borderColor: COLORS.primary,
-  },
-  toolBtnText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.primary },
-
-  primaryBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 7,
-    minHeight: 46, paddingHorizontal: 16, borderRadius: 14,
-    backgroundColor: COLORS.primary,
-  },
-  primaryBtnText: { fontFamily: FONTS.semiBold, fontSize: 15, color: COLORS.onPrimary },
-  iconBtn: {
-    width: 46, height: 46, borderRadius: 14,
-    borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface,
+  moreBtn: {
+    width: 40, height: 40, borderRadius: 12,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
     alignItems: 'center', justifyContent: 'center',
   },
 
-  /* Overflow menu */
-  menuCatcher: {
-    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-    zIndex: 30,
-  },
-  menu: {
-    position: 'absolute', top: 52, right: 0,
-    minWidth: 220, zIndex: 40,
-    backgroundColor: COLORS.surface,
-    borderRadius: 16, borderWidth: 1, borderColor: COLORS.border,
-    paddingVertical: 6,
-    shadowColor: '#0B1F3A', shadowOpacity: 0.18,
-    shadowRadius: 30, shadowOffset: { width: 0, height: 12 },
-  },
-  menuItem: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    minHeight: 46, paddingHorizontal: 14,
-  },
-  menuItemText: { fontFamily: FONTS.medium, fontSize: 15, color: COLORS.text },
-
-  /* Segment — same shape as native, sized for a mouse */
+  // ── Segment and type buttons ──
   segment: {
     flexDirection: 'row', gap: 4, padding: 4,
-    backgroundColor: COLORS.slate, borderRadius: 14,
+    backgroundColor: NEUTRAL.slateChip, borderRadius: 14,
   },
   segmentItem: {
     flexDirection: 'row', alignItems: 'center', gap: 7,
-    minHeight: 38, paddingHorizontal: 14, borderRadius: 10,
+    height: 36, paddingHorizontal: 14, borderRadius: 10,
   },
-  segmentItemActive: { backgroundColor: COLORS.surface, ...SHADOW.card },
-  segmentLabel: { fontFamily: FONTS.semiBold, fontSize: 14, color: COLORS.textTertiary },
-  segmentLabelActive: { color: COLORS.text },
+  segmentItemActive: {
+    backgroundColor: NEUTRAL.surface,
+    shadowColor: BRAND.navy, shadowOpacity: 0.06,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+  },
+  segmentLabel: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 14, color: NEUTRAL.text3,
+  },
+  segmentLabelActive: { color: NEUTRAL.text },
   segmentCount: {
     minWidth: 22, paddingHorizontal: 6, paddingVertical: 1,
     borderRadius: 8, backgroundColor: 'rgba(15,23,42,0.06)',
   },
-  segmentCountActive: { backgroundColor: COLORS.accentLight },
-  segmentCountText: { fontFamily: FONTS.semiBold, fontSize: 12, color: COLORS.textTertiary, textAlign: 'center' },
-  segmentCountTextActive: { color: COLORS.accentDark },
+  segmentCountActive: { backgroundColor: BRAND.yellowSoft },
+  segmentCountText: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12,
+    color: NEUTRAL.text3, textAlign: 'center', fontVariant: ['tabular-nums'],
+  },
+  segmentCountTextActive: { color: '#B45309' },
 
   typeBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 7,
-    minHeight: 46, paddingHorizontal: 14, borderRadius: 14,
-    borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: COLORS.surface,
+    height: 44, paddingHorizontal: 14, borderRadius: 14,
+    borderWidth: 1.5, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
   },
-  typeBtnActive: { borderColor: COLORS.accent, backgroundColor: COLORS.accentLight },
-  typeBtnText: { fontFamily: FONTS.semiBold, fontSize: 14, color: COLORS.textTertiary },
-  typeBtnTextActive: { color: COLORS.primary },
+  typeBtnOn: { borderColor: BRAND.yellow, backgroundColor: BRAND.yellowSoft },
+  typeBtnText: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 14, color: NEUTRAL.text3,
+  },
+  resultCount: { fontFamily: FONTS.medium, fontSize: 14, color: NEUTRAL.text3 },
 
-  resultCount: { fontFamily: FONTS.medium, fontSize: 14, color: COLORS.textTertiary },
-
-  body: { flex: 1, flexDirection: 'row' },
-  roomAreaWrapper: { flex: 1 },
+  // ── Body and layout ──
+  body: {
+    flex: 1, minHeight: 0,
+    flexDirection: 'row', alignItems: 'stretch',
+  },
+  roomAreaWrapper: { flex: 1, minWidth: 0, minHeight: 0 },
   roomArea: { flex: 1 },
-  roomAreaContent: { padding: SPACING[6] },
+  roomAreaContent: { paddingTop: 24, paddingHorizontal: 28, paddingBottom: 130 },
 
-  /* Persistent selection bar – card-like design */
-  selectionBar: {
-    backgroundColor: COLORS.surface,
-    marginHorizontal: SPACING[6],
-    marginTop: SPACING[4],
-    marginBottom: 0,
-    borderRadius: RADIUS.lg,
-    paddingHorizontal: SPACING[4],
-    paddingVertical: SPACING[3],
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
-    flexDirection: 'column',
+  // ── Floor header ──
+  floorRowHead: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    width: '100%', paddingBottom: 12, marginBottom: 16,
+    borderBottomWidth: 1, borderBottomColor: NEUTRAL.border,
   },
-  selectionBarInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  floorBar: { width: 4, height: 22, borderRadius: 2, backgroundColor: BRAND.yellow },
+  floorName: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 20, color: NEUTRAL.text,
   },
-  selectionLeft: { flexDirection: 'row', alignItems: 'center', marginRight: SPACING[3] },
-  selectionBarTitle: {
-    fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.sm, color: COLORS.primary,
+  floorMeta: {
+    fontFamily: FONTS.regular, fontSize: 13, color: NEUTRAL.text3,
+    fontVariant: ['tabular-nums'],
   },
-  selectionScroll: { flex: 1 },
-  selectionChip: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: RADIUS.sm, paddingHorizontal: SPACING[2], paddingVertical: 2,
-    marginRight: SPACING[2],
-    borderWidth: 1, borderColor: COLORS.primary,
-  },
-  selectionChipText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.xs, color: COLORS.primary },
-  pendingCleanerTag: {
-    flexDirection: 'row', alignItems: 'center',
-    marginLeft: SPACING[2],
-    paddingHorizontal: SPACING[2], paddingVertical: 2,
-    gap: 4,
-  },
-  pendingCleanerText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.text },
-  confirmSelectionBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    marginLeft: SPACING[2],
-    paddingHorizontal: SPACING[3], paddingVertical: SPACING[1],
-    borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.primary,
-    backgroundColor: COLORS.primary,
-  },
-  confirmSelectionBtnDisabled: {
-    backgroundColor: COLORS.surface, borderColor: COLORS.border,
-  },
-  confirmSelectionText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.xs, color: COLORS.white },
-  clearSelectionBtn: {
-    marginLeft: SPACING[2],
-    paddingHorizontal: SPACING[3], paddingVertical: SPACING[1],
-    borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.primary,
-    backgroundColor: COLORS.surface,
-  },
-  clearSelectionText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.xs, color: COLORS.primary },
 
-  roomGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[4] },
+  // ── Room cards ──
+  roomGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
   roomCard: {
-    width: 340,
-    maxWidth: '100%',
-    backgroundColor: COLORS.surface,
-    borderRadius: 20, borderWidth: 1.5, borderColor: COLORS.border,
-    padding: 15, gap: 12, ...SHADOW.card,
+    position: 'relative', overflow: 'hidden',
+    flexGrow: 1, flexBasis: 340, maxWidth: '100%',
+    borderRadius: 20, borderWidth: 1, borderColor: NEUTRAL.border,
+    backgroundColor: NEUTRAL.surface,
+    paddingTop: 16, paddingHorizontal: 18, paddingBottom: 14,
+    shadowColor: BRAND.navy, shadowOpacity: 0.05,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
   },
-  roomCardSelected: { borderColor: COLORS.accent },
-
-  cardTopRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
-    marginBottom: SPACING[3],
-  },
-  cardTopActions: { flexDirection: 'row', alignItems: 'center', gap: SPACING[2] },
-  iconBtn: { padding: 4 },
-  selectCheckbox: { padding: 2 },
-  checkbox: {
-    width: 22, height: 22, borderRadius: 6,
-    borderWidth: 2, borderColor: COLORS.border,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  checkboxActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-
-  roomName: {
-    fontFamily: DISPLAY.semiBold, fontSize: 30, lineHeight: 32,
-    color: COLORS.primary, fontVariant: ['tabular-nums'],
-  },
-  bedCount: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary },
-
-  bedList: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2], marginBottom: SPACING[3] },
-  bedChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 11,
-    borderRadius: 12,
-    borderWidth: 1,
-    minWidth: 110,
-  },
-  bedChipFrozen: {
-    backgroundColor: COLORS.border,
-    borderColor: COLORS.textMuted,
-    opacity: 0.6,
-  },
-  bedChipName: { fontFamily: DISPLAY.semiBold, fontSize: 16 },
-  bedChipState: { fontFamily: FONTS.semiBold, fontSize: 12 },
-
-  /* Private room attributes */
-  attributeList: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2], marginBottom: SPACING[3] },
-  attrChip: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 4, paddingHorizontal: 8,
-    borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-  },
-  attrChipActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primaryLight },
-  attrChipText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.xs, color: COLORS.textSecondary },
-
-  commonRow: { marginBottom: SPACING[3] },
-  commonCheckRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING[2] },
-  commonLabel: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary },
-
-  cardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cleanerInfo: { flex: 1 },
-  cleanerRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING[2] },
-  cleanerDot: { width: 10, height: 10, borderRadius: 5 },
-  cleanerNameSmall: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.sm, color: COLORS.text },
-  unassigned: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.xs, color: COLORS.textMuted, fontStyle: 'italic' },
-
-  cardActions: { flexDirection: 'row', gap: SPACING[2] },
-  cardBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 12, minHeight: 38,
-    borderRadius: 12, borderWidth: 1.5, borderColor: COLORS.dangerBorder,
-    backgroundColor: COLORS.surface,
-  },
-  cardBtnText: { fontFamily: FONTS.semiBold, fontSize: 13, color: COLORS.danger },
-
-  /* Sidebar narrower */
-  sidebar: {
-    width: 260, backgroundColor: COLORS.surface,
-    borderLeftWidth: 1, borderLeftColor: COLORS.border,
-    padding: SPACING[4],
-  },
-  sidebarScrollContent: { paddingBottom: SPACING[6] },
-  sidebarTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.md, color: COLORS.text },
-  sidebarRail: {
-    width: 44,
-    backgroundColor: COLORS.surface,
-    borderLeftWidth: 1,
-    borderLeftColor: COLORS.border,
-    alignItems: 'center',
-    paddingTop: SPACING[4],
-  },
-  sidebarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING[3],
-  },
-  cleanerItem: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING[2],
-    paddingVertical: SPACING[2], paddingHorizontal: SPACING[2],
-    borderRadius: RADIUS.sm,
-  },
-  cleanerColorDot: { width: 10, height: 10, borderRadius: 5 },
-  cleanerItemName: { flex: 1, fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.text },
-  checkboxMini: {
-    width: 18, height: 18, borderRadius: 4,
-    borderWidth: 1.5, borderColor: COLORS.border,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  checkboxMiniActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-
-  bulkSection: { borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingBottom: SPACING[3], marginBottom: SPACING[3] },
-  bulkLabel: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.sm, color: COLORS.text, marginBottom: SPACING[1] },
-  bulkHint: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textMuted, marginBottom: SPACING[2] },
-
-  /* Cleaner picker for bulk assign — a clean, sorted, avatar-based list
-     instead of a loose wrap of pill buttons. Height is capped with its own
-     scroll so a long roster never pushes the rest of the sidebar out of view. */
-  bulkCleanerScroll: { flex: 1 },
-  bulkCleanerCard: {
-    borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md,
-    backgroundColor: COLORS.surface, overflow: 'hidden',
-  },
-  bulkCleanerRow: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING[2],
-    paddingVertical: SPACING[2], paddingHorizontal: SPACING[3],
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-  },
-  bulkCleanerRowActive: { backgroundColor: COLORS.primaryLight },
-  bulkCleanerAvatar: {
-    width: 26, height: 26, borderRadius: 13,
-    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  bulkCleanerAvatarText: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xs, color: COLORS.white },
-  bulkCleanerRowText: { flex: 1, fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.text },
-  bulkCleanerRowTextActive: { fontFamily: FONTS.bold, color: COLORS.primary },
-  radioOuter: {
-    width: 18, height: 18, borderRadius: 9,
-    borderWidth: 2, borderColor: COLORS.border,
-    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  },
-  radioOuterActive: { borderColor: COLORS.primary },
-  radioInner: { width: 9, height: 9, borderRadius: 5, backgroundColor: COLORS.primary },
-
-  /* Side panel */
-  panelOverlay: {
+  cardAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 6 },
+  cardSelected: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    flexDirection: 'row', justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    zIndex: 20,
+    borderRadius: 20, borderWidth: 2, borderColor: BRAND.navy,
+    backgroundColor: 'rgba(245,179,43,0.16)',
   },
-  panel: {
-    width: 440, backgroundColor: COLORS.surface,
-    borderLeftWidth: 1, borderLeftColor: COLORS.border,
-    ...SHADOW.lg,
-  },
-  panelHeader: {
+
+  cardHead: {
     flexDirection: 'row', alignItems: 'flex-start',
-    padding: SPACING[5], borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    justifyContent: 'space-between', gap: 12,
   },
-  panelTitle: { fontFamily: FONTS.bold, fontSize: FONT_SIZE.xl, color: COLORS.text, marginBottom: 2 },
-  panelSubtitle: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.md, color: COLORS.textSecondary },
-  panelClose: { padding: 4 },
-  panelBody: { flex: 1, padding: SPACING[5] },
-  panelFooter: {
-    flexDirection: 'row', gap: SPACING[3],
-    padding: SPACING[5],
-    borderTopWidth: 1, borderTopColor: COLORS.border,
-  },
-  panelBtn: { flex: 1, minWidth: 100, paddingVertical: SPACING[3], borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  panelBtnCancel: { backgroundColor: COLORS.surface, borderColor: COLORS.border },
-  panelBtnSecondary: { backgroundColor: COLORS.surface, borderColor: COLORS.primary },
-  panelBtnPrimary: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  panelBtnText: { fontFamily: FONTS.semiBold, fontSize: FONT_SIZE.md, color: COLORS.primary },
-  panelFooterHint: {
-    fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textMuted,
-    textAlign: 'center', paddingHorizontal: SPACING[5], paddingBottom: SPACING[4],
-  },
-
-  helperText: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.xs, color: COLORS.textMuted },
-  bedGroup: { paddingBottom: SPACING[3], borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  bedName: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.text, marginBottom: SPACING[2] },
-  toggleRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2] },
-  toggleBtn: {
-    paddingHorizontal: SPACING[3], paddingVertical: SPACING[2],
-    borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.border,
-    minWidth: 78, alignItems: 'center',
-  },
-  toggleText: { fontFamily: FONTS.regular, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary },
-
-  attributeRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING[2], marginBottom: SPACING[2] },
-  attributeLabel: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.md, color: COLORS.text },
-
-  flagBtn: {
-    flex: 1, paddingVertical: SPACING[2], borderRadius: RADIUS.sm,
-    borderWidth: 1, borderColor: COLORS.border,
+  cardHeadLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+  cardHeadRight: { flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 0 },
+  checkbox: {
+    width: 22, height: 22, flexShrink: 0, borderRadius: 7,
+    borderWidth: 1.5, borderColor: NEUTRAL.border, backgroundColor: 'transparent',
     alignItems: 'center', justifyContent: 'center',
   },
-  flagText: { fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary },
-  /* Cleaner picker inside panel */
-    assignedCleanerRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingVertical: SPACING[2], paddingHorizontal: SPACING[2],
-    backgroundColor: COLORS.background,
-    borderRadius: RADIUS.sm,
-    marginBottom: SPACING[2],
+  checkboxSm: {
+    width: 20, height: 20, flexShrink: 0, borderRadius: 6,
+    borderWidth: 1.5, borderColor: NEUTRAL.border, backgroundColor: 'transparent',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  checkboxOn: { backgroundColor: BRAND.navy, borderColor: BRAND.navy },
+  roomNumber: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 22, lineHeight: 22,
+    color: NEUTRAL.text, fontVariant: ['tabular-nums'],
+  },
+  typePill: {
+    height: 24, paddingHorizontal: 10, borderRadius: 9, flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  typePillText: { fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12 },
+  bedsLabel: {
+    flexShrink: 1, minWidth: 0,
+    fontFamily: FONTS.regular, fontSize: 13, color: NEUTRAL.text3,
+    fontVariant: ['tabular-nums'],
+  },
+  editBtn: {
+    width: 32, height: 32, borderRadius: 10,
+    borderWidth: 1, borderColor: 'transparent', backgroundColor: 'transparent',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  flagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  flag: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    height: 26, paddingHorizontal: 10, borderRadius: 9, borderWidth: 1,
+  },
+  flagText: { fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12 },
+
+  bedGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  bedChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    flexGrow: 1, flexBasis: '46%', minWidth: 0,
+    height: 34, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1,
+  },
+  bedLetter: { fontFamily: FONTS.display, fontWeight: '600', fontSize: 14 },
+  bedLabel: {
+    flexShrink: 1, minWidth: 0,
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 13,
+  },
+
+  commonToggle: { flexDirection: 'row', alignItems: 'center', gap: 11, marginTop: 14 },
+  commonToggleText: {
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 13.5, color: NEUTRAL.text2,
+  },
+
+  attrRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  attrChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    height: 30, paddingHorizontal: 11, borderRadius: 12,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+  },
+  attrChipText: {
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 12.5, color: NEUTRAL.text3,
+  },
+
+  cardFoot: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    gap: 14, marginTop: 16, paddingTop: 13,
+    borderTopWidth: 1, borderTopColor: '#EEF2F7',
+  },
+  hkCell: { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1, minWidth: 0 },
+  hkDot: { width: 8, height: 8, borderRadius: 999, flexShrink: 0 },
+  hkName: {
+    flexShrink: 1, minWidth: 0,
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 15, color: NEUTRAL.text,
+  },
+  footBtns: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
+  unassignBtn: {
+    height: 32, paddingHorizontal: 12, borderRadius: 12,
+    borderWidth: 1, borderColor: '#FECACA',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  unassignText: {
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 13, color: '#B91C1C',
+  },
+  assignBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    height: 32, paddingHorizontal: 13, borderRadius: 12,
+    borderWidth: 1, borderColor: BRAND.navy, backgroundColor: 'transparent',
+  },
+  assignText: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 13, color: BRAND.navy,
+  },
+
+  // ── Rail ──
+  rail: {
+    alignSelf: 'stretch', height: '100%',
+    borderLeftWidth: 1, borderLeftColor: NEUTRAL.border,
+    backgroundColor: NEUTRAL.surface,
+    overflow: 'hidden',
+  },
+  railClosed: { width: 61, flexGrow: 0, flexShrink: 0, flexBasis: 61 },
+  railOpen:   { width: 319, flexGrow: 0, flexShrink: 0, flexBasis: 319 },
+
+  railIcons: { alignItems: 'center', gap: 10, paddingVertical: 16 },
+  railBtn: {
+    position: 'relative', width: 44, height: 44, borderRadius: 14,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  railBadge: {
+    position: 'absolute', top: -5, right: -5,
+    minWidth: 20, height: 20, paddingHorizontal: 5, borderRadius: 999,
+    backgroundColor: BRAND.yellow, borderWidth: 2, borderColor: NEUTRAL.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  railBadgeText: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 11, color: BRAND.navy,
+  },
+
+  railHead: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    gap: 10, paddingTop: 16, paddingHorizontal: 16, paddingBottom: 12,
+    borderBottomWidth: 1, borderBottomColor: NEUTRAL.border,
+  },
+  railOverline: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 11,
+    letterSpacing: 0.88, textTransform: 'uppercase', color: NEUTRAL.text3,
+  },
+  railClose: {
+    width: 36, height: 36, borderRadius: 12,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  railBody: { paddingTop: 16, paddingHorizontal: 20, paddingBottom: 130 },
+
+  railSection: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 14, paddingHorizontal: 15, borderRadius: 16,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: '#F8FAFC',
+  },
+  railSectionTitle: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 16, color: NEUTRAL.text,
+  },
+  railSectionSub: {
+    marginTop: 2, fontFamily: FONTS.regular, fontSize: 12.5, color: NEUTRAL.text3,
+  },
+  railHint: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between', gap: 10, paddingHorizontal: 2, paddingBottom: 2,
+  },
+  railHintText: { flex: 1, fontFamily: FONTS.regular, fontSize: 12.5, color: NEUTRAL.text3 },
+  railAllOn: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12.5, color: BRAND.navy,
+  },
+
+  hkRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 11, paddingHorizontal: 13, borderRadius: 16,
+    borderWidth: 1,
+  },
+  hkRowOn:  { backgroundColor: NEUTRAL.surface, borderColor: BRAND.navy },
+  hkRowOff: { backgroundColor: NEUTRAL.surface, borderColor: NEUTRAL.border },
+  hkAvatar: {
+    width: 32, height: 32, borderRadius: 999, flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  hkAvatarText: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 13, color: '#FFFFFF',
+  },
+  hkRowTop: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+  },
+  hkRowName: {
+    flex: 1, minWidth: 0,
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 15, color: NEUTRAL.text,
+  },
+  hkRowLoad: {
+    flexShrink: 0, fontFamily: FONTS.medium, fontWeight: '500', fontSize: 13,
+    color: NEUTRAL.text2, fontVariant: ['tabular-nums'],
+  },
+  hkTrack: {
+    height: 5, borderRadius: 999, marginTop: 8,
+    backgroundColor: NEUTRAL.slateChip, overflow: 'hidden',
+  },
+  hkFill: { height: '100%', borderRadius: 999 },
+
+  glance: {
+    marginTop: 24, padding: 18, borderRadius: 22,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: '#F8FAFC',
+  },
+  glanceRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+  },
+  glanceLabel: { fontFamily: FONTS.regular, fontSize: 14, color: NEUTRAL.text2 },
+  glanceValue: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 14,
+    color: NEUTRAL.text, fontVariant: ['tabular-nums'],
+  },
+
+  // ── Bulk bar ──
+  bulkBar: {
+    position: 'fixed', bottom: 24, left: '50%', transform: [{ translateX: '-50%' }],
+    maxWidth: 'calc(100vw - 340px)',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, flexWrap: 'wrap',
+    paddingVertical: 10, paddingLeft: 16, paddingRight: 12, borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.78)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.68)',
+    shadowColor: BRAND.navy, shadowOpacity: 0.18,
+    shadowRadius: 34, shadowOffset: { width: 0, height: 14 },
+    zIndex: 40,
+    ...GLASS.webStyle,
+  },
+  bulkCount: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingRight: 2 },
+  bulkBadge: {
+    minWidth: 24, height: 24, paddingHorizontal: 7, borderRadius: 8,
+    backgroundColor: BRAND.yellow, alignItems: 'center', justifyContent: 'center',
+  },
+  bulkBadgeText: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12.5,
+    color: BRAND.navy, fontVariant: ['tabular-nums'],
+  },
+  bulkCountText: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 13.5, color: NEUTRAL.text,
+  },
+  bulkDivider: { width: 1, height: 24, backgroundColor: NEUTRAL.border },
+  bulkPrimary: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    height: 40, paddingHorizontal: 15, borderRadius: 14, backgroundColor: BRAND.navy,
+  },
+  bulkPrimaryText: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 13.5, color: '#FFFFFF',
+  },
+  bulkDanger: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    height: 40, paddingHorizontal: 13, borderRadius: 14,
+    borderWidth: 1, borderColor: '#FECACA', backgroundColor: NEUTRAL.surface,
+  },
+  bulkDangerText: {
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 13.5, color: '#B91C1C',
+  },
+  bulkGhost: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    height: 40, paddingHorizontal: 13, borderRadius: 14,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+  },
+  bulkGhostText: {
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 13.5, color: NEUTRAL.text2,
+  },
+  bulkClose: {
+    width: 40, height: 40, borderRadius: 14, flexShrink: 0,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+    /* ── Bulk chips ── */
+    bulkChipScroll: { flexGrow: 0, flexShrink: 1, maxWidth: 320 },
+    bulkChipRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    bulkChip: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      height: 28, paddingHorizontal: 10, borderRadius: 999,
+      borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
     },
-    cleanerPickerList: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2],
+    bulkChipDot: { width: 7, height: 7, borderRadius: 999, flexShrink: 0 },
+    bulkChipText: {
+      fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12.5,
+      color: NEUTRAL.text, fontVariant: ['tabular-nums'],
     },
-    cleanerPickerChip: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING[2],
-    paddingVertical: SPACING[2], paddingHorizontal: SPACING[3],
-    borderRadius: RADIUS.sm, borderWidth: 1, borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
-    },
-    cleanerPickerChipText: {
-    fontFamily: FONTS.medium, fontSize: FONT_SIZE.sm, color: COLORS.text,
-    },
-    typePill: {
-      alignSelf: 'flex-start',
-      borderRadius: 9,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      backgroundColor: COLORS.beige,
-    },
-    typePillText: {
-      fontFamily: FONTS.semiBold,
-      fontSize: 13,
-      color: COLORS.primary,
-    },
-    modalOverlay: {
-      flex: 1,
-      justifyContent: 'flex-start',
-      alignItems: 'flex-end',
-      paddingTop: 90,            // adjust to place under the button
-      paddingRight: 24,
-    },
-    modalCard: {
-      width: 220,
-      backgroundColor: COLORS.surface,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      paddingVertical: 6,
-      shadowColor: '#0B1F3A',
-      shadowOpacity: 0.18,
-      shadowRadius: 30,
-      shadowOffset: { width: 0, height: 12 },
-    },
+
+  // ── Bulk picker modal ──
+  pickerScrim: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    padding: 24, backgroundColor: 'rgba(11,31,58,0.45)',
+  },
+  pickerCard: {
+    width: 300, maxHeight: '70%', padding: 16, borderRadius: 22,
+    backgroundColor: NEUTRAL.surface,
+    shadowColor: BRAND.navy, shadowOpacity: 0.28,
+    shadowRadius: 40, shadowOffset: { width: 0, height: 18 },
+  },
+  pickerTitle: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 16,
+    color: NEUTRAL.text, marginBottom: 12,
+  },
+  pickerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    minHeight: 46, paddingHorizontal: 12, borderRadius: 14,
+  },
+  pickerRowText: { fontFamily: FONTS.medium, fontWeight: '500', fontSize: 15, color: NEUTRAL.text },
+  pickerEmpty: {
+    fontFamily: FONTS.regular, fontSize: 13.5, color: NEUTRAL.text3, paddingVertical: 10,
+  },
+
+  // ── Drawer content styles ──
+  hkPickRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
+  hkPick: {
+    flexDirection: 'row', alignItems: 'center', gap: 9,
+    height: 40, paddingHorizontal: 15, borderRadius: 14,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+  },
+  hkPickOn: { backgroundColor: BRAND.navy, borderColor: BRAND.navy },
+  hkPickDot: { width: 9, height: 9, borderRadius: 999, flexShrink: 0 },
+  hkPickText: {
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 14, color: NEUTRAL.text2,
+  },
+
+  commonCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingVertical: 15, paddingHorizontal: 17, borderRadius: 18,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+  },
+  commonCardOn: { backgroundColor: STATUS.cleaned.bg, borderColor: STATUS.cleaned.border },
+  commonCardTitle: {
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 14.5, color: NEUTRAL.text,
+  },
+  commonCardSub: {
+    marginTop: 3, fontFamily: FONTS.regular, fontSize: 13, color: NEUTRAL.text3,
+  },
+
+  sectionHead: {
+    flexDirection: 'row', alignItems: 'baseline',
+    justifyContent: 'space-between', gap: 12, marginBottom: 12,
+  },
+  sectionAction: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 13, color: BRAND.navy,
+  },
+
+  bedTable: {
+    borderRadius: 20, overflow: 'hidden',
+    borderWidth: 1, borderColor: NEUTRAL.border,
+  },
+  bedTableRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    paddingVertical: 11, paddingHorizontal: 15,
+    borderBottomWidth: 1, borderBottomColor: '#EEF2F7',
+  },
+  bedLetterBox: {
+    width: 30, height: 30, flexShrink: 0, borderRadius: 10,
+    backgroundColor: NEUTRAL.slateChip,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  bedLetterBoxText: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 15, color: NEUTRAL.text,
+  },
+  bedOptions: { flexDirection: 'row', gap: 7, flex: 1, minWidth: 0 },
+  bedOption: {
+    flex: 1, minWidth: 0,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5,
+    height: 34, paddingHorizontal: 6, borderRadius: 12, borderWidth: 1,
+    overflow: 'hidden',
+  },
+  bedOptionText: { fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12 },
+
+  attrPick: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    height: 38, paddingHorizontal: 14, borderRadius: 14,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+  },
+  attrPickText: {
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 14, color: NEUTRAL.text2,
+  },
+
+  flagBtnRow: { flexDirection: 'row', gap: 9 },
+  flagBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    height: 44, borderRadius: 14,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+  },
+  flagBtnText: {
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 14, color: NEUTRAL.text2,
+  },
+
+  noteInput: {
+    minHeight: 92, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 16,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.inputFill,
+    fontFamily: FONTS.regular, fontSize: 14, color: NEUTRAL.text,
+    outlineStyle: 'none',
+  },
+
+  saveStatesBtn: {
+    height: 52, paddingHorizontal: 22, borderRadius: 16,
+    borderWidth: 1, borderColor: BRAND.navy, backgroundColor: NEUTRAL.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  saveStatesText: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 15, color: BRAND.navy,
+  },
+  assignBtnOff: { backgroundColor: NEUTRAL.deskBg },
+
+  // ── Overflow menu ──
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 90,
+    paddingRight: 24,
+  },
+  modalCard: {
+    width: 220,
+    backgroundColor: NEUTRAL.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: NEUTRAL.border,
+    paddingVertical: 6,
+    shadowColor: '#0B1F3A',
+    shadowOpacity: 0.18,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 12 },
+  },
+  menuItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    minHeight: 44, paddingHorizontal: 14,
+  },
+  menuItemText: { fontFamily: FONTS.medium, fontSize: 14, color: NEUTRAL.text },
 });
