@@ -41,5 +41,11 @@
     "firestore": { "port": 8080 },
     "hosting":   { "port": 5000 },
     "ui":        { "enabled": true }
-  }
+  },
+  "ignore": [
+  "firebase.json",
+  "**/.*",
+  "**/node_modules/**",
+  "**/*.map"
+]
 }

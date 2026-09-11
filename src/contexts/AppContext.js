@@ -4,6 +4,7 @@ import {
   query, where, orderBy, getDocs, writeBatch, getDoc,
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import { notifyHostel, bucketOf } from '../utils/notify';
 
 const AppContext = createContext();
 
@@ -201,22 +202,65 @@ export function AppProvider({ children }) {
   const deleteRoom = useCallback((roomId) => deleteDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId)), [hostelCode]);
 
   const updateRoomStatus = useCallback((roomId, newStatus) => {
-    const promise = setDoc(doc(db, 'hostels', hostelCode, 'roomStatus', roomId), newStatus, { merge: true });
+    // Capture previous status BEFORE the write. CleanerScreen spreads the whole
+    // existing status into every update, so `newStatus.cleaned` is true on every
+    // write after the first — only a transition is newsworthy.
+    const prev = roomStatus[roomId] || {};
 
-    // If the room is being marked as cleaned, send push to managers
-    if (newStatus.cleaned && hostelCode) {
-      const room = rooms.find(r => r.id === roomId);
-      const roomName = room?.name || roomId;
+    const promise = setDoc(
+      doc(db, 'hostels', hostelCode, 'roomStatus', roomId),
+      newStatus,
+      { merge: true },
+    );
+
+    const uid = auth.currentUser?.uid;
+    const me = uid ? cleaners.find(c => c.id === uid) : null;
+    if (!hostelCode || !me) return promise;
+
+    const room = rooms.find(r => r.id === roomId);
+    const roomName = room?.name || roomId;
+
+    const becameClean = newStatus.cleaned === true && prev.cleaned !== true;
+    const noteChanged =
+      typeof newStatus.notes === 'string' &&
+      newStatus.notes.trim() &&
+      newStatus.notes !== (prev.notes || '');
+    const extraChanged = (newStatus.extraTime || 0) > (prev.extraTime || 0);
+
+    if (becameClean) {
+      notifyHostel(hostelCode, {
+        type: 'room_cleaned',
+        roomId,
+        message: `Room ${roomName} cleaned by ${me.username}`,
+      });
       sendPushToManagers(
         hostelCode,
-        'Room Cleaned',
-        `Room ${roomName} has been marked as cleaned.`,
-        { type: 'room_cleaned', roomId }
-      ).catch(e => console.warn('Push failed:', e));
+        'Room cleaned',
+        `Room ${roomName} was marked clean by ${me.username}.`,
+        { type: 'room_cleaned', roomId },
+      ).catch(e => console.warn('Push failed:', e.message));
+    }
+
+    if (noteChanged) {
+      notifyHostel(hostelCode, {
+        type: 'note_added',
+        roomId,
+        bucket: bucketOf(newStatus.notes),
+        message: `Note on room ${roomName}: "${newStatus.notes.slice(0, 50)}${newStatus.notes.length > 50 ? '…' : ''}"`,
+      });
+    }
+
+    if (extraChanged) {
+      notifyHostel(hostelCode, {
+        type: 'extra_time',
+        roomId,
+        bucket: String(newStatus.extraTime),
+        message: `Extra time on room ${roomName}: +${newStatus.extraTime} min`,
+      });
     }
 
     return promise;
-  }, [hostelCode, rooms]);
+  }, [hostelCode, rooms, cleaners, roomStatus]);  // added roomStatus as dependency
 
   const resetAllRoomStatus = useCallback(async () => {
     const statusCol = collection(db, 'hostels', hostelCode, 'roomStatus');
@@ -387,6 +431,12 @@ export function AppProvider({ children }) {
       imageBase64: imageBase64 || null,
     });
 
+    notifyHostel(hostelCode, {
+      type: 'extra_request',
+      roomId,
+      message: `Extra room requested for ${roomId}`,
+    });
+
     sendPushToManagers(
       hostelCode,
       'Extra Room Request',
@@ -537,6 +587,7 @@ export function AppProvider({ children }) {
     cleaners,
     hostelCode,
     roomAttributes,
+    userData,
     updateHostel,
     addFloor,
     removeFloor,
@@ -572,6 +623,7 @@ export function AppProvider({ children }) {
     cleaners,
     hostelCode,
     roomAttributes,
+    userData,
     updateHostel,
     addFloor,
     removeFloor,
