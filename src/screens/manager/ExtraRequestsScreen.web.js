@@ -14,9 +14,10 @@ const STATUS_LOOK = {
 };
 
 export default function ExtraRequestsScreen() {
-  const { extraRequests, rooms, cleaners, approveExtraRoom, rejectExtraRoom, cleanupOldExtraRequests } = useApp();
+  const { extraRequests, rooms, cleaners, approveExtraRoom, rejectExtraRoom, cleanupOldExtraRequests, can, } = useApp();
   const [filter, setFilter] = useState('pending');
   const [imageViewer, setImageViewer] = useState(null);
+  const canApprove = can('approve');
 
   useEffect(() => {
     cleanupOldExtraRequests();
@@ -124,7 +125,7 @@ export default function ExtraRequestsScreen() {
                     </View>
                   ) : null}
 
-                  {status === 'pending' && (
+                  {status === 'pending' && canApprove && (
                     <View style={styles.actions}>
                       <TouchableOpacity
                         style={styles.approveBtn}

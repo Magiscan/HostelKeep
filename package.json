@@ -11,6 +11,7 @@
     "postexport": "node scripts/copy-privacy.js"
   },
   "dependencies": {
+    "@emailjs/browser": "^4.4.1",
     "@expo-google-fonts/fredoka": "^0.4.1",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/rubik": "^0.4.2",

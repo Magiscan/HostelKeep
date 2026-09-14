@@ -89,6 +89,10 @@ const resources = {
       chooseFromGallery: 'Choose from your Gallery',
       unassignedWarning: 'Some rooms have work but no cleaner',
       unassignedWarningMsg: 'These won\'t appear on any sheet. Assign them first, or print anyway.',
+      emailOrUsername: 'Email or username',
+      identifierHint: 'Managers use their email. Cleaners use the username their manager gave them.',
+      emailHint: 'You sign in with this address, and password resets go here. We send your hostel code to it too.',
+      managerSignInHint: 'Signing in as a manager.',
 
       moreInfo: 'More',
       workingToday: 'Working Today',

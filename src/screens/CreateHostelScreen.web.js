@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Card, Label, Input, Button } from '../components/UI';
 import Icon from '../components/Icon';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth, looksLikeEmail } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../theme/colors';
 import { FONTS, FONT_SIZE } from '../theme/typography';
@@ -41,8 +41,17 @@ export default function CreateHostelScreen() {
   const [createdCode, setCreatedCode] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  const emailValid = looksLikeEmail(recoveryEmail);
+
   const handleCreate = async () => {
     if (!hostelName.trim() || !username.trim() || !password.trim()) return;
+    if (!emailValid) {
+      setError(
+        t('emailRequired')
+        || 'Enter a valid email. It is how you sign in and reset your password.'
+      );
+      return;
+    }
     if (password.length < 8) {
       setError(t('passwordTooShort') || 'Password must be at least 8 characters.');
       return;
@@ -76,7 +85,8 @@ export default function CreateHostelScreen() {
     }
   };
 
-  const canSubmit = hostelName.trim() && username.trim() && password && !loading;
+  const canSubmit =
+    hostelName.trim() && username.trim() && password && emailValid && !loading;
 
   /* ── Success panel ──────────────────────────────────────────── */
   if (createdCode) {
@@ -108,6 +118,10 @@ export default function CreateHostelScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+
+            <Text style={styles.emailedNote}>
+              {t('codeEmailedTo') || 'Sent to'} {recoveryEmail.trim()}
+            </Text>
 
             <View style={styles.warnBox}>
               <Icon name="alert-circle" size={16} color={COLORS.warning} />
@@ -157,6 +171,22 @@ export default function CreateHostelScreen() {
       </View>
 
       <View style={styles.fieldGroup}>
+        <Label>{t('email') || 'Your email'}</Label>
+        <Input
+          value={recoveryEmail}
+          onChangeText={setRecoveryEmail}
+          placeholder="you@hostel.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+        />
+        <Text style={styles.hint}>
+          {t('emailHint')
+            || 'You sign in with this address, and password resets go here. We send your hostel code to it too.'}
+        </Text>
+      </View>
+
+      <View style={styles.fieldGroup}>
         <Label>{t('password')}</Label>
         <View style={styles.passwordRow}>
           <Input
@@ -181,23 +211,6 @@ export default function CreateHostelScreen() {
         </View>
         <Text style={styles.hint}>
           {t('passwordHint') || 'At least 8 characters.'}
-        </Text>
-      </View>
-
-      <View style={styles.fieldGroup}>
-        <Label>{t('recoveryEmail')}</Label>
-        <Input
-          value={recoveryEmail}
-          onChangeText={setRecoveryEmail}
-          placeholder="manager@example.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-        {/* Not decoration: without a recovery email a forgotten manager
-            password cannot be reset by anyone. */}
-        <Text style={styles.hint}>
-          {t('recoveryEmailHint')
-            || 'Strongly recommended — without it, a forgotten password cannot be reset.'}
         </Text>
       </View>
 
@@ -425,6 +438,13 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.semiBold,
     fontSize: FONT_SIZE.sm,
     color: COLORS.primary,
+  },
+  emailedNote: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginBottom: SPACING.md,
   },
   warnBox: {
     flexDirection: 'row',

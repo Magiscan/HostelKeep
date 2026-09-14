@@ -28,7 +28,7 @@ function sanitizeSheetName(name) {
 export default function TeamScreen({ onReady }) {
   const { t } = useTranslation();
   const {
-    cleaners, rooms, roomStatus, deleteCleaner,
+    cleaners, rooms, roomStatus, deleteCleaner, can,
   } = useApp();
   const { registerCleaner, resetCleanerPassword, user } = useAuth();
 
@@ -47,6 +47,8 @@ export default function TeamScreen({ onReady }) {
   const [expandedCleaner, setExpandedCleaner] = useState(null);
 
   const colors = useMemo(() => buildCleanerColors(cleaners), [cleaners]);
+
+  const canManageTeam = can('manageTeam');
 
   const closeForm = () => {
     setShowForm(false);
@@ -164,9 +166,9 @@ export default function TeamScreen({ onReady }) {
     if (!onReady) return;
     onReady({
       print: handleExportSheets,
-      addCleaner: () => setShowForm(true),
+      ...(canManageTeam ? { addCleaner: () => setShowForm(true) } : {}),
     });
-  }, [onReady, handleExportSheets]);
+  }, [onReady, handleExportSheets, canManageTeam]);
 
   return (
     <View style={styles.safe}>
@@ -197,6 +199,7 @@ export default function TeamScreen({ onReady }) {
                         {done}/{total} {t('rooms')}
                       </Text>
                     </View>
+                   {canManageTeam && (
                     <View style={styles.cardBtns}>
                       <TouchableOpacity
                         onPress={() => openReset(c)}
@@ -215,6 +218,7 @@ export default function TeamScreen({ onReady }) {
                         <Icon name="delete" size={19} color="#B91C1C" />
                       </TouchableOpacity>
                     </View>
+                    )}
                   </View>
 
                   <View style={styles.track}>

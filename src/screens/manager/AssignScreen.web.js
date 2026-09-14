@@ -160,8 +160,9 @@ export default function AssignScreen({ onReady }) {
   const isNarrow = width < 900;
   const {
     rooms, cleaners, floors, assignRoomWithDetails, unassignRoom, roomStatus,
-    updateRoomStatus, roomAttributes,
+    updateRoomStatus, roomAttributes, can,
   } = useApp();
+  const canAssign = can('assign');
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');   // 'all' | 'todo' | 'unassigned'
@@ -505,9 +506,9 @@ export default function AssignScreen({ onReady }) {
     if (!onReady) return;
     onReady({
       print: handleExportSheets,
-      clearAll: () => setConfirmDialog('clearAll'),
+      ...(canAssign ? { clearAll: () => setConfirmDialog('clearAll') } : {}),
     });
-  }, [onReady, handleExportSheets]);
+  }, [onReady, handleExportSheets, canAssign]);
 
   // ── Panel handlers ───────────────────────────────────────────
   const openDetail = (room) => {
@@ -697,9 +698,11 @@ export default function AssignScreen({ onReady }) {
 
         <Text style={styles.resultCount}>{filteredRooms.length} {t('rooms')}</Text>
 
-        <TouchableOpacity onPress={() => setShowMore(true)} style={styles.moreBtn} activeOpacity={0.7}>
-          <Icon name="more_horiz" size={20} color={NEUTRAL.text3} />
-        </TouchableOpacity>
+        {canAssign && (
+          <TouchableOpacity onPress={() => setShowMore(true)} style={styles.moreBtn} activeOpacity={0.7}>
+            <Icon name="more_horiz" size={20} color={NEUTRAL.text3} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* ── Main content ── */}
@@ -751,6 +754,7 @@ export default function AssignScreen({ onReady }) {
 
                             <View style={styles.cardHead}>
                               <View style={styles.cardHeadLeft}>
+                                {canAssign && (
                                 <TouchableOpacity
                                   onPress={() => toggleRoomSelection(room.id)}
                                   style={[styles.checkbox, isSelected && styles.checkboxOn]}
@@ -759,6 +763,7 @@ export default function AssignScreen({ onReady }) {
                                 >
                                   {isSelected && <Icon name="check" size={15} color="#FFFFFF" />}
                                 </TouchableOpacity>
+                                )}
                                 <Text style={styles.roomNumber}>{room.name}</Text>
                                 <View style={[styles.typePill, {
                                   backgroundColor: room.type === 'dorm' ? NEUTRAL.beigePill : NEUTRAL.slateChip,
@@ -777,9 +782,11 @@ export default function AssignScreen({ onReady }) {
                                 {!!status.managerNotes && (
                                   <Icon name="sticky_note_2" size={19} color={BRAND.yellow} />
                                 )}
-                                <TouchableOpacity onPress={() => openDetail(room)} style={styles.editBtn} activeOpacity={0.7}>
-                                  <Icon name="edit" size={19} color={NEUTRAL.text3} />
-                                </TouchableOpacity>
+                                {canAssign && (
+                                  <TouchableOpacity onPress={() => openDetail(room)} style={styles.editBtn} activeOpacity={0.7}>
+                                    <Icon name="edit" size={19} color={NEUTRAL.text3} />
+                                  </TouchableOpacity>
+                                )}
                               </View>
                             </View>
 
@@ -809,6 +816,7 @@ export default function AssignScreen({ onReady }) {
                                     <TouchableOpacity
                                       key={bed.id}
                                       onPress={() => toggleBedState(room.id, bed.id)}
+                                      disabled={!canAssign}
                                       style={[styles.bedChip, { backgroundColor: st.bg, borderColor: st.border }]}
                                       activeOpacity={0.7}
                                     >
@@ -836,7 +844,7 @@ export default function AssignScreen({ onReady }) {
                                       <TouchableOpacity
                                         key={attr}
                                         onPress={() => toggleRoomAttribute(room.id, attr)}
-                                        disabled={isFrozen}
+                                        disabled={isFrozen || !canAssign}
                                         style={[styles.attrChip, on && {
                                           backgroundColor: STATUS.dirty.bg, borderColor: STATUS.dirty.border,
                                         }]}
@@ -860,6 +868,7 @@ export default function AssignScreen({ onReady }) {
                             {/* ── Common areas only – now shown for ALL rooms ── */}
                             <TouchableOpacity
                               onPress={() => toggleCommonOnly(room.id)}
+                              disabled={!canAssign}
                               style={styles.commonToggle}
                               activeOpacity={0.7}
                             >
@@ -882,7 +891,7 @@ export default function AssignScreen({ onReady }) {
                                 </Text>
                               </View>
                               <View style={styles.footBtns}>
-                                {currentCleaner && (
+                                {canAssign && currentCleaner && (
                                   <TouchableOpacity
                                     onPress={() => handleUnassign(room.id)}
                                     style={styles.unassignBtn}
@@ -891,16 +900,18 @@ export default function AssignScreen({ onReady }) {
                                     <Text style={styles.unassignText}>{t('unassign')}</Text>
                                   </TouchableOpacity>
                                 )}
-                                <TouchableOpacity
-                                  onPress={() => openDetail(room)}
-                                  style={styles.assignBtn}
-                                  activeOpacity={0.8}
-                                >
-                                  <Icon name="person_add" size={17} color={BRAND.navy} />
-                                  <Text style={styles.assignText}>
-                                    {currentCleaner ? 'Reassign' : t('assign')}
-                                  </Text>
-                                </TouchableOpacity>
+                                {canAssign && (
+                                  <TouchableOpacity
+                                    onPress={() => openDetail(room)}
+                                    style={styles.assignBtn}
+                                    activeOpacity={0.8}
+                                  >
+                                    <Icon name="person_add" size={17} color={BRAND.navy} />
+                                    <Text style={styles.assignText}>
+                                      {currentCleaner ? 'Reassign' : t('assign')}
+                                    </Text>
+                                  </TouchableOpacity>
+                                )}
                               </View>
                             </View>
                           </View>
@@ -1089,6 +1100,7 @@ export default function AssignScreen({ onReady }) {
           <View style={styles.bulkDivider} />
 
           {/* Assign button */}
+          {canAssign && (
           <TouchableOpacity
             onPress={() => setBulkPickerOpen(true)}
             style={styles.bulkPrimary}
@@ -1099,35 +1111,44 @@ export default function AssignScreen({ onReady }) {
               {displayCleaner ? `Assign to ${displayCleaner.username}` : 'Assign to…'}
             </Text>
           </TouchableOpacity>
+          )}
 
           {/* Clear assign */}
-          <TouchableOpacity
-            onPress={() => selectedRoomIds.forEach(id => unassignRoom(id))}
-            style={styles.bulkDanger}
-            activeOpacity={0.8}
-          >
-            <Icon name="person_remove" size={18} color="#B91C1C" />
-            <Text style={styles.bulkDangerText}>Clear assign</Text>
-          </TouchableOpacity>
+          {canAssign && (
+            <TouchableOpacity
+              onPress={() => selectedRoomIds.forEach(id => unassignRoom(id))}
+              style={styles.bulkDanger}
+              activeOpacity={0.8}
+            >
+              <Icon name="person_remove" size={18} color="#B91C1C" />
+              <Text style={styles.bulkDangerText}>Clear assign</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Divider */}
           <View style={styles.bulkDivider} />
 
           {/* Bulk actions */}
-          <TouchableOpacity onPress={() => bulkSetBeds('clean')} style={styles.bulkGhost} activeOpacity={0.8}>
-            <Icon name="cleaning_services" size={18} color={NEUTRAL.text2} />
-            <Text style={styles.bulkGhostText}>All dirty</Text>
-          </TouchableOpacity>
+          {canAssign && (
+            <TouchableOpacity onPress={() => bulkSetBeds('clean')} style={styles.bulkGhost} activeOpacity={0.8}>
+              <Icon name="cleaning_services" size={18} color={NEUTRAL.text2} />
+              <Text style={styles.bulkGhostText}>All dirty</Text>
+            </TouchableOpacity>
+          )}
 
-          <TouchableOpacity onPress={() => bulkSetBeds('noone')} style={styles.bulkGhost} activeOpacity={0.8}>
-            <Icon name="verified" size={18} color={NEUTRAL.text2} />
-            <Text style={styles.bulkGhostText}>Reset states</Text>
-          </TouchableOpacity>
+          {canAssign && (
+            <TouchableOpacity onPress={() => bulkSetBeds('noone')} style={styles.bulkGhost} activeOpacity={0.8}>
+              <Icon name="verified" size={18} color={NEUTRAL.text2} />
+              <Text style={styles.bulkGhostText}>Reset states</Text>
+            </TouchableOpacity>
+          )}
 
-          <TouchableOpacity onPress={bulkToggleCommon} style={styles.bulkGhost} activeOpacity={0.8}>
-            <Icon name="layers" size={18} color={NEUTRAL.text2} />
-            <Text style={styles.bulkGhostText}>Common only</Text>
-          </TouchableOpacity>
+          {canAssign && (
+            <TouchableOpacity onPress={bulkToggleCommon} style={styles.bulkGhost} activeOpacity={0.8}>
+              <Icon name="layers" size={18} color={NEUTRAL.text2} />
+              <Text style={styles.bulkGhostText}>Common only</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Close */}
           <TouchableOpacity onPress={handleClearSelection} style={styles.bulkClose} activeOpacity={0.7}>
@@ -1406,24 +1427,28 @@ export default function AssignScreen({ onReady }) {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => { setShowMore(false); setConfirmDialog('resetBeds'); }}
-                activeOpacity={0.7}
-              >
-                <Icon name="refresh" size={19} color={NEUTRAL.text2} />
-                <Text style={styles.menuItemText}>{t('resetBeds') || 'Reset beds'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => { setShowMore(false); setConfirmDialog('clearAll'); }}
-                activeOpacity={0.7}
-              >
-                <Icon name="cancel" size={19} color="#B91C1C" />
-                <Text style={[styles.menuItemText, { color: '#B91C1C' }]}>
-                  {t('clearAll')}
-                </Text>
-              </TouchableOpacity>
+              {canAssign && (
+                <>
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => { setShowMore(false); setConfirmDialog('resetBeds'); }}
+                    activeOpacity={0.7}
+                  >
+                    <Icon name="refresh" size={19} color={NEUTRAL.text2} />
+                    <Text style={styles.menuItemText}>{t('resetBeds') || 'Reset beds'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => { setShowMore(false); setConfirmDialog('clearAll'); }}
+                    activeOpacity={0.7}
+                  >
+                    <Icon name="cancel" size={19} color="#B91C1C" />
+                    <Text style={[styles.menuItemText, { color: '#B91C1C' }]}>
+                      {t('clearAll')}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
           </View>
         </Pressable>

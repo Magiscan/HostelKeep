@@ -1,92 +1,44 @@
 // src/screens/manager/RolesScreen.web.js
 //
 // Transcribed from the prototype's `isSettings` branch: a 280px role list on
-// the left, an editor on the right, capped at 1100px.
+// the left, an editor on the right, capped at 1100px. A People panel was added
+// underneath, because a permission model with nobody on it does nothing.
 //
-// ─────────────────────────────────────────────────────────────────────────────
-// READ THIS BEFORE SHIPPING
+// This screen now EDITS and ENFORCES. Roles persist to
+// hostels/{code}/config/roles, Sidebar filters on role.sections, and
+// firestore.rules checks role.perms on every manager-side write. The notice
+// banner that used to sit at the top has been removed along with the caveat it
+// carried.
 //
-// This screen EDITS a permission model. It does not ENFORCE one. Nothing here
-// stops anyone doing anything — the sidebar still shows every section and every
-// button still works, whoever is signed in. Enforcement needs three things this
-// file deliberately does not do:
+// OWNER ONLY, deliberately. Anyone who can edit roles can grant themselves
+// every other permission, so there is no 'manage roles' permission to hand
+// out — delegating it would make the rules decorative. ManagerLayout keeps the
+// section out of the sidebar for staff; the guard below is the second line,
+// and firestore.rules is the third.
 //
-//   1. Persistence — roles live in Firestore at hostels/{code}/config/roles,
-//      loaded through AppContext like rooms and floors are.
-//   2. Client gating — Sidebar filters NAV_SECTIONS by the signed-in user's
-//      role.sections; screens hide actions by role.perms.
-//   3. Firestore rules — the only part that actually secures anything. Client
-//      gating is a courtesy; a determined user can call the SDK directly.
-//
-// Until (3) exists, treat this as a way to organise intent, not a security
-// boundary. Shipping it as-is would be worse than not having it, because the
-// interface implies a guarantee the backend isn't making.
-//
-// The props below are shaped so that wiring (1) is a small change: pass `roles`
-// and `onChange` from AppContext and delete the local-state fallback.
-// ─────────────────────────────────────────────────────────────────────────────
-import React, { useMemo, useState } from 'react';
+// Edits are held locally until Save. Auto-saving a permission model means a
+// half-built role is briefly live, and "briefly live" is how someone ends up
+// with access they were never meant to keep.
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import Icon from '../../components/Icon';
-import { ConfirmDialog, drawerStyles as d } from '../../components/Dashboard/Drawer.web';
+import {
+  Drawer, FieldLabel, ConfirmDialog, drawerStyles as d,
+} from '../../components/Dashboard/Drawer.web';
 import { FONTS } from '../../theme/typography';
 import { BRAND, NEUTRAL } from '../../theme/tokens';
+import { useApp } from '../../contexts/AppContext';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  SECTION_LIST, PERM_LIST, OWNER_ROLE_ID, genRoleId, rolesToList, isOwner,
+} from '../../utils/permissions';
 
 const SUNKEN = '#F8FAFC';
 const HAIRLINE = '#EEF2F7';
 const DANGER = '#B91C1C';
-
-/* Section keys match ManagerLayout's SECTIONS and Sidebar's nav keys — that's
-   what lets Sidebar filter on role.sections later without a mapping table. */
-const SECTION_LIST = [
-  { key: 'dashboard',     label: 'Dashboard',      icon: 'dashboard' },
-  { key: 'rooms',         label: 'Rooms',          icon: 'bed' },
-  { key: 'assign',        label: 'Assign',         icon: 'swap_horiz' },
-  { key: 'team',          label: 'Team',           icon: 'group' },
-  { key: 'extraRequests', label: 'Extra requests', icon: 'flag' },
-  { key: 'reports',       label: 'Live activities', icon: 'description' },
-  { key: 'history',       label: 'History',        icon: 'calendar_month' },
-  { key: 'roles',         label: 'Roles & access', icon: 'shield_person' },
-];
-
-const PERM_LIST = [
-  { key: 'assign',     label: 'Assign rooms',           hint: 'Hand rooms to housekeepers and change bed states.' },
-  { key: 'approve',    label: 'Approve extra requests', hint: 'Accept or reject extra rooms asked for during the shift.' },
-  { key: 'editRooms',  label: 'Add and edit rooms',     hint: 'Change the property structure, floors and beds.' },
-  { key: 'manageTeam', label: 'Manage the team',        hint: 'Invite, remove and set who is on shift.' },
-  { key: 'export',     label: 'Export reports',         hint: 'Download the daily Excel and history logs.' },
-  { key: 'roles',      label: 'Manage roles',           hint: 'Create roles and decide what each one can do.' },
-];
-
-/* The owner role is seeded with everything and can't be deleted or narrowed —
-   locking yourself out of Roles & access would need a Firestore console trip to
-   undo, which is not a mistake the interface should allow. */
-const DEFAULT_ROLES = [
-  {
-    id: 'owner',
-    name: 'Hostel manager',
-    locked: true,
-    sections: SECTION_LIST.map(s => s.key),
-    perms: PERM_LIST.map(p => p.key),
-  },
-  {
-    id: 'hk',
-    name: 'Housekeeping manager',
-    sections: ['dashboard', 'rooms', 'assign', 'team', 'extraRequests', 'history'],
-    perms: ['assign', 'approve', 'export'],
-  },
-  {
-    id: 'desk',
-    name: 'Reception',
-    sections: ['dashboard', 'rooms'],
-    perms: [],
-  },
-];
-
-const genId = () =>
-  Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
 
 function Toggle({ on }) {
   return (
@@ -96,26 +48,71 @@ function Toggle({ on }) {
   );
 }
 
-export default function RolesScreen({ roles: rolesProp, onChange, onReady }) {
-  // Local fallback so the screen works before AppContext is wired. Once roles
-  // come from Firestore, drop this and read rolesProp directly.
-  const [localRoles, setLocalRoles] = useState(DEFAULT_ROLES);
-  const roles = rolesProp || localRoles;
-  const setRoles = onChange || setLocalRoles;
+export default function RolesScreen({ onReady }) {
+  const { roles: savedRoles, saveRoles, staff, rolesLoaded } = useApp();
+  const { user, registerStaff, setStaffRole, deleteStaffAccount } = useAuth();
 
-  const [selectedId, setSelectedId] = useState(roles[0]?.id);
+  const owner = isOwner(user);
+
+  const [draft, setDraft] = useState(savedRoles);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+
+  const [selectedId, setSelectedId] = useState(OWNER_ROLE_ID);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
+  const [showAddStaff, setShowAddStaff] = useState(false);
+  const [staffName, setStaffName] = useState('');
+  const [staffEmail, setStaffEmail] = useState('');
+  const [staffPassword, setStaffPassword] = useState('');
+  const [staffRoleId, setStaffRoleId] = useState('');
+  const [staffSaving, setStaffSaving] = useState(false);
+  const [staffError, setStaffError] = useState('');
+  const [confirmRemoveStaff, setConfirmRemoveStaff] = useState(null);
+
+  // Adopt the saved roles whenever they change on the server — unless there
+  // are unsaved edits on screen, which must never be silently overwritten.
+  useEffect(() => {
+    if (!dirty) setDraft(savedRoles);
+  }, [savedRoles, dirty]);
+
+  const list = useMemo(() => rolesToList(draft), [draft]);
   const selected = useMemo(
-    () => roles.find(r => r.id === selectedId) || roles[0],
-    [roles, selectedId]
+    () => list.find(r => r.id === selectedId) || list[0],
+    [list, selectedId],
   );
 
-  const patch = (changes) =>
-    setRoles(roles.map(r => (r.id === selected.id ? { ...r, ...changes } : r)));
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError('');
+    try {
+      await saveRoles(draft);
+      setDirty(false);
+    } catch (e) {
+      setSaveError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!onReady) return;
+    onReady({ save: handleSave, dirty, saving });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onReady, dirty, saving, draft]);
+
+  const patch = (changes) => {
+    if (!selected || selected.locked) return;
+    setDraft(prev => ({
+      ...prev,
+      [selected.id]: { ...prev[selected.id], ...changes },
+    }));
+    setDirty(true);
+  };
 
   const toggleSection = (key) => {
-    if (selected.locked) return;
+    if (!selected || selected.locked) return;
     const has = selected.sections.includes(key);
     patch({
       sections: has
@@ -125,7 +122,7 @@ export default function RolesScreen({ roles: rolesProp, onChange, onReady }) {
   };
 
   const togglePerm = (key) => {
-    if (selected.locked) return;
+    if (!selected || selected.locked) return;
     const has = selected.perms.includes(key);
     patch({
       perms: has ? selected.perms.filter(p => p !== key) : [...selected.perms, key],
@@ -133,30 +130,129 @@ export default function RolesScreen({ roles: rolesProp, onChange, onReady }) {
   };
 
   const addRole = () => {
-    const role = { id: genId(), name: 'New role', sections: ['dashboard'], perms: [] };
-    setRoles([...roles, role]);
-    setSelectedId(role.id);
+    const id = genRoleId();
+    setDraft(prev => ({
+      ...prev,
+      [id]: { name: 'New role', sections: ['dashboard'], perms: [] },
+    }));
+    setSelectedId(id);
+    setDirty(true);
   };
 
   const deleteRole = () => {
-    const next = roles.filter(r => r.id !== selected.id);
-    setRoles(next);
-    setSelectedId(next[0]?.id);
+    const id = confirmDelete.id;
+    setDraft((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setSelectedId(OWNER_ROLE_ID);
+    setDirty(true);
     setConfirmDelete(null);
   };
+
+  /* ── Staff ─────────────────────────────────────────────────────────────── */
+
+  const assignableRoles = list.filter(r => r.id !== OWNER_ROLE_ID);
+
+  const openAddStaff = () => {
+    setStaffName('');
+    setStaffEmail('');
+    setStaffPassword('');
+    setStaffRoleId(assignableRoles[0]?.id || '');
+    setStaffError('');
+    setShowAddStaff(true);
+  };
+
+  const handleAddStaff = async () => {
+    setStaffSaving(true);
+    setStaffError('');
+    try {
+      await registerStaff({
+        username: staffName,
+        email: staffEmail,
+        password: staffPassword,
+        roleId: staffRoleId,
+        hostelCode: user.hostelCode,
+      });
+      setShowAddStaff(false);
+    } catch (e) {
+      setStaffError(e.message);
+    } finally {
+      setStaffSaving(false);
+    }
+  };
+
+  const handleChangeStaffRole = async (uid, roleId) => {
+    try {
+      await setStaffRole(uid, roleId);
+    } catch (e) {
+      setSaveError(e.message);
+    }
+  };
+
+  const handleRemoveStaff = async () => {
+    const member = confirmRemoveStaff;
+    setConfirmRemoveStaff(null);
+    try {
+      await deleteStaffAccount(member.id);
+    } catch (e) {
+      setSaveError(e.message);
+    }
+  };
+
+  /* ── Render ────────────────────────────────────────────────────────────── */
+
+  if (!owner) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <Icon name="shield_person" size={30} color={NEUTRAL.text4} />
+        <Text style={styles.blockedTitle}>Only the hostel owner can manage roles</Text>
+        <Text style={styles.blockedBody}>
+          Editing a role can grant any other permission, so this stays with the
+          account that created the hostel.
+        </Text>
+      </View>
+    );
+  }
+
+  if (!rolesLoaded) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <ActivityIndicator color={BRAND.navy} />
+      </View>
+    );
+  }
 
   if (!selected) return null;
 
   return (
     <View style={styles.container}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page}>
-        <View style={styles.notice}>
-          <Icon name="info" size={19} color={NEUTRAL.text2} />
-          <Text style={styles.noticeText}>
-            Roles are recorded here but not yet enforced. Everyone still sees every
-            section until access rules are switched on.
-          </Text>
-        </View>
+
+        {!!saveError && (
+          <View style={styles.errorBanner}>
+            <Icon name="error" size={19} color={DANGER} />
+            <Text style={styles.errorBannerText}>{saveError}</Text>
+          </View>
+        )}
+
+        {dirty && (
+          <View style={styles.notice}>
+            <Icon name="edit" size={19} color={NEUTRAL.text2} />
+            <Text style={styles.noticeText}>
+              You have unsaved changes. Nothing takes effect until you save.
+            </Text>
+            <TouchableOpacity
+              onPress={handleSave}
+              disabled={saving}
+              style={[styles.saveInline, saving && { opacity: 0.5 }]}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.saveInlineText}>{saving ? 'Saving…' : 'Save changes'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={styles.split}>
           {/* ── Role list ── */}
@@ -169,8 +265,9 @@ export default function RolesScreen({ roles: rolesProp, onChange, onReady }) {
             </View>
 
             <View style={{ gap: 8 }}>
-              {roles.map(role => {
+              {list.map((role) => {
                 const on = role.id === selected.id;
+                const count = staff.filter(s => s.roleId === role.id).length;
                 return (
                   <TouchableOpacity
                     key={role.id}
@@ -186,7 +283,9 @@ export default function RolesScreen({ roles: rolesProp, onChange, onReady }) {
                         {role.name}
                       </Text>
                       <Text style={[styles.roleMeta, on && { color: '#FFFFFF', opacity: 0.7 }]}>
-                        {role.sections.length} sections · {role.perms.length} actions
+                        {role.locked
+                          ? 'You'
+                          : `${count} ${count === 1 ? 'person' : 'people'} · ${role.perms.length} actions`}
                       </Text>
                     </View>
                     <Icon
@@ -213,16 +312,21 @@ export default function RolesScreen({ roles: rolesProp, onChange, onReady }) {
               />
               {selected.locked && (
                 <Text style={styles.lockedHint}>
-                  The owner role always keeps full access, so it can't be edited or removed.
+                  The owner role always keeps full access, so it can't be edited,
+                  removed, or given to anyone else.
                 </Text>
               )}
             </View>
 
             <View>
               <Text style={[d.overline, { marginBottom: 4 }]}>Sections this role can see</Text>
-              <Text style={styles.sectionHint}>Unchecked sections are hidden from the sidebar.</Text>
+              <Text style={styles.sectionHint}>
+                Unchecked sections are hidden from the sidebar. Extra requests and
+                History are also blocked at the database; the rest is a sidebar
+                filter, not a lock.
+              </Text>
               <View style={styles.sectionGrid}>
-                {SECTION_LIST.map(sec => {
+                {SECTION_LIST.map((sec) => {
                   const on = selected.sections.includes(sec.key);
                   return (
                     <TouchableOpacity
@@ -239,11 +343,7 @@ export default function RolesScreen({ roles: rolesProp, onChange, onReady }) {
                       <View style={[styles.checkbox, on && styles.checkboxOn]}>
                         {on && <Icon name="check" size={14} color="#FFFFFF" />}
                       </View>
-                      <Icon
-                        name={sec.icon}
-                        size={18}
-                        color={on ? BRAND.navy : NEUTRAL.text3}
-                      />
+                      <Icon name={sec.icon} size={18} color={on ? BRAND.navy : NEUTRAL.text3} />
                       <Text
                         style={[styles.sectionLabel, on && { color: BRAND.navy }]}
                         numberOfLines={1}
@@ -258,7 +358,9 @@ export default function RolesScreen({ roles: rolesProp, onChange, onReady }) {
 
             <View>
               <Text style={[d.overline, { marginBottom: 4 }]}>Actions this role can perform</Text>
-              <Text style={styles.sectionHint}>Everything else stays read-only.</Text>
+              <Text style={styles.sectionHint}>
+                Enforced by the database. Everything left off is read-only.
+              </Text>
               <View style={styles.permTable}>
                 {PERM_LIST.map((perm, i) => {
                   const on = selected.perms.includes(perm.key);
@@ -301,15 +403,204 @@ export default function RolesScreen({ roles: rolesProp, onChange, onReady }) {
             )}
           </View>
         </View>
+
+        {/* ── People ── */}
+        <View style={styles.peoplePanel}>
+          <View style={styles.listHead}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.panelTitle}>People with manager access</Text>
+              <Text style={styles.sectionHint}>
+                They sign in with their email address, so they can reset their own
+                password. Housekeepers are managed on the Team screen.
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={openAddStaff}
+              disabled={assignableRoles.length === 0 || dirty}
+              style={[
+                d.btnPrimary,
+                (assignableRoles.length === 0 || dirty) && { opacity: 0.5 },
+              ]}
+              activeOpacity={0.9}
+            >
+              <Icon name="person_add" size={20} color={BRAND.yellow} />
+              <Text style={d.btnPrimaryText}>Add person</Text>
+            </TouchableOpacity>
+          </View>
+
+          {dirty && (
+            <Text style={styles.sectionHint}>
+              Save your role changes before adding anyone — a new account has to
+              point at a role that already exists on the server.
+            </Text>
+          )}
+
+          {staff.length === 0 ? (
+            <Text style={d.emptyHint}>
+              Nobody yet. You are the only account with manager access.
+            </Text>
+          ) : (
+            <View style={{ gap: 8 }}>
+              {staff.map((member) => (
+                <View key={member.id} style={d.listRow}>
+                  <View style={d.listRowIcon}>
+                    <Text style={styles.staffInitial}>
+                      {(member.username || '?').charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={d.listRowLabel} numberOfLines={1}>{member.username}</Text>
+                    <Text style={styles.staffEmail} numberOfLines={1}>{member.email}</Text>
+                  </View>
+
+                  <View style={styles.rolePicker}>
+                    {assignableRoles.map((role) => {
+                      const on = member.roleId === role.id;
+                      return (
+                        <TouchableOpacity
+                          key={role.id}
+                          onPress={() => handleChangeStaffRole(member.id, role.id)}
+                          style={[styles.rolePill, on && styles.rolePillOn]}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.rolePillText, on && { color: '#FFFFFF' }]}>
+                            {role.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => setConfirmRemoveStaff(member)}
+                    style={styles.iconBtn}
+                    activeOpacity={0.7}
+                    accessibilityLabel={`Remove ${member.username}`}
+                  >
+                    <Icon name="delete" size={19} color={DANGER} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
       </ScrollView>
+
+      {/* ── Add staff ── */}
+      <Drawer
+        visible={showAddStaff}
+        onClose={() => !staffSaving && setShowAddStaff(false)}
+        width={460}
+        title="Add manager access"
+        subtitle="They'll sign in with this email address and password."
+        footer={(
+          <>
+            <TouchableOpacity
+              onPress={() => setShowAddStaff(false)}
+              style={d.btnGhost}
+              activeOpacity={0.8}
+            >
+              <Text style={d.btnGhostText}>Cancel</Text>
+            </TouchableOpacity>
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity
+              onPress={handleAddStaff}
+              disabled={staffSaving || !staffName.trim() || !staffEmail.trim() || !staffPassword || !staffRoleId}
+              style={[
+                d.btnPrimary,
+                (staffSaving || !staffName.trim() || !staffEmail.trim() || !staffPassword || !staffRoleId)
+                  && { opacity: 0.5 },
+              ]}
+              activeOpacity={0.9}
+            >
+              <Icon name="save" size={20} color={BRAND.yellow} />
+              <Text style={d.btnPrimaryText}>{staffSaving ? 'Saving…' : 'Create account'}</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      >
+        <View>
+          <FieldLabel>Name</FieldLabel>
+          <TextInput
+            value={staffName}
+            onChangeText={setStaffName}
+            placeholder="e.g. Marta"
+            placeholderTextColor={NEUTRAL.text4}
+            style={d.textInput}
+          />
+        </View>
+        <View>
+          <FieldLabel>Email</FieldLabel>
+          <TextInput
+            value={staffEmail}
+            onChangeText={setStaffEmail}
+            placeholder="marta@example.com"
+            placeholderTextColor={NEUTRAL.text4}
+            autoCapitalize="none"
+            style={d.textInput}
+          />
+        </View>
+        <View>
+          <FieldLabel>Temporary password</FieldLabel>
+          <TextInput
+            value={staffPassword}
+            onChangeText={setStaffPassword}
+            placeholder="••••••••"
+            placeholderTextColor={NEUTRAL.text4}
+            secureTextEntry
+            style={d.textInput}
+          />
+          <Text style={styles.sectionHint}>
+            At least 8 characters. They can change it once they're in, or reset it
+            themselves from the sign-in screen.
+          </Text>
+        </View>
+        <View>
+          <FieldLabel>Role</FieldLabel>
+          <View style={styles.rolePickerWide}>
+            {assignableRoles.map((role) => {
+              const on = staffRoleId === role.id;
+              return (
+                <TouchableOpacity
+                  key={role.id}
+                  onPress={() => setStaffRoleId(role.id)}
+                  style={[styles.rolePill, on && styles.rolePillOn]}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.rolePillText, on && { color: '#FFFFFF' }]}>
+                    {role.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {!!staffError && <Text style={styles.errorText}>{staffError}</Text>}
+        </View>
+      </Drawer>
 
       <ConfirmDialog
         visible={!!confirmDelete}
         title="Delete this role?"
-        message={`"${confirmDelete?.name}" will be removed. Anyone currently on it falls back to no access until you give them another role.`}
+        message={
+          `"${confirmDelete?.name}" will be removed. Anyone currently on it loses `
+          + 'all access until you give them another role — they will not be able to '
+          + 'read or write anything.'
+        }
         confirmLabel="Delete"
         onConfirm={deleteRole}
         onCancel={() => setConfirmDelete(null)}
+      />
+
+      <ConfirmDialog
+        visible={!!confirmRemoveStaff}
+        title="Remove manager access?"
+        message={
+          `${confirmRemoveStaff?.username} will lose access immediately. Their `
+          + 'sign-in details stop working, and nothing they set up is affected.'
+        }
+        confirmLabel="Remove"
+        onConfirm={handleRemoveStaff}
+        onCancel={() => setConfirmRemoveStaff(null)}
       />
     </View>
   );
@@ -317,22 +608,45 @@ export default function RolesScreen({ roles: rolesProp, onChange, onReady }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: NEUTRAL.appBg },
+  centered: { alignItems: 'center', justifyContent: 'center', gap: 10, padding: 40 },
+  blockedTitle: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 18, color: NEUTRAL.text,
+  },
+  blockedBody: {
+    maxWidth: 420, textAlign: 'center',
+    fontFamily: FONTS.regular, fontSize: 14, lineHeight: 20, color: NEUTRAL.text3,
+  },
+
   page: {
     paddingTop: 24, paddingHorizontal: 28, paddingBottom: 40,
     maxWidth: 1156, gap: 20,
   },
 
-  /* The prototype has no banner — it's added here because the screen would
-     otherwise imply an enforcement that doesn't exist yet. Delete it the day
-     Firestore rules land. */
   notice: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 11,
+    flexDirection: 'row', alignItems: 'center', gap: 11,
     padding: 14, borderRadius: 16,
     borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: SUNKEN,
   },
   noticeText: {
     flex: 1, minWidth: 0,
     fontFamily: FONTS.regular, fontSize: 13.5, lineHeight: 19, color: NEUTRAL.text2,
+  },
+  saveInline: {
+    height: 38, paddingHorizontal: 16, borderRadius: 12,
+    backgroundColor: BRAND.navy, alignItems: 'center', justifyContent: 'center',
+  },
+  saveInlineText: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 14, color: '#FFFFFF',
+  },
+
+  errorBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 11,
+    padding: 14, borderRadius: 16,
+    borderWidth: 1, borderColor: '#FECACA', backgroundColor: '#FEF2F2',
+  },
+  errorBannerText: {
+    flex: 1, minWidth: 0,
+    fontFamily: FONTS.medium, fontSize: 13.5, lineHeight: 19, color: DANGER,
   },
 
   split: { flexDirection: 'row', flexWrap: 'wrap', gap: 24, alignItems: 'flex-start' },
@@ -388,7 +702,8 @@ const styles = StyleSheet.create({
     marginTop: 8, fontFamily: FONTS.regular, fontSize: 13, color: NEUTRAL.text4,
   },
   sectionHint: {
-    marginBottom: 12, fontFamily: FONTS.regular, fontSize: 13, color: NEUTRAL.text3,
+    marginTop: 2, marginBottom: 12,
+    fontFamily: FONTS.regular, fontSize: 13, lineHeight: 18, color: NEUTRAL.text3,
   },
 
   sectionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
@@ -450,4 +765,35 @@ const styles = StyleSheet.create({
   deleteText: {
     fontFamily: FONTS.medium, fontWeight: '500', fontSize: 15, color: DANGER,
   },
+
+  /* People */
+  peoplePanel: {
+    padding: 22, borderRadius: 22,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+    shadowColor: BRAND.navy, shadowOpacity: 0.05,
+    shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+  },
+  staffInitial: {
+    fontFamily: FONTS.display, fontWeight: '600', fontSize: 15, color: BRAND.navy,
+  },
+  staffEmail: {
+    marginTop: 2, fontFamily: FONTS.regular, fontSize: 12.5, color: NEUTRAL.text3,
+  },
+  rolePicker: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, flexShrink: 0 },
+  rolePickerWide: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  rolePill: {
+    height: 32, paddingHorizontal: 13, borderRadius: 11,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  rolePillOn: { backgroundColor: BRAND.navy, borderColor: BRAND.navy },
+  rolePillText: {
+    fontFamily: FONTS.medium, fontWeight: '500', fontSize: 13, color: NEUTRAL.text2,
+  },
+  iconBtn: {
+    width: 34, height: 34, borderRadius: 11, flexShrink: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  errorText: { marginTop: 8, fontFamily: FONTS.medium, fontSize: 13, color: DANGER },
 });

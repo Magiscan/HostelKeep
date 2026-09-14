@@ -610,10 +610,12 @@ function HoverIconButton({ icon, color, hoverColor, hoverBg, hoverBorder, onPres
 export default function SetupScreen({ onReady }) {
   const {
     hostel, floors, rooms, addFloor, removeFloor, saveRoom, deleteRoom, updateHostel,
-    roomAttributes, updateRoomAttributes,
+    roomAttributes, updateRoomAttributes, can,
   } = useApp();
 
   const { t } = useTranslation();
+  
+  const canEditRooms = can('editRooms');
 
   const [step, setStep] = useState(floors.length > 0 ? 2 : 1);
   const [hName, setHName] = useState(hostel.name || '');
@@ -635,12 +637,12 @@ export default function SetupScreen({ onReady }) {
   // on them. Registered once — the setters are stable, so this won't loop.
   useEffect(() => {
     if (!onReady) return;
-    onReady({
+    onReady(canEditRooms ? {
       addRoom:     () => { setEditingRoom(null); setShowRoom(true); },
       openFloors:  () => setShowFloorModal(true),
       openAttrs:   () => setShowAttrModal(true),
-    });
-  }, [onReady]);
+    } : {});
+  }, [onReady, canEditRooms]);
 
   const sortedFloors = useMemo(() => {
     return [...floors].sort((a, b) => {
@@ -858,7 +860,7 @@ export default function SetupScreen({ onReady }) {
                               {!!summary && <Text style={styles.summaryText}>{summary}</Text>}
                             </View>
                           </View>
-
+                         {canEditRooms && (         
                           <View style={styles.cardBtns}>
                             <HoverIconButton
                               icon="edit"
@@ -878,6 +880,7 @@ export default function SetupScreen({ onReady }) {
                               onPress={() => setDeleteRoomId(room.id)}
                             />
                           </View>
+                          )}
                         </View>
 
                         {room.type === 'dorm' && room.beds?.length > 0 && (

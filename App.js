@@ -9,6 +9,7 @@ global.Buffer = Buffer;
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
+  Text,
   ActivityIndicator,
   StyleSheet,
   Platform,
@@ -69,6 +70,29 @@ function AuthStack() {
   );
 }
 
+// Manager-side staff (role === 'staff') get the sidebar layout on wide web,
+// but ManagerApp — the native fallback — has no section filtering and would
+// show them every tab. The rules still reject anything they can't do, so this
+// is a UI gap rather than a security hole, but a screen full of buttons that
+// error is worse than an honest wall. Until ManagerApp learns to filter,
+// staff on native get this instead.
+function StaffNotOnMobile() {
+  const { logout } = useAuth();
+  return (
+    <View style={[styles.centered, { padding: 32, gap: 14 }]}>
+      <Text style={{ fontSize: 18, fontWeight: '600', color: COLORS.text, textAlign: 'center' }}>
+        Manager access is desktop-only for now
+      </Text>
+      <Text style={{ fontSize: 15, lineHeight: 21, color: COLORS.textSecondary, textAlign: 'center' }}>
+        Open HostelKeep in a browser on a computer to use your account.
+      </Text>
+      <Text onPress={logout} style={{ marginTop: 8, fontSize: 15, fontWeight: '600', color: COLORS.primary }}>
+        Sign out
+      </Text>
+    </View>
+  );
+}
+
 function RootNavigator() {
   const { user, loading } = useAuth();
   const { loaded } = useApp();
@@ -94,9 +118,18 @@ function RootNavigator() {
 
   if (!user) return <AuthStack />;
 
-  if (user.role === 'manager') {
+  const managerSide = user.role === 'manager' || user.role === 'staff';
+
+  if (managerSide) {
     // Sidebar layout only on wide web screens.
     if (Platform.OS === 'web' && width >= 768) return <ManagerLayoutWeb />;
+
+    // ManagerApp has no section filtering — it would show a staff member every
+    // tab. The rules still reject anything they can't do, so this is a UI gap
+    // rather than a hole, but a screen full of buttons that error is worse than
+    // an honest wall.
+    if (user.role === 'staff') return <StaffNotOnMobile />;
+
     return <ManagerApp />;
   }
 

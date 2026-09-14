@@ -68,7 +68,8 @@ const NAV_SECTIONS = [
   {
     label: 'Settings',
     items: [
-      { key: 'roles', label: 'Roles & access', icon: 'shield_person' },
+      { key: 'roles',   label: 'Roles & access', icon: 'shield_person', ownerOnly: true },
+      { key: 'account', label: 'Account',        icon: 'account_circle', always: true },
     ],
   },
 ];
@@ -84,6 +85,8 @@ export default function Sidebar({
   onNavigate = () => {},
   badges = {},
   user = { name: 'test', role: 'Manager' },
+  sections = null,
+  isOwner = true,
   onSignOut = () => {},
   onClose,
   collapsed = false,
@@ -95,6 +98,18 @@ export default function Sidebar({
   const [toggleHover, setToggleHover] = useState(false);
 
   const currentLang = LANGS.find(l => l.code === i18n.language) || LANGS[0];
+
+  const navSections = NAV_SECTIONS
+    .map(group => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if (item.always) return true;
+        if (item.ownerOnly) return isOwner;
+        if (!sections) return true;
+        return sections.includes(item.key);
+      }),
+    }))
+    .filter(group => group.items.length > 0);
 
   return (
     <View style={[styles.sidebar, collapsed && styles.sidebarCollapsed]}>
@@ -160,7 +175,7 @@ export default function Sidebar({
         contentContainerStyle={styles.navScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {NAV_SECTIONS.map(section => (
+        {navSections.map(section => (
           <View key={section.label} style={styles.section}>
             {!collapsed && <Text style={styles.sectionLabel}>{section.label}</Text>}
             <View style={{ gap: 2 }}>

@@ -48,6 +48,7 @@ export default function HistoryScreen({ onReady }) {
     floors,
     extraRequests,
     hostel,
+    can,
   } = useApp();
   const today = getToday();
 
@@ -56,6 +57,7 @@ export default function HistoryScreen({ onReady }) {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [expandedCleaners, setExpandedCleaners] = useState(new Set());
+  const canExport = can('export');
 
   const text = (key, fallback) => {
     const translated = t(key);
@@ -245,9 +247,9 @@ export default function HistoryScreen({ onReady }) {
     if (!onReady) return;
     onReady({
       exportReport: exportCSV,
-      canExport: !!history,
+      canExport: canExport && !!history,
     });
-  }, [onReady, exportCSV, history]);
+  }, [onReady, exportCSV, history, canExport]);
 
   return (
     <View style={styles.page}>

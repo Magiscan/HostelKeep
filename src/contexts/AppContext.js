@@ -5,6 +5,9 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { notifyHostel, bucketOf } from '../utils/notify';
+import {
+  normaliseRoles, DEFAULT_ROLES, canDo, visibleSections,
+} from '../utils/permissions';
 
 const AppContext = createContext();
 
@@ -91,6 +94,9 @@ export function AppProvider({ children }) {
   const [cleaners, setCleaners] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [roomAttributes, setRoomAttributes] = useState([]);
+  const [roles, setRoles] = useState(DEFAULT_ROLES);
+  const [rolesLoaded, setRolesLoaded] = useState(false);
+  const [staff, setStaff] = useState([]);
 
   // Reset on user change
   useEffect(() => {
@@ -102,6 +108,9 @@ export function AppProvider({ children }) {
       setCleaners([]);
       setRoomAttributes([]);
       setLoaded(true);
+      setRoles(DEFAULT_ROLES);
+      setRolesLoaded(false);
+      setStaff([]);
     } else {
       setHostel({ name: '', code: '' });
       setFloors([]);
@@ -110,6 +119,9 @@ export function AppProvider({ children }) {
       setCleaners([]);
       setRoomAttributes([]);
       setLoaded(false);
+      setRoles(DEFAULT_ROLES);
+      setRolesLoaded(false);
+      setStaff([]);
     }
   }, [currentUser]);
 
@@ -123,17 +135,20 @@ export function AppProvider({ children }) {
         setHostel(data);
         setRoomAttributes(data.roomAttributes || []);
       }
-    });
+    }, (e) => console.warn('hostel listener stopped:', e.code));
 
     const floorsQuery = query(collection(db, 'hostels', hostelCode, 'floors'), orderBy('name'));
     const unsubFloors = onSnapshot(floorsQuery, (snap) => {
       setFloors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, (e) => console.warn('floors listener stopped:', e.code));
 
     const roomsQuery = query(collection(db, 'hostels', hostelCode, 'rooms'), orderBy('name'));
     const unsubRooms = onSnapshot(roomsQuery, (snap) => {
       setRooms(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoaded(true);   // FIXED: was fired before any data arrived
+    }, (e) => {
+      console.warn('rooms listener stopped:', e.code);
+      setLoaded(true);
     });
 
     const statusQuery = collection(db, 'hostels', hostelCode, 'roomStatus');
@@ -141,17 +156,42 @@ export function AppProvider({ children }) {
       const map = {};
       snap.forEach(d => { map[d.id] = d.data(); });
       setRoomStatus(map);
-    });
+    }, (e) => console.warn('roomStatus listener stopped:', e.code));
 
     const cleanersQuery = query(collection(db, 'users'), where('hostelCode', '==', hostelCode), where('role', '==', 'cleaner'));
     const unsubCleaners = onSnapshot(cleanersQuery, (snap) => {
       setCleaners(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    }, (e) => console.warn('cleaners listener stopped:', e.code));
 
-    const extraReqQuery = collection(db, 'hostels', hostelCode, 'extraRequests');
-    const unsubExtraReq = onSnapshot(extraReqQuery, (snap) => {
-      setExtraRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
+    // The permission model. Every member reads it — a staff client has to know
+    // its own role to render, and the rules grant read to any member.
+    const unsubRoles = onSnapshot(
+      doc(db, 'hostels', hostelCode, 'config', 'roles'),
+      (snap) => {
+        if (snap.exists()) {
+          setRoles(normaliseRoles(snap.data()));
+        } else {
+          // Not seeded yet. Fall back to the defaults for rendering only —
+          // nothing is enforced against a document that doesn't exist, and the
+          // rules deny every staff write until one does.
+          setRoles(DEFAULT_ROLES);
+        }
+        setRolesLoaded(true);
+      },
+      (e) => {
+        console.warn('roles listener stopped:', e.code);
+        setRolesLoaded(true);   // permission-denied → stop spinning
+      },
+    );
+
+    const staffQuery = query(
+      collection(db, 'users'),
+      where('hostelCode', '==', hostelCode),
+      where('role', '==', 'staff'),
+    );
+    const unsubStaff = onSnapshot(staffQuery, (snap) => {
+      setStaff(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (e) => console.warn('staff listener stopped:', e.code));
 
     return () => {
       unsubHostel();
@@ -159,9 +199,45 @@ export function AppProvider({ children }) {
       unsubRooms();
       unsubStatus();
       unsubCleaners();
-      unsubExtraReq();
+      unsubRoles();
+      unsubStaff();
     };
   }, [hostelCode]);
+
+  // Whether this account is allowed to READ extra requests. Mirrors canSee()
+  // in firestore.rules. Cleaners always may — they raise them. Owners always
+  // may. Staff only if their role includes the section.
+  //
+  // This one collection holds the base64 photos cleaners attach, which is why
+  // it is gated at the database rather than just hidden in the sidebar.
+  const mayReadExtraRequests = useMemo(() => {
+    if (!userData) return false;
+    if (userData.role !== 'staff') return true;
+    return (roles?.[userData.roleId]?.sections || []).includes('extraRequests');
+  }, [userData, roles]);
+
+  // Deliberately its own effect, keyed on permission as well as hostel. Kept
+  // inside the main subscription effect, a role change would have to tear down
+  // and rebuild every other listener just to add or drop this one.
+  useEffect(() => {
+    if (!hostelCode || !rolesLoaded) return undefined;
+
+    if (!mayReadExtraRequests) {
+      setExtraRequests([]);
+      return undefined;
+    }
+
+    return onSnapshot(
+      collection(db, 'hostels', hostelCode, 'extraRequests'),
+      (snap) => setExtraRequests(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      (e) => {
+        // Should not fire given the check above, but a role can change under a
+        // live listener. Empty is the right answer either way.
+        console.warn('extraRequests listener stopped:', e.code);
+        setExtraRequests([]);
+      },
+    );
+  }, [hostelCode, rolesLoaded, mayReadExtraRequests]);
 
   // ── Write operations (all wrapped in useCallback) ──
 
@@ -577,6 +653,29 @@ export function AppProvider({ children }) {
     });
   }, [hostelCode, rooms, roomStatus, cleaners, floors, extraRequests, hostel.name]);
 
+  // Owner-only on the server. Writing the whole map at once keeps the document
+  // consistent — a partial merge could leave a role with sections but no perms.
+  const saveRoles = useCallback(async (next) => {
+    if (!hostelCode) return;
+    await setDoc(doc(db, 'hostels', hostelCode, 'config', 'roles'), {
+      roles: next,
+      updatedAt: new Date().toISOString(),
+    });
+  }, [hostelCode]);
+
+  // Mirrors can() in firestore.rules. Decides what to RENDER, never what is
+  // allowed — if these two disagree, the rules win and the user gets a
+  // permission-denied error, which is the correct failure.
+  const can = useCallback(
+    (perm) => canDo(userData ? { ...userData } : null, roles, perm),
+    [userData, roles],
+  );
+
+  const sections = useMemo(
+    () => visibleSections(userData, roles),
+    [userData, roles],
+  );
+
   // ── Memoised context value ──
   const contextValue = useMemo(() => ({
     loaded,
@@ -614,6 +713,12 @@ export function AppProvider({ children }) {
     cleanupOldExtraRequests,
     dailyLogExists,
     saveDailyLog,
+    roles,
+    rolesLoaded,
+    staff,
+    saveRoles,
+    can,
+    sections,
   }), [
     loaded,
     hostel,
@@ -652,6 +757,12 @@ export function AppProvider({ children }) {
     // consumers were handed stale closures.
     dailyLogExists,
     saveDailyLog,
+    roles,
+    rolesLoaded,
+    staff,
+    saveRoles,
+    can,
+    sections,
   ]);
 
   return (

@@ -168,10 +168,11 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
   const {
     rooms = [], roomStatus = {}, hostel = {}, cleaners = [],
     extraRequests = [], floors = [],
-    approveExtraRoom, rejectExtraRoom, hostelCode, saveDailyLog, dailyLogExists,
+    approveExtraRoom, rejectExtraRoom, hostelCode, saveDailyLog, dailyLogExists, can,
   } = useApp();
   const { t, i18n } = useTranslation();
   const { notifications } = useNotifications();
+  const canExport = can('export');
 
   const [search, setSearch] = useState('');
   const [selectedRoom, setSelectedRoom] = useState(null);
@@ -206,8 +207,11 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
 
   useEffect(() => {
     if (!onReady) return;
-    onReady({ saveDay: handleSaveDay, dailyReport: handleDailyReport, saveDaySuccess });
-  }, [onReady, handleSaveDay, handleDailyReport, saveDaySuccess]);
+    onReady({
+      ...(canExport ? { saveDay: handleSaveDay, dailyReport: handleDailyReport } : {}),
+      saveDaySuccess,
+    }); 
+  }, [onReady, handleSaveDay, handleDailyReport, saveDaySuccess, canExport]);
 
   /* ── Yesterday's autosave (unchanged) ── */
   useEffect(() => {

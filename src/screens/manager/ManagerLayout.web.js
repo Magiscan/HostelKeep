@@ -40,6 +40,8 @@ import ExtraRequestsScreen from './ExtraRequestsScreen.web';
 import ReportsScreen from './ReportsScreen.web';
 import HistoryScreen from './HistoryScreen.web';
 import RolesScreen from './RolesScreen.web';
+import AccountScreen from './AccountScreen.web';
+import { isOwner as ownerOf } from '../../utils/permissions';
 
 /* Section metadata. Titles and subtitles are the prototype's, unchanged. */
 const SECTIONS = {
@@ -83,6 +85,11 @@ const SECTIONS = {
     subtitle: 'Create roles and decide what each one can see and do.',
     ownsHeader: false,
   },
+  account: {
+    title: 'Account',
+    subtitle: 'Your details, your hostel code, and account deletion.',
+    ownsHeader: false,
+  },
 };
 
 /* Notification type → icon + chip colours, matching the prototype's panel. */
@@ -122,7 +129,9 @@ export default function ManagerLayout() {
     clearAll,
     deleteAllNotifications,
   } = useNotifications();
-  const { extraRequests } = useApp();
+  const { extraRequests, sections, roles, rolesLoaded } = useApp();
+  const owner = ownerOf(user);
+  const [rolesAction, setRolesAction] = useState(null);
   const [highlightRoomId, setHighlightRoomId] = useState(null);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -143,6 +152,17 @@ export default function ManagerLayout() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [toggleNav]);
+
+  // Roles can change under a signed-in staff member at any moment. If the
+  // active section stops being allowed, move somewhere they can actually be.
+  useEffect(() => {
+    if (!rolesLoaded || owner) return;
+    if (tab === 'account') return;                 // always reachable
+    if (tab === 'roles' && !owner) { setTab('account'); return; }
+    if (sections && !sections.includes(tab)) {
+      setTab(sections[0] || 'account');
+    }
+  }, [tab, sections, rolesLoaded, owner]);
 
   const handleNavigate = (key) => {
     if (key === 'notifications') {
@@ -169,7 +189,8 @@ export default function ManagerLayout() {
       case 'extraRequests': return <ExtraRequestsScreen />;
       case 'reports':       return <ReportsScreen />;
       case 'history':       return <HistoryScreen onReady={setHistoryAction} />;
-      case 'roles':         return <RolesScreen />;
+      case 'roles':         return owner ? <RolesScreen onReady={setRolesAction} /> : <AccountScreen />;
+      case 'account':       return <AccountScreen />;
       default:              return <DashboardScreen {...dashboardProps} />;
     }
   };
@@ -184,7 +205,9 @@ export default function ManagerLayout() {
             (r) => r.status === 'pending' || !r.status
           ).length,
         }}
-        user={{ name: user.username, role: user.role }}
+        user={{ name: user.username, role: owner ? 'Owner' : (roles?.[user.roleId]?.name || user.role) }}
+        sections={owner ? null : sections}
+        isOwner={owner}
         onSignOut={logout}
         collapsed={navCollapsed}
         onToggleCollapse={toggleNav}
@@ -198,28 +221,45 @@ export default function ManagerLayout() {
             unreadCount={unreadCount}
             onOpenNotifications={() => setShowNotifications(true)}
             actions={ (tab === 'rooms' && roomsAction) ? [
+              roomsAction.openFloors &&
               { key: 'floors', label: 'Manage floors', icon: 'layers', onPress: roomsAction.openFloors },
+              roomsAction.openAttrs &&
               { key: 'attrs',  label: 'Attributes',    icon: 'tune',   onPress: roomsAction.openAttrs },
+              roomsAction.addRoom &&
               { key: 'add',    label: 'Add room',      icon: 'add', variant: 'primary', onPress: roomsAction.addRoom },
-            ] :
+            ].filter(Boolean) :
             (tab === 'team' && teamAction) ? [
+              teamAction.print &&
               { key: 'print', label: 'Print sheets',   icon: 'print',      onPress: teamAction.print },
+              teamAction.addCleaner &&
               { key: 'add',   label: 'Add housekeeper', icon: 'person_add', variant: 'primary', onPress: teamAction.addCleaner },
-            ] : 
+            ].filter(Boolean) : 
             tab === 'history' && historyAction ? [
               { key: 'export', label: 'Download report', icon: 'download',
                 variant: 'primary', disabled: !historyAction.canExport,
                 onPress: historyAction.exportReport },
             ] : 
             tab === 'dashboard' && dashAction ? [
+              dashAction.saveDay && 
               { key: 'save', label: dashAction.saveDaySuccess ? 'Saved' : 'Save day',
                 icon: dashAction.saveDaySuccess ? 'check' : 'save', onPress: dashAction.saveDay },
+              dashAction.dailyReport &&
               { key: 'report', label: 'Daily report', icon: 'download',
                 variant: 'primary', onPress: dashAction.dailyReport },
-            ] : 
+            ].filter(Boolean) : 
             tab === 'assign' && assignAction ? [
+              assignAction.print &&
               { key: 'print', label: 'Print sheets', icon: 'print', variant: 'primary', onPress: assignAction.print },
+              assignAction.clearAll &&
               { key: 'clear', label: 'Clear all', icon: 'cancel', variant: 'danger', onPress: assignAction.clearAll },
+            ].filter(Boolean) :
+            (tab === 'roles' && rolesAction) ? [
+              { key: 'saveRoles',
+                label: rolesAction.saving ? 'Saving…' : 'Save changes',
+                icon: 'save',
+                variant: 'primary',
+                disabled: !rolesAction.dirty || rolesAction.saving,
+                onPress: rolesAction.save },
             ] : []}
           />
         )}

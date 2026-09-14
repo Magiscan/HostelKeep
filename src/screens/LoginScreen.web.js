@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../components/Icon';
 import { COLORS, RADIUS, SHADOW, FONTS, FONT_SIZE, SPACING } from '../theme';
 import { Button, Card, Label, Input } from '../components/UI';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth, looksLikeEmail } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import { Wordmark } from '../components/brand/Glass';
 import { BottomSheet } from '../components/brand/Overlays';
@@ -36,24 +36,31 @@ export default function LoginScreenWeb() {
   const { width } = useWindowDimensions();
   const showPanel = width >= 900;
 
+  // One field for both roles: managers type their email, cleaners their name.
+  const [identifier, setIdentifier] = useState('');
   const [hostelCode, setHostelCode] = useState('');
-  const [name, setName] = useState('');
   const [pass, setPass] = useState('');
   const [err, setErr] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const [showLangModal, setShowLangModal] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
 
   const currentLang = LANGS.find(l => l.code === i18n.language) || LANGS[0];
-  const isValid = hostelCode.trim() && name.trim() && pass.trim();
+
+  // An email means a manager, who signs in directly and needs no hostel code.
+  const isManagerLogin = looksLikeEmail(identifier);
+  const isValid =
+    identifier.trim() && pass.trim() && (isManagerLogin || hostelCode.trim());
 
   const handle = async () => {
     if (!isValid) return;
     setLoading(true);
     setErr('');
+    setNotice('');
     try {
-      await login(name.trim(), pass, hostelCode.trim().toUpperCase());
+      await login(identifier.trim(), pass, hostelCode.trim().toUpperCase());
     } catch (e) {
       setErr(e.message || t('loginError'));
     } finally {
@@ -62,12 +69,17 @@ export default function LoginScreenWeb() {
   };
 
   const handleForgotPassword = async () => {
-    if (!name.trim() || !hostelCode.trim()) {
-      alert('Please enter your username and hostel code first.');
+    setErr('');
+    if (!isManagerLogin) {
+      // Cleaners have no inbox of their own — their manager resets them.
+      setNotice(
+        t('cleanerResetHint')
+        || 'Ask your manager to reset your password from the Team screen. If you are a manager, enter your email address above.',
+      );
       return;
     }
-    const message = await requestPasswordReset(name, hostelCode);
-    alert(message);
+    const message = await requestPasswordReset(identifier.trim());
+    setNotice(message);
   };
 
   return (
@@ -98,7 +110,6 @@ export default function LoginScreenWeb() {
         {/* ── Decorative brand panel (desktop only) ── */}
         {showPanel && (
           <View style={styles.panel}>
-
             <View style={styles.panelContent}>
               <View style={styles.panelBrandBlock}>
                 <View style={styles.panelLogoWrap}>
@@ -155,26 +166,36 @@ export default function LoginScreenWeb() {
 
             <Card style={styles.card}>
               <View style={styles.fieldGroup}>
-                <Label>{t('hostelCode')}</Label>
+                <Label>{t('emailOrUsername') || 'Email or username'}</Label>
                 <Input
-                  value={hostelCode}
-                  onChangeText={setHostelCode}
-                  placeholder="e.g. SUNSET"
-                  autoCapitalize="characters"
+                  value={identifier}
+                  onChangeText={setIdentifier}
+                  placeholder="you@hostel.com"
+                  autoCapitalize="none"
+                  autoComplete="username"
+                  keyboardType="email-address"
                 />
+                <Text style={styles.hint}>
+                  {isManagerLogin
+                    ? (t('managerSignInHint') || 'Signing in as a manager.')
+                    : (t('identifierHint') || 'Managers use their email. Cleaners use the username their manager gave them.')}
+                </Text>
               </View>
 
-              <View style={styles.fieldGroup}>
-                <Label>{t('username')}</Label>
-                <Input
-                  value={name}
-                  onChangeText={setName}
-                  placeholder={t('username')}
-                  autoCapitalize="words"
-                />
-              </View>
+              {/* Cleaners only — a manager's email already identifies the hostel. */}
+              {!isManagerLogin && (
+                <View style={styles.fieldGroup}>
+                  <Label>{t('hostelCode')}</Label>
+                  <Input
+                    value={hostelCode}
+                    onChangeText={setHostelCode}
+                    placeholder="e.g. SUNSET"
+                    autoCapitalize="characters"
+                  />
+                </View>
+              )}
 
-              <View style={styles.fieldGroup}>
+              <View style={[styles.fieldGroup, styles.passwordGroup]}>
                 <Label>{t('password')}</Label>
                 <View style={styles.passwordRow}>
                   <Input
@@ -182,12 +203,15 @@ export default function LoginScreenWeb() {
                     onChangeText={setPass}
                     placeholder="••••••••"
                     secureTextEntry={!showPass}
+                    autoCapitalize="none"
+                    autoComplete="current-password"
                     style={{ flex: 1, marginBottom: 0 }}
                   />
                   <TouchableOpacity
                     onPress={() => setShowPass(!showPass)}
                     style={styles.eyeButton}
                     activeOpacity={0.7}
+                    accessibilityLabel={showPass ? 'Hide password' : 'Show password'}
                   >
                     <Icon
                       name={showPass ? 'eye-outline' : 'eye-off-outline'}
@@ -213,13 +237,19 @@ export default function LoginScreenWeb() {
                 </View>
               ) : null}
 
+              {notice ? (
+                <View style={styles.noticeBanner}>
+                  <Icon name="mail-outline" size={16} color={COLORS.primary} style={{ marginRight: 6 }} />
+                  <Text style={styles.noticeText}>{notice}</Text>
+                </View>
+              ) : null}
+
               <Button
                 title={loading ? t('signingIn') : t('signIn')}
                 onPress={handle}
                 size="lg"
                 glow
                 disabled={!isValid || loading}
-                style={{ marginTop: SPACING.lg }}
               />
 
               <TouchableOpacity
@@ -496,11 +526,22 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     padding: 20,
     borderRadius: 24,
-    gap: 14,
+    // No `gap` here: it stacked on top of every child's own margin and was
+    // half the reason the sign-in button drifted away from the fields.
     ...SHADOW.md,
   },
   fieldGroup: {
     marginBottom: SPACING.md,
+  },
+  // The forgot link belongs to the password field, so no gap between them.
+  passwordGroup: {
+    marginBottom: 0,
+  },
+  hint: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.xs,
+    color: COLORS.textMuted,
+    marginTop: 4,
   },
 
   passwordRow: {
@@ -538,10 +579,29 @@ const styles = StyleSheet.create({
     color: COLORS.danger,
   },
 
+  noticeBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  noticeText: {
+    flex: 1,
+    minWidth: 0,
+    fontFamily: FONTS.medium,
+    fontSize: FONT_SIZE.sm,
+    lineHeight: 19,
+    color: COLORS.primary,
+  },
+
   forgotBtn: {
     alignSelf: 'flex-end',
-    marginTop: SPACING[4],
-    marginBottom: SPACING[8],
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.lg,
+    paddingVertical: 4,
   },
   forgotText: {
     fontFamily: FONTS.medium,
