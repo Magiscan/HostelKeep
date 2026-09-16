@@ -53,7 +53,7 @@ const lookupKey = (hostelCode, username) =>
 function friendlyAuthError(e) {
   const code = e?.code || '';
   if (code.includes('wrong-password') || code.includes('invalid-credential'))
-    return 'Incorrect password. Please try again.';
+    return 'Incorrect email or password. Please try again.';
   if (code.includes('user-not-found'))
     return 'Invalid username, hostel code, or password.';
   if (code.includes('invalid-email'))

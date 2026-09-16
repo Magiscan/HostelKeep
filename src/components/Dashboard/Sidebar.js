@@ -19,9 +19,9 @@
 // clipped. Keeping the aside's horizontal padding at 0 and pushing it onto
 // the logo row / nav content / footer means the bar is at x=0 inside the
 // scroll content and survives.
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Modal, Pressable, ScrollView, Image,
+  View, Text, TouchableOpacity, StyleSheet, Modal, Pressable, ScrollView, Image, Platform,
 } from 'react-native';
 import Icon from '../Icon';
 import { COLORS } from '../../theme/colors';
@@ -30,6 +30,9 @@ import { SPACING } from '../../theme/spacing';
 import { RADIUS } from '../../theme/radius';
 import { BRAND } from '../../theme/tokens';
 import { useTranslation } from 'react-i18next';
+
+// Web only: lets the tooltip render on <body>, above every layout layer.
+const createPortal = Platform.OS === 'web' ? require('react-dom').createPortal : null;
 
 const logo = require('../../../assets/logo.png');
 
@@ -97,6 +100,31 @@ export default function Sidebar({
   const [logoHover, setLogoHover] = useState(false);
   const [toggleHover, setToggleHover] = useState(false);
 
+  // Hover labels for the collapsed rail. Measured from the hover event itself
+  // and rendered on <body> via a portal — anything rendered inside the sidebar
+  // sits underneath the content area, whatever its zIndex.
+  const [tip, setTip] = useState(null);   // { label, top, left } | null
+
+  const showTip = (e, label) => {
+    const el = e?.currentTarget;
+    const rect = el?.getBoundingClientRect?.();
+    if (rect) {
+      setTip({ label, top: rect.top + rect.height / 2, left: rect.right + 16 });
+    } else if (e?.nativeEvent?.clientY != null) {
+      setTip({ label, top: e.nativeEvent.clientY, left: 92 });
+    }
+  };
+  const hideTip = () => setTip(null);
+
+  // Spread onto any Pressable that should show a label when collapsed.
+  // (`key` is unused now; kept so the call sites don't have to change.)
+  const tipProps = (key, label) => (collapsed ? {
+    onHoverIn: (e) => showTip(e, label),
+    onHoverOut: hideTip,
+  } : {});
+
+  useEffect(() => { setTip(null); }, [collapsed]);
+
   const currentLang = LANGS.find(l => l.code === i18n.language) || LANGS[0];
 
   const navSections = NAV_SECTIONS
@@ -116,9 +144,9 @@ export default function Sidebar({
       {/* ── Logo + wordmark ── */}
       <View style={[styles.logoRow, collapsed && styles.logoRowCollapsed]}>
         <Pressable
-          onPress={collapsed ? onToggleCollapse : undefined}
-          onHoverIn={() => setLogoHover(true)}
-          onHoverOut={() => setLogoHover(false)}
+          onPress={() => { hideTip(); if (collapsed) onToggleCollapse?.(); }}
+          onHoverIn={(e) => { setLogoHover(true); if (collapsed) showTip(e, 'Expand sidebar'); }}
+          onHoverOut={() => { setLogoHover(false); hideTip(); }}
           disabled={!collapsed}
           style={styles.logoMarkWrap}
           accessibilityRole={collapsed ? 'button' : undefined}
@@ -174,6 +202,8 @@ export default function Sidebar({
         style={styles.navScroll}
         contentContainerStyle={styles.navScrollContent}
         showsVerticalScrollIndicator={false}
+        onScroll={hideTip}
+        scrollEventThrottle={16}
       >
         {navSections.map(section => (
           <View key={section.label} style={styles.section}>
@@ -184,15 +214,19 @@ export default function Sidebar({
                 const badge = badges[item.badgeKey || item.key];
 
                 return (
-                  <TouchableOpacity
+                  <Pressable
                     key={item.key}
-                    style={[styles.row, collapsed && styles.rowCollapsed, active && styles.rowActive]}
-                    onPress={() => onNavigate(item.key)}
-                    activeOpacity={0.7}
+                    {...tipProps(item.key, badge ? `${item.label} · ${badge}` : item.label)}
+                    style={({ pressed }) => [
+                      styles.row,
+                      collapsed && styles.rowCollapsed,
+                      active && styles.rowActive,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                    onPress={() => { hideTip(); onNavigate(item.key); }}
                     accessibilityRole="tab"
                     accessibilityState={{ selected: active }}
                     accessibilityLabel={item.label}
-                    title={collapsed ? item.label : undefined}   // native tooltip
                   >
                     {active && <View style={styles.activeBar} />}
                     <View style={[styles.rowLeft, collapsed && styles.rowLeftCollapsed]}>
@@ -217,7 +251,7 @@ export default function Sidebar({
                         <Text style={styles.badgeText}>{badge > 99 ? '99+' : badge}</Text>
                       </View>
                     )}
-                  </TouchableOpacity>
+                  </Pressable>
                 );
               })}
             </View>
@@ -227,10 +261,10 @@ export default function Sidebar({
 
       {/* ── Footer: language + account ── */}
       <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.langSelector}
-          onPress={() => setShowLangModal(true)}
-          activeOpacity={0.7}
+        <Pressable
+          {...tipProps('lang', `Language · ${currentLang.label}`)}
+          style={({ pressed }) => [styles.langSelector, pressed && { opacity: 0.7 }]}
+          onPress={() => { hideTip(); setShowLangModal(true); }}
         >
           <View style={styles.langSelectorLeft}>
             <Icon name="language" size={18} color={ON_NAVY_SOFT} />
@@ -239,7 +273,7 @@ export default function Sidebar({
             )}
           </View>
           {!collapsed && <Icon name="unfold_more" size={18} color={ON_NAVY_SOFT} />}
-        </TouchableOpacity>
+        </Pressable>
 
         <View style={styles.userCard}>
           <View style={styles.userAvatar}>
@@ -251,16 +285,25 @@ export default function Sidebar({
               <Text style={styles.userRole} numberOfLines={1}>{user.role}</Text>
             </View>
           )}
-          <TouchableOpacity
+          <Pressable
+            {...tipProps('signout', 'Sign out')}
             onPress={onSignOut}
-            style={styles.signOutBtn}
-            activeOpacity={0.7}
+            style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.7 }]}
             accessibilityLabel="Sign out"
           >
             <Icon name="logout" size={19} color={ON_NAVY_MUTED} />
-          </TouchableOpacity>
+          </Pressable>
         </View>
       </View>
+
+      {/* ── Collapsed-rail tooltip ── */}
+      {collapsed && tip && createPortal && createPortal(
+        <View style={[styles.tooltip, { top: tip.top, left: tip.left, pointerEvents: 'none' }]}>
+          <View style={styles.tooltipArrow} />
+          <Text style={styles.tooltipText} numberOfLines={1}>{tip.label}</Text>
+        </View>,
+        document.body,
+      )}
 
       {/* ── Language modal ── */}
       <Modal
@@ -649,9 +692,42 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
   },
-  langItemTextActive: {
+    langItemTextActive: {
     color: COLORS.primary,
     fontFamily: FONTS.semiBold,
     fontWeight: '600',
+  },
+
+  /* Collapsed-rail tooltip */
+  tooltip: {
+    position: 'fixed',
+    zIndex: 1000,
+    transform: [{ translateY: '-50%' }],
+    paddingVertical: 7,
+    paddingHorizontal: 11,
+    borderRadius: 10,
+    backgroundColor: BRAND.navy,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    shadowColor: BRAND.navy,
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  tooltipArrow: {
+    position: 'absolute',
+    left: -5,
+    top: '50%',
+    marginTop: -5,
+    width: 10,
+    height: 10,
+    backgroundColor: BRAND.navy,
+    transform: [{ rotate: '45deg' }],
+  },
+  tooltipText: {
+    fontFamily: FONTS.semiBold,
+    fontWeight: '600',
+    fontSize: 13,
+    color: ON_NAVY,
   },
 });
