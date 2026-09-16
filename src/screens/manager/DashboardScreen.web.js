@@ -20,12 +20,11 @@
 // DROPPED DELIBERATELY: the local generateCSV helper and handleExport. They
 // were defined but never referenced — Header only ever called onSaveDay and
 // onDailyReport. Excel export still works through generateDailyReport.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, Alert, useWindowDimensions,
+  View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, useWindowDimensions,
 } from 'react-native';
-import * as XLSX from 'xlsx';
 import { useApp } from '../../contexts/AppContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import Icon from '../../components/Icon';
@@ -33,7 +32,7 @@ import { Drawer, drawerStyles as d } from '../../components/Dashboard/Drawer.web
 import { FONTS } from '../../theme/typography';
 import { BRAND, NEUTRAL, STATUS, ACCENT } from '../../theme/tokens';
 import { buildCleanerColors } from '../../utils/cleanerColor';
-import { generateDailyReport } from '../../utils/dailyReport';
+import { downloadDailyReport } from '../../utils/dailyReport';
 import Footer from '../../components/Dashboard/Footer';
 
 const SUNKEN = '#F8FAFC';
@@ -168,7 +167,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
   const {
     rooms = [], roomStatus = {}, hostel = {}, cleaners = [],
     extraRequests = [], floors = [],
-    approveExtraRoom, rejectExtraRoom, hostelCode, saveDailyLog, dailyLogExists, can,
+    approveExtraRoom, rejectExtraRoom, can,
   } = useApp();
   const { t, i18n } = useTranslation();
   const { notifications } = useNotifications();
@@ -176,8 +175,6 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
 
   const [search, setSearch] = useState('');
   const [selectedRoom, setSelectedRoom] = useState(null);
-  const [saveDaySuccess, setSaveDaySuccess] = useState(false);
-  const autoSaveRef = useRef(false);
 
   const colors = useMemo(() => buildCleanerColors(cleaners), [cleaners]);
 
@@ -185,48 +182,19 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
   const isMobile = width < 768;   // adjust threshold as needed
 
   /* ── Header actions ── */
-  const handleSaveDay = useCallback(async () => {
-    try {
-      await saveDailyLog();
-      setSaveDaySuccess(true);
-      setTimeout(() => setSaveDaySuccess(false), 2000);
-    } catch (e) {
-      Alert.alert('Save failed', e.message);
-    }
-  }, [saveDailyLog]);
-
   const handleDailyReport = useCallback(() => {
-    const wb = generateDailyReport({
-      date: new Date().toISOString().slice(0, 10),
-      hostelName: hostel.name,
-      rooms, roomStatus, cleaners, floors, extraRequests,
+    const n = new Date();
+    const date = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+    downloadDailyReport({
+      date, hostelName: hostel.name, rooms, roomStatus, cleaners, floors, extraRequests,
       lang: i18n.language.startsWith('it') ? 'it' : 'en',
     });
-    XLSX.writeFile(wb, `KeepClean_Report_${new Date().toISOString().slice(0, 10)}_${hostel.name}.xlsx`);
   }, [hostel.name, rooms, roomStatus, cleaners, floors, extraRequests, i18n.language]);
 
   useEffect(() => {
     if (!onReady) return;
-    onReady({
-      ...(canExport ? { saveDay: handleSaveDay, dailyReport: handleDailyReport } : {}),
-      saveDaySuccess,
-    }); 
-  }, [onReady, handleSaveDay, handleDailyReport, saveDaySuccess, canExport]);
-
-  /* ── Yesterday's autosave (unchanged) ── */
-  useEffect(() => {
-    if (!hostelCode || autoSaveRef.current) return;
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yyyy = yesterday.getFullYear();
-    const mm = String(yesterday.getMonth() + 1).padStart(2, '0');
-    const dd = String(yesterday.getDate()).padStart(2, '0');
-    const yesterdayStr = `${yyyy}-${mm}-${dd}`;
-    dailyLogExists(yesterdayStr).then(exists => {
-      if (!exists) saveDailyLog(yesterdayStr);
-    });
-    autoSaveRef.current = true;
-  }, [hostelCode, dailyLogExists, saveDailyLog]);
+    onReady(canExport ? { dailyReport: handleDailyReport } : {});
+  }, [onReady, handleDailyReport, canExport]);
 
   /* ── Notification deep-link (unchanged) ── */
   useEffect(() => {

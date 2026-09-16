@@ -160,7 +160,7 @@ export default function AssignScreen({ onReady }) {
   const isNarrow = width < 900;
   const {
     rooms, cleaners, floors, assignRoomWithDetails, unassignRoom, roomStatus,
-    updateRoomStatus, roomAttributes, can,
+    updateRoomStatus, roomAttributes, can, closeDayBeforeWipe,
   } = useApp();
   const canAssign = can('assign');
 
@@ -314,6 +314,7 @@ export default function AssignScreen({ onReady }) {
   }, [rooms, unassignRoom, updateRoomStatus]);
 
   const resetBedStates = useCallback(async () => {
+    closeDayBeforeWipe('resetBeds');
     const updates = [];
     rooms.forEach(room => {
       if (room.type === 'dorm' && room.beds?.length) {
@@ -332,7 +333,7 @@ export default function AssignScreen({ onReady }) {
       }
     });
     await Promise.all(updates);
-  }, [rooms, updateRoomStatus]);
+  }, [rooms, updateRoomStatus, closeDayBeforeWipe]);
 
   // ── Export sheets (memoized) ─────────────────────────────────
   const handleExportSheets = useCallback(() => {
@@ -585,6 +586,7 @@ export default function AssignScreen({ onReady }) {
 
   // ── Bulk bar handlers ────────────────────────────────────────
   const bulkSetBeds = useCallback(async (state) => {
+    closeDayBeforeWipe('bulkBeds', Array.from(selectedRoomIds));
     const updates = [];
     selectedRoomIds.forEach(id => {
       const room = rooms.find(r => r.id === id);
@@ -594,7 +596,7 @@ export default function AssignScreen({ onReady }) {
       updates.push(updateRoomStatus(id, { assignmentBedStatus: next }));
     });
     await Promise.all(updates);
-  }, [selectedRoomIds, rooms, updateRoomStatus]);
+  }, [selectedRoomIds, rooms, updateRoomStatus, closeDayBeforeWipe]);
 
   const bulkToggleCommon = useCallback(async () => {
     const ids = Array.from(selectedRoomIds);

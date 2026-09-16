@@ -10,8 +10,7 @@ import Icon from '../../components/Icon';
 import { FONTS } from '../../theme/typography';
 import { BRAND, NEUTRAL, STATUS, ACCENT } from '../../theme/tokens';
 import { buildCleanerColors } from '../../utils/cleanerColor';
-import * as XLSX from 'xlsx';
-import { generateDailyReport } from '../../utils/dailyReport';
+import { downloadDailyReport } from '../../utils/dailyReport';
 
 const getToday = () => {
   const now = new Date();
@@ -177,6 +176,7 @@ export default function HistoryScreen({ onReady }) {
           cleaners: history.cleanersSnapshot,
           floors: history.floorsSnapshot || [],
           extraRequests: history.extraRequestsSnapshot || [],
+          snapshotAt: history.savedAt,
           lang: i18n.language.startsWith('it') ? 'it' : 'en',
         };
       } else {
@@ -226,13 +226,12 @@ export default function HistoryScreen({ onReady }) {
           cleaners: reconstructedCleaners,
           floors: [],
           extraRequests: [],
+          snapshotAt: history.savedAt,
           lang: i18n.language.startsWith('it') ? 'it' : 'en',
         };
       }
 
-      const wb = generateDailyReport(reportData);
-      const fileName = `KeepClean_Report_${selectedDate}.xlsx`;
-      XLSX.writeFile(wb, fileName);
+      downloadDailyReport(reportData);
     } catch (error) {
       console.error('Export error:', error);
       Alert.alert(

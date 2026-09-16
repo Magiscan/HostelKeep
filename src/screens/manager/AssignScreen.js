@@ -254,7 +254,7 @@ export default function AssignScreen({ bottomPad = 0, scrollTopSignal = 0 }) {
   const { t } = useTranslation();
   const {
     rooms, cleaners, floors, assignRoomWithDetails, unassignRoom,
-    roomStatus, updateRoomStatus,
+    roomStatus, updateRoomStatus, closeDayBeforeWipe,
   } = useApp();
 
   const [search, setSearch] = useState('');
@@ -395,14 +395,16 @@ const { map: roomsByFloor, counts } = useMemo(() => {
   }, [rooms, unassignRoom, updateRoomStatus]);
 
   const resetRoomBeds = useCallback(async (roomId) => {
+    closeDayBeforeWipe('resetBeds', [roomId]);
     const room = rooms.find(r => r.id === roomId);
     if (!room?.beds?.length) return;
     const defaults = {};
     room.beds.forEach(bed => { defaults[bed.id] = { status: 'noone', reason: 'noone' }; });
     await updateRoomStatus(roomId, { assignmentBedStatus: defaults });
-  }, [rooms, updateRoomStatus]);
+  }, [rooms, updateRoomStatus, closeDayBeforeWipe]);
 
   const resetBeds = useCallback(async () => {
+    closeDayBeforeWipe('resetBeds');
     const updates = [];
     rooms.forEach(room => {
       if (room.type === 'dorm' && room.beds?.length) {
@@ -422,7 +424,7 @@ const { map: roomsByFloor, counts } = useMemo(() => {
       }
     });
     await Promise.all(updates);
-  }, [rooms, updateRoomStatus]);
+  }, [rooms, updateRoomStatus, closeDayBeforeWipe]);
 
   const doAssign = useCallback(async () => {
     const room = rooms.find(r => r.id === assignRoomId);

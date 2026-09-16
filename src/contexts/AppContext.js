@@ -8,8 +8,16 @@ import { notifyHostel, bucketOf } from '../utils/notify';
 import {
   normaliseRoles, DEFAULT_ROLES, canDo, visibleSections,
 } from '../utils/permissions';
+import { buildDailyLog, localDateStr } from '../utils/dailyLog';
+import { useDailyLogAutosave } from '../hooks/useDailyLogAutosave';
 
 const AppContext = createContext();
+
+// Every roomStatus write carries the time it happened. The daily-history
+// autosave uses the most recent one to decide which DAY the live state belongs
+// to — see src/utils/dailyLog.js. Client clock, deliberately: it has to be a
+// plain number the moment the write is made, not a pending serverTimestamp.
+const stamp = (data) => ({ ...data, updatedAt: Date.now() });
 
 /* ─── Push notification helpers (free Expo push) ──────────────── */
 
@@ -98,6 +106,15 @@ export function AppProvider({ children }) {
   const [rolesLoaded, setRolesLoaded] = useState(false);
   const [staff, setStaff] = useState([]);
 
+  // Which hostel each listener has actually delivered data for. Keyed by code
+  // rather than a boolean so that switching hostel can never pair the new code
+  // with the previous hostel's rooms still sitting in state — the autosave
+  // waits until every listener has reported for the CURRENT code.
+  const [readyFor, setReadyFor] = useState({});
+  const markReady = useCallback((key, code) => {
+    setReadyFor(prev => (prev[key] === code ? prev : { ...prev, [key]: code }));
+  }, []);
+
   // Reset on user change
   useEffect(() => {
     if (!currentUser) {
@@ -111,6 +128,7 @@ export function AppProvider({ children }) {
       setRoles(DEFAULT_ROLES);
       setRolesLoaded(false);
       setStaff([]);
+      setReadyFor({});
     } else {
       setHostel({ name: '', code: '' });
       setFloors([]);
@@ -122,6 +140,7 @@ export function AppProvider({ children }) {
       setRoles(DEFAULT_ROLES);
       setRolesLoaded(false);
       setStaff([]);
+      setReadyFor({});
     }
   }, [currentUser]);
 
@@ -135,17 +154,20 @@ export function AppProvider({ children }) {
         setHostel(data);
         setRoomAttributes(data.roomAttributes || []);
       }
+      markReady('hostel', hostelCode);
     }, (e) => console.warn('hostel listener stopped:', e.code));
 
     const floorsQuery = query(collection(db, 'hostels', hostelCode, 'floors'), orderBy('name'));
     const unsubFloors = onSnapshot(floorsQuery, (snap) => {
       setFloors(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      markReady('floors', hostelCode);
     }, (e) => console.warn('floors listener stopped:', e.code));
 
     const roomsQuery = query(collection(db, 'hostels', hostelCode, 'rooms'), orderBy('name'));
     const unsubRooms = onSnapshot(roomsQuery, (snap) => {
       setRooms(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoaded(true);   // FIXED: was fired before any data arrived
+      markReady('rooms', hostelCode);
     }, (e) => {
       console.warn('rooms listener stopped:', e.code);
       setLoaded(true);
@@ -156,11 +178,13 @@ export function AppProvider({ children }) {
       const map = {};
       snap.forEach(d => { map[d.id] = d.data(); });
       setRoomStatus(map);
+      markReady('status', hostelCode);
     }, (e) => console.warn('roomStatus listener stopped:', e.code));
 
     const cleanersQuery = query(collection(db, 'users'), where('hostelCode', '==', hostelCode), where('role', '==', 'cleaner'));
     const unsubCleaners = onSnapshot(cleanersQuery, (snap) => {
       setCleaners(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      markReady('cleaners', hostelCode);
     }, (e) => console.warn('cleaners listener stopped:', e.code));
 
     // The permission model. Every member reads it — a staff client has to know
@@ -202,7 +226,7 @@ export function AppProvider({ children }) {
       unsubRoles();
       unsubStaff();
     };
-  }, [hostelCode]);
+  }, [hostelCode, markReady]);
 
   // Whether this account is allowed to READ extra requests. Mirrors canSee()
   // in firestore.rules. Cleaners always may — they raise them. Owners always
@@ -224,20 +248,58 @@ export function AppProvider({ children }) {
 
     if (!mayReadExtraRequests) {
       setExtraRequests([]);
+      markReady('extra', hostelCode);
       return undefined;
     }
 
     return onSnapshot(
       collection(db, 'hostels', hostelCode, 'extraRequests'),
-      (snap) => setExtraRequests(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      (snap) => {
+        setExtraRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        markReady('extra', hostelCode);
+      },
       (e) => {
         // Should not fire given the check above, but a role can change under a
         // live listener. Empty is the right answer either way.
         console.warn('extraRequests listener stopped:', e.code);
         setExtraRequests([]);
+        markReady('extra', hostelCode);
       },
     );
-  }, [hostelCode, rolesLoaded, mayReadExtraRequests]);
+  }, [hostelCode, rolesLoaded, mayReadExtraRequests, markReady]);
+
+  // ── Daily history autosave ──
+  // Runs on manager-side devices that can change the day's state. Must match
+  // the dailyLogs write rule in firestore.rules (export OR assign).
+  const autosaveEnabled = useMemo(() => {
+    if (!userData || userData.role === 'cleaner' || !rolesLoaded) return false;
+    const u = { ...userData };
+    return canDo(u, roles, 'export') || canDo(u, roles, 'assign');
+  }, [userData, roles, rolesLoaded]);
+
+  const dataReady = !!hostelCode
+    && readyFor.hostel === hostelCode
+    && readyFor.rooms === hostelCode
+    && readyFor.status === hostelCode
+    && readyFor.cleaners === hostelCode
+    && readyFor.floors === hostelCode
+    && readyFor.extra === hostelCode;
+
+  const {
+    lastSavedAt: lastAutoSavedAt,
+    error: autosaveError,
+    closeDayBeforeWipe,
+  } = useDailyLogAutosave({
+    enabled: autosaveEnabled,
+    ready: dataReady,
+    hostelCode,
+    hostelName: hostel.name,
+    rooms,
+    roomStatus,
+    cleaners,
+    floors,
+    extraRequests,
+  });
 
   // ── Write operations (all wrapped in useCallback) ──
 
@@ -285,7 +347,7 @@ export function AppProvider({ children }) {
 
     const promise = setDoc(
       doc(db, 'hostels', hostelCode, 'roomStatus', roomId),
-      newStatus,
+      stamp(newStatus),
       { merge: true },
     );
 
@@ -339,18 +401,23 @@ export function AppProvider({ children }) {
   }, [hostelCode, rooms, cleaners, roomStatus]);  // added roomStatus as dependency
 
   const resetAllRoomStatus = useCallback(async () => {
+    closeDayBeforeWipe('resetAll');
     const statusCol = collection(db, 'hostels', hostelCode, 'roomStatus');
     const snap = await getDocs(statusCol);
     const batch = writeBatch(db);
     snap.forEach(d => batch.delete(d.ref));
     await batch.commit();
-  }, [hostelCode]);
+  }, [hostelCode, closeDayBeforeWipe]);
 
   const assignRoom = useCallback((roomId, cleanerUid) =>
     updateDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId), { assignedTo: cleanerUid }), [hostelCode]);
 
   const unassignRoom = useCallback(async (roomId) => {
     if (!hostelCode) return;
+    // Unassigning wipes the room's progress below. Checkpoints the day first if
+    // THIS room had any; "Clear all" calls this per room and gets one checkpoint.
+    closeDayBeforeWipe('unassign', [roomId]);
+
     await updateDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId), { assignedTo: null });
 
     // NOTE: intentionally does NOT touch `assignmentBedStatus` — unassigning a
@@ -358,7 +425,7 @@ export function AppProvider({ children }) {
     // manager already configured for it. Those are preserved so the manager
     // can re-assign to someone else without having to redo them.
     const statusRef = doc(db, 'hostels', hostelCode, 'roomStatus', roomId);
-    await setDoc(statusRef, {
+    await setDoc(statusRef, stamp({
       cleaned: false,
       notes: '',
       extraTime: 0,
@@ -369,21 +436,21 @@ export function AppProvider({ children }) {
       extraCleaningBy: null,
       extraCleaningTime: 0,
       extraCleaningNotes: '',
-    }, { merge: true });
-  }, [hostelCode]);
+    }), { merge: true });
+  }, [hostelCode, closeDayBeforeWipe]);
 
   const assignRoomWithDetails = useCallback(async (roomId, cleanerUid, bedAssignments, managerNotes, commonOnly = false, assignmentAttributes = {}, earlyCheckIn = false, lateCheckOut = false) => {
     if (!hostelCode) return;
     await updateDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId), { assignedTo: cleanerUid });
     const statusRef = doc(db, 'hostels', hostelCode, 'roomStatus', roomId);
-    await setDoc(statusRef, {
+    await setDoc(statusRef, stamp({
       assignmentBedStatus: bedAssignments,
       managerNotes: managerNotes || '',
       commonOnly,
       assignmentAttributes,
       earlyCheckIn,
       lateCheckOut,
-    }, { merge: true });
+    }), { merge: true });
 
     // Push notification to the assigned cleaner
     const room = rooms.find(r => r.id === roomId);
@@ -424,25 +491,25 @@ export function AppProvider({ children }) {
   const markExtraRoomCleaning = useCallback(async (roomId, cleanerUid, extraTime, notes) => {
     if (!hostelCode) return;
     const statusRef = doc(db, 'hostels', hostelCode, 'roomStatus', roomId);
-    await setDoc(statusRef, {
+    await setDoc(statusRef, stamp({
       extraCleaning: true,
       extraCleaningBy: cleanerUid,
       extraCleaningTime: extraTime || 0,
       extraCleaningNotes: notes || '',
       cleaned: true,
-    }, { merge: true });
+    }), { merge: true });
   }, [hostelCode]);
 
   const removeExtraRoomCleaning = useCallback(async (roomId) => {
     if (!hostelCode) return;
     const statusRef = doc(db, 'hostels', hostelCode, 'roomStatus', roomId);
-    await setDoc(statusRef, {
+    await setDoc(statusRef, stamp({
       extraCleaning: false,
       extraCleaningBy: null,
       extraCleaningTime: 0,
       extraCleaningNotes: '',
       cleaned: false,
-    }, { merge: true });
+    }), { merge: true });
   }, [hostelCode]);
 
   const markExtraBedCleaning = useCallback(async (roomId, bedId, cleanerUid, extraTime, notes) => {
@@ -461,9 +528,9 @@ export function AppProvider({ children }) {
       notes: notes || '',
       timestamp: Date.now(),
     };
-    await setDoc(statusRef, {
+    await setDoc(statusRef, stamp({
       extraBedsCleaning: [...filtered, newEntry],
-    }, { merge: true });
+    }), { merge: true });
   }, [hostelCode]);
 
   const removeExtraBedCleaning = useCallback(async (roomId, bedId, cleanerUid) => {
@@ -475,7 +542,7 @@ export function AppProvider({ children }) {
     const updated = existing.filter(
       entry => !(entry.bedId === bedId && entry.cleanerId === cleanerUid)
     );
-    await setDoc(statusRef, { extraBedsCleaning: updated }, { merge: true });
+    await setDoc(statusRef, stamp({ extraBedsCleaning: updated }), { merge: true });
   }, [hostelCode]);
 
   const selfAssignExtraRoom = useCallback(async (roomId, cleanerUid) => {
@@ -484,12 +551,12 @@ export function AppProvider({ children }) {
     const roomRef = doc(db, 'hostels', hostelCode, 'rooms', roomId);
     batch.update(roomRef, { assignedTo: cleanerUid });
     const statusRef = doc(db, 'hostels', hostelCode, 'roomStatus', roomId);
-    batch.set(statusRef, {
+    batch.set(statusRef, stamp({
       extraCleaning: true,
       extraCleaningBy: cleanerUid,
       extraCleaningTime: 0,
       extraCleaningNotes: '',
-    }, { merge: true });
+    }), { merge: true });
     await batch.commit();
   }, [hostelCode]);
 
@@ -524,12 +591,12 @@ export function AppProvider({ children }) {
   const approveExtraRoom = useCallback(async (roomId, cleanerUid) => {
     if (!hostelCode) return;
     await updateDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId), { assignedTo: cleanerUid });
-    await setDoc(doc(db, 'hostels', hostelCode, 'roomStatus', roomId), {
+    await setDoc(doc(db, 'hostels', hostelCode, 'roomStatus', roomId), stamp({
       extraCleaning: true,
       extraCleaningBy: cleanerUid,
       extraCleaningTime: 0,
       extraCleaningNotes: '',
-    }, { merge: true });
+    }), { merge: true });
     await updateDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId), {
       status: 'approved',
       imageBase64: null,   // privacy.html promises deletion on resolve
@@ -584,7 +651,9 @@ export function AppProvider({ children }) {
     return snap.exists();
   }, [hostelCode]);
 
-  // Save a snapshot of today’s work
+  // Manual snapshot. Nothing in the UI needs it any more — the autosave covers
+  // it — but it stays available (e.g. for a future "Save now" button). Uses the
+  // same builder, so photos and tokens are stripped here too.
   const saveDailyLog = useCallback(async (dateOverride = null) => {
     if (!hostelCode) return;
 
@@ -592,64 +661,15 @@ export function AppProvider({ children }) {
       throw new Error('Still loading team data — please try again in a moment.');
     }
 
-    // Use the override date if provided, otherwise today (local time)
-    let dateStr = dateOverride;
-    if (!dateStr) {
-      const now = new Date();
-      const yyyy = now.getFullYear();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const dd = String(now.getDate()).padStart(2, '0');
-      dateStr = `${yyyy}-${mm}-${dd}`;
-    }
-
-    // Build cleaner name map
-    const cleanerNameMap = {};
-    cleaners.forEach((c) => {
-      cleanerNameMap[c.id] = c.username;
-    });
-
-    // Build cleaner -> rooms snapshot
-    const cleanerMap = {};
-    rooms.forEach((room) => {
-      if (!room.assignedTo) return;
-      const status = roomStatus[room.id] || {};
-      const cleanerId = room.assignedTo;
-
-      if (!cleanerMap[cleanerId]) {
-        cleanerMap[cleanerId] = {
-          cleanerName: cleanerNameMap[cleanerId] || 'Deleted cleaner',
-          rooms: [],
-        };
-      }
-
-      cleanerMap[cleanerId].rooms.push({
-        roomId: room.id,
-        roomName: room.name,
-        cleaned: status.cleaned || false,
-        notes: status.notes || '',
-        extraTime: status.extraTime || 0,
-        bedStatus: status.bedStatus || {},
-        assignmentBedStatus: status.assignmentBedStatus || {},
-        managerNotes: status.managerNotes || '',
-        commonOnly: status.commonOnly || false,
-        assignmentAttributes: status.assignmentAttributes || {},
-        extraCleaning: status.extraCleaning || false,
-      });
-    });
-
-    // Write the daily log document
-    await setDoc(doc(db, 'hostels', hostelCode, 'dailyLogs', dateStr), {
-      date: dateStr,
+    const log = buildDailyLog({
       hostelName: hostel.name,
-      cleaners: cleanerMap,
-      savedAt: new Date().toISOString(),
+      rooms, roomStatus, cleaners, floors, extraRequests,
+      date: dateOverride || localDateStr(),
+    });
 
-      // Full snapshots for rich report generation later
-      roomsSnapshot: rooms,
-      floorsSnapshot: floors,
-      cleanersSnapshot: cleaners,
-      extraRequestsSnapshot: extraRequests,
-      roomStatusSnapshot: roomStatus,
+    await setDoc(doc(db, 'hostels', hostelCode, 'dailyLogs', log.date), {
+      ...log,
+      savedAt: new Date().toISOString(),
     });
   }, [hostelCode, rooms, roomStatus, cleaners, floors, extraRequests, hostel.name]);
 
@@ -713,6 +733,9 @@ export function AppProvider({ children }) {
     cleanupOldExtraRequests,
     dailyLogExists,
     saveDailyLog,
+    closeDayBeforeWipe,
+    lastAutoSavedAt,
+    autosaveError,
     roles,
     rolesLoaded,
     staff,
@@ -757,6 +780,9 @@ export function AppProvider({ children }) {
     // consumers were handed stale closures.
     dailyLogExists,
     saveDailyLog,
+    closeDayBeforeWipe,
+    lastAutoSavedAt,
+    autosaveError,
     roles,
     rolesLoaded,
     staff,
