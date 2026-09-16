@@ -140,6 +140,7 @@ export function AuthProvider({ children }) {
             hostelCodes: data.hostelCodes || (data.hostelCode ? [data.hostelCode] : []),
             recoveryEmail: data.recoveryEmail || null,
             photoUri: data.photoUri || null,
+            notificationsClearedAt: data.notificationsClearedAt || {},
           });
 
           // A manager who has finished migrating off a synthetic address no

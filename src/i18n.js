@@ -105,6 +105,7 @@ const resources = {
       change: 'Change',
       noAssignments: 'No assignments',
       noAssignmentsMsg: 'Assign rooms to cleaners before exporting.',
+      codeEmailedTo: 'Your hostel code has been emailed to ',
 
       // ---- Login ----
       username: 'Username',
@@ -198,9 +199,9 @@ const resources = {
         failedToSaveRoom: 'Failed to save room: {{message}}',
         roomNamePlaceholder: 'e.g. 101 or Attic',
         customAttributes: 'Custom Room Attributes',
-        attributesDescription: 'Define checkboxes for private rooms (e.g. Twin, Double, Champagne)',
+        attributesDescription: 'Define checkboxes for private rooms (e.g. Twin, Double, Single)',
         newAttribute: 'New attribute',
-        attributePlaceholder: 'e.g. Champagne',
+        attributePlaceholder: 'e.g. Double bed',
         addAttribute: 'Add',
         removeAttribute: 'Remove',
         cannotRemoveTitle: 'Cannot remove',
@@ -218,6 +219,7 @@ const resources = {
         addFloorBtn: 'Add',
         addingFloor: 'Adding…',
         floorsHint: 'Floors group your rooms.',
+        noAttributes: 'No attributes yet.',
       },
 
       // ---- Team ----
@@ -538,9 +540,9 @@ const resources = {
         failedToSaveRoom: 'Salvataggio stanza fallito: {{message}}',
         roomNamePlaceholder: 'es. 101 o Mansarda',
         customAttributes: 'Attributi Personalizzati Stanza',
-        attributesDescription: 'Definisci checkbox per stanze private (es. Matrimoniale, Doppia, Champagne)',
+        attributesDescription: 'Definisci checkbox per stanze private (es. Matrimoniale, Doppia, Singola)',
         newAttribute: 'Nuovo attributo',
-        attributePlaceholder: 'es. Champagne',
+        attributePlaceholder: 'es. Doppia',
         addAttribute: 'Aggiungi',
         removeAttribute: 'Rimuovi',
         cannotRemoveTitle: 'Impossibile rimuovere',
@@ -773,9 +775,9 @@ const resources = {
       contactUs: 'Contáctanos',
       currentPassword: 'Contraseña actual',
       resetPasswordHint: 'Su contraseña anterior deja de funcionar inmediatamente. Diles la nueva.',
-      profilePhoto: 'Foto de profil',
+      profilePhoto: 'Foto de perfil',
       takePhoto: 'Toma una foto',
-      chooseFromGallery: 'Aligir de la Galeria',
+      chooseFromGallery: 'Elegir de la Galería',
 
       pro: {
         loginSub: 'Tablero en vivo, informes, multi-propiedad',
@@ -859,9 +861,9 @@ const resources = {
         failedToSaveRoom: 'Error al guardar habitación: {{message}}',
         roomNamePlaceholder: 'ej. 101 o Ático',
         customAttributes: 'Atributos Personalizados de Habitación',
-        attributesDescription: 'Define casillas para habitaciones privadas (ej. Individual, Doble, Champagne)',
+        attributesDescription: 'Define casillas para habitaciones privadas (ej. Individual, Doble, Singola)',
         newAttribute: 'Nuevo atributo',
-        attributePlaceholder: 'ej. Champagne',
+        attributePlaceholder: 'ej. Doble',
         addAttribute: 'Añadir',
         removeAttribute: 'Eliminar',
         cannotRemoveTitle: 'No se puede eliminar',

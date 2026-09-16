@@ -453,7 +453,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
               title="Recent activity"
               flush
               action={
-                <TouchableOpacity onPress={() => onNavigate('history')} activeOpacity={0.7}>
+                <TouchableOpacity onPress={() => onNavigate('reports')} activeOpacity={0.7}>
                   <Text style={styles.viewAll}>View all</Text>
                 </TouchableOpacity>
               }

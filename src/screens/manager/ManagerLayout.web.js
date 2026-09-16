@@ -19,7 +19,7 @@
 // true keep their toolbar and PageHeader stays hidden; as each screen is
 // redesigned and its title block deleted, flip the flag to false and the
 // header takes over. Nothing has to move in lockstep.
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal, Pressable, ScrollView, Platform,
@@ -42,6 +42,7 @@ import HistoryScreen from './HistoryScreen.web';
 import RolesScreen from './RolesScreen.web';
 import AccountScreen from './AccountScreen.web';
 import { isOwner as ownerOf } from '../../utils/permissions';
+import { SubscriptionGate, SubscriptionBanner } from './PaywallScreen.web';
 
 /* Section metadata. Titles and subtitles are the prototype's, unchanged. */
 const SECTIONS = {
@@ -121,19 +122,46 @@ export default function ManagerLayout() {
     return next;
   }), []);
   const { t } = useTranslation();
-  const { user, logout } = useAuth();
+  const { user, logout, updateProfile } = useAuth();
   const {
     notifications,
-    unreadCount,
+    unreadCount,   // no longer used below; harmless to keep
     markAsRead,
     clearAll,
-    deleteAllNotifications,
   } = useNotifications();
-  const { extraRequests, sections, roles, rolesLoaded } = useApp();
+  const { extraRequests, sections, roles, rolesLoaded, hostelCode } = useApp();
   const owner = ownerOf(user);
   const [rolesAction, setRolesAction] = useState(null);
   const [highlightRoomId, setHighlightRoomId] = useState(null);
   const [showNotifications, setShowNotifications] = useState(false);
+
+  // "Clear all" hides notifications from THIS panel only. The documents stay,
+  // because Dashboard and Live activities read the same ones.
+  const notifTime = (n) => (
+    n.timestampMs
+    ?? (typeof n.timestamp?.toMillis === 'function' ? n.timestamp.toMillis() : new Date(n.timestamp).getTime())
+    ?? 0
+  );
+  const clearedAt = user?.notificationsClearedAt?.[hostelCode] || 0;
+  const panelNotifications = useMemo(
+    () => notifications.filter(n => notifTime(n) > clearedAt),
+    [notifications, clearedAt],
+  );
+  const panelUnread = panelNotifications.filter(n => !n.read).length;
+
+  const clearPanel = useCallback(async () => {
+    // The newest notification's own time as well as the clock, so a device
+    // clock running slow can't leave the latest one behind.
+    const newest = Math.max(Date.now(), ...panelNotifications.map(notifTime));
+    clearAll();   // mark them read too, so no unread count lingers anywhere else
+    try {
+      await updateProfile({
+        notificationsClearedAt: { ...(user?.notificationsClearedAt || {}), [hostelCode]: newest },
+      });
+    } catch (e) {
+      console.warn('Could not clear notifications:', e.message);
+    }
+  }, [panelNotifications, clearAll, updateProfile, user?.notificationsClearedAt, hostelCode]);
 
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -195,30 +223,32 @@ export default function ManagerLayout() {
     }
   };
 
-  return (
-    <View style={styles.container}>
-      <Sidebar
-        activeRoute={tab}
-        onNavigate={handleNavigate}
-        badges={{
-          extraRequests: extraRequests.filter(
-            (r) => r.status === 'pending' || !r.status
-          ).length,
-        }}
-        user={{ name: user.username, role: owner ? 'Owner' : (roles?.[user.roleId]?.name || user.role) }}
-        sections={owner ? null : sections}
-        isOwner={owner}
-        onSignOut={logout}
-        collapsed={navCollapsed}
-        onToggleCollapse={toggleNav}
-      />
+    return (
+    <SubscriptionGate>
+      <View style={styles.container}>
+        <Sidebar
+          activeRoute={tab}
+          onNavigate={handleNavigate}
+          badges={{
+            extraRequests: extraRequests.filter(
+              (r) => r.status === 'pending' || !r.status
+            ).length,
+          }}
+          user={{ name: user.username, role: owner ? 'Owner' : (roles?.[user.roleId]?.name || user.role) }}
+          sections={owner ? null : sections}
+          isOwner={owner}
+          onSignOut={logout}
+          collapsed={navCollapsed}
+          onToggleCollapse={toggleNav}
+        />
 
-      <View style={styles.main}>
-        {!section.ownsHeader && (
+        <View style={styles.main}>
+          <SubscriptionBanner />
+          {!section.ownsHeader && (
           <PageHeader
             title={section.title}
             subtitle={section.subtitle}
-            unreadCount={unreadCount}
+            unreadCount={panelUnread}
             onOpenNotifications={() => setShowNotifications(true)}
             actions={ (tab === 'rooms' && roomsAction) ? [
               roomsAction.openFloors &&
@@ -286,27 +316,27 @@ export default function ManagerLayout() {
             <View style={styles.notifHeader}>
               <Text style={styles.notifTitle}>Notifications</Text>
               <View style={styles.notifHeaderActions}>
-                {unreadCount > 0 && (
+                {panelUnread > 0 && (
                   <TouchableOpacity onPress={clearAll} activeOpacity={0.7}>
                     <Text style={styles.notifLink}>Mark all read</Text>
                   </TouchableOpacity>
                 )}
-                {notifications.length > 0 && (
-                  <TouchableOpacity onPress={deleteAllNotifications} activeOpacity={0.7}>
-                    <Text style={[styles.notifLink, { color: '#B91C1C' }]}>Delete all</Text>
+                {panelNotifications.length > 0 && (
+                  <TouchableOpacity onPress={clearPanel} activeOpacity={0.7}>
+                    <Text style={[styles.notifLink, { color: NEUTRAL.text3 }]}>Clear all</Text>
                   </TouchableOpacity>
                 )}
               </View>
             </View>
 
             <ScrollView style={styles.notifList} contentContainerStyle={styles.notifListContent}>
-              {notifications.length === 0 ? (
+              {panelNotifications.length === 0 ? (
                 <View style={styles.notifEmpty}>
                   <Icon name="notifications_off" size={28} color={NEUTRAL.text4} />
                   <Text style={styles.notifEmptyText}>No notifications yet.</Text>
                 </View>
               ) : (
-                notifications.map((item) => {
+                panelNotifications.map((item) => {
                   const look = notifLook(item.type);
                   return (
                     <TouchableOpacity
@@ -341,7 +371,8 @@ export default function ManagerLayout() {
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </SubscriptionGate>
   );
 }
 

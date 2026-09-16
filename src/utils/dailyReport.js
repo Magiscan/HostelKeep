@@ -74,8 +74,10 @@ const STRINGS = {
     kpi: {
       rooms: 'COMPLETAMENTO STANZE',
       roomsCaption: (a, b) => `${a} di ${b} stanze`,
-      beds: 'LETTI PULITI',
+      beds: 'LETTI DORMITORIO PULITI',
       bedsCaption: (a, b) => `${a} di ${b} letti da pulire`,
+      privates: 'CAMERE PRIVATE PULITE',
+      privatesCaption: (a, b) => `${a} di ${b} camere private`,
       extra: 'TEMPO EXTRA',
       extraCaption: 'minuti segnalati',
       team: 'ADDETTI ATTIVI',
@@ -88,15 +90,20 @@ const STRINGS = {
       roomsAssigned: 'Stanze assegnate',
       roomsCompleted: 'Stanze completate',
       roomsPending: 'Stanze non completate',
-      bedsToClean: 'Letti da pulire',
-      bedsCleaned: 'Letti puliti',
+      privateAssigned: 'Camere private assegnate',
+      privateCleaned: 'Camere private pulite',
+      dormAssigned: 'Dormitori assegnati',
+      dormCleaned: 'Dormitori completati',
+      bedsToClean: 'Letti dormitorio da pulire',
+      bedsCleaned: 'Letti dormitorio puliti',
       bedsSkipped: 'Letti senza lavoro (stay-over / ispezionati)',
       extraApproved: 'Pulizie extra approvate',
       extraTime: 'Tempo extra totale (min)',
       activeCleaners: 'Addetti attivi',
       pendingRequests: 'Richieste extra in attesa',
       roomPct: '% completamento stanze',
-      bedPct: '% completamento letti',
+      privatePct: '% camere private pulite',
+      bedPct: '% completamento letti dormitorio',
     },
     floorsTitle: 'Avanzamento per piano',
     floor: 'Piano',
@@ -108,8 +115,8 @@ const STRINGS = {
     cols: {
       date: 'Data', floor: 'Piano', room: 'Stanza', bed: 'Letto', roomType: 'Tipo stanza',
       cleaner: 'Addetto', bedState: 'Stato letto', outcome: 'Esito', cleanerNote: 'Nota addetto',
-      roomsAssigned: 'Stanze assegn.', roomsCompleted: 'Stanze compl.', bedsCleaned: 'Letti puliti',
-      bedsSkipped: 'Letti senza lavoro', extraTime: 'Tempo extra (min)', extraCleanings: 'Pulizie extra',
+      roomsAssigned: 'Stanze assegn.', roomsCompleted: 'Stanze compl.', bedsCleaned: 'Letti dorm. puliti',
+      privateCleaned: 'Camere priv. pulite', bedsSkipped: 'Letti senza lavoro', extraTime: 'Tempo extra (min)', extraCleanings: 'Pulizie extra',
       source: 'Origine', author: 'Autore', text: 'Testo',
     },
     types: { private: 'Privata', dorm: 'Dormitorio' },
@@ -164,8 +171,10 @@ const STRINGS = {
     kpi: {
       rooms: 'ROOM COMPLETION',
       roomsCaption: (a, b) => `${a} of ${b} rooms`,
-      beds: 'BEDS CLEANED',
+      beds: 'DORM BEDS CLEANED',
       bedsCaption: (a, b) => `${a} of ${b} beds to clean`,
+      privates: 'PRIVATE ROOMS CLEANED',
+      privatesCaption: (a, b) => `${a} of ${b} private rooms`,
       extra: 'EXTRA TIME',
       extraCaption: 'minutes reported',
       team: 'ACTIVE HOUSEKEEPERS',
@@ -178,15 +187,20 @@ const STRINGS = {
       roomsAssigned: 'Rooms assigned',
       roomsCompleted: 'Rooms completed',
       roomsPending: 'Rooms not completed',
-      bedsToClean: 'Beds to clean',
-      bedsCleaned: 'Beds cleaned',
+      privateAssigned: 'Private rooms assigned',
+      privateCleaned: 'Private rooms cleaned',
+      dormAssigned: 'Dorms assigned',
+      dormCleaned: 'Dorms completed',
+      bedsToClean: 'Dorm beds to clean',
+      bedsCleaned: 'Dorm beds cleaned',
       bedsSkipped: 'Beds with no work (stay-over / inspected)',
       extraApproved: 'Extra cleanings approved',
       extraTime: 'Total extra time (min)',
       activeCleaners: 'Active housekeepers',
       pendingRequests: 'Pending extra-room requests',
       roomPct: 'Room completion %',
-      bedPct: 'Bed completion %',
+      privatePct: 'Private rooms cleaned %',
+      bedPct: 'Dorm bed completion %',
     },
     floorsTitle: 'Progress by floor',
     floor: 'Floor',
@@ -198,8 +212,8 @@ const STRINGS = {
     cols: {
       date: 'Date', floor: 'Floor', room: 'Room', bed: 'Bed', roomType: 'Room type',
       cleaner: 'Housekeeper', bedState: 'Bed state', outcome: 'Outcome', cleanerNote: 'Housekeeper note',
-      roomsAssigned: 'Rooms assigned', roomsCompleted: 'Rooms completed', bedsCleaned: 'Beds cleaned',
-      bedsSkipped: 'Beds no work', extraTime: 'Extra time (min)', extraCleanings: 'Extra cleanings',
+      roomsAssigned: 'Rooms assigned', roomsCompleted: 'Rooms completed', bedsCleaned: 'Dorm beds cleaned',
+      privateCleaned: 'Private rooms cleaned', bedsSkipped: 'Beds no work', extraTime: 'Extra time (min)', extraCleanings: 'Extra cleanings',
       source: 'Source', author: 'Author', text: 'Text',
     },
     types: { private: 'Private', dorm: 'Dormitory' },
@@ -424,6 +438,7 @@ function roomMetrics(room, status) {
   });
   return {
     cleaned: !!status.cleaned,
+    isDorm: room.type === 'dorm',
     bedsToClean,
     bedsCleaned,
     bedsSkipped,
@@ -436,12 +451,18 @@ function sumMetrics(list) {
   return list.reduce((acc, m) => ({
     rooms: acc.rooms + 1,
     roomsCleaned: acc.roomsCleaned + (m.cleaned ? 1 : 0),
+    privateRooms: acc.privateRooms + (m.isDorm ? 0 : 1),
+    privateCleaned: acc.privateCleaned + (!m.isDorm && m.cleaned ? 1 : 0),
+    dormRooms: acc.dormRooms + (m.isDorm ? 1 : 0),
+    dormCleaned: acc.dormCleaned + (m.isDorm && m.cleaned ? 1 : 0),
     bedsToClean: acc.bedsToClean + m.bedsToClean,
     bedsCleaned: acc.bedsCleaned + m.bedsCleaned,
     bedsSkipped: acc.bedsSkipped + m.bedsSkipped,
     extraTime: acc.extraTime + m.extraTime,
     extraCleanings: acc.extraCleanings + (m.extraCleaning ? 1 : 0),
-  }), { rooms: 0, roomsCleaned: 0, bedsToClean: 0, bedsCleaned: 0, bedsSkipped: 0, extraTime: 0, extraCleanings: 0 });
+  }), {
+    rooms: 0, roomsCleaned: 0, privateRooms: 0, privateCleaned: 0, dormRooms: 0, dormCleaned: 0,
+    bedsToClean: 0, bedsCleaned: 0, bedsSkipped: 0, extraTime: 0, extraCleanings: 0 });
 }
 
 /* ── Banner shared by every sheet ──────────────────────────────────────── */
@@ -494,6 +515,7 @@ export function generateDailyReport({
   const pendingRequests = extraRequests.filter(r => r.status === 'pending' || !r.status).length;
   const roomPct = ratio(totals.roomsCleaned, totals.rooms);
   const bedPct = ratio(totals.bedsCleaned, totals.bedsToClean);
+  const privatePct = ratio(totals.privateCleaned, totals.privateRooms);
 
   const perCleaner = activeCleaners.map(c => {
     const t = sumMetrics(assignedRooms.filter(r => r.assignedTo === c.id).map(r => metricsById[r.id]));
@@ -507,14 +529,18 @@ export function generateDailyReport({
     drawBanner(sh, LAST, L, { title: L.reportTitle, ...bannerInfo });
 
     // KPI cards: rows 4–6, four cards two columns wide each
+    // Four slots. Dorm beds and private rooms each get a card only when the
+    // day actually had some; the freed slot goes to the next card in line.
     const cards = [
       { label: L.kpi.rooms, value: roomPct ?? '—', numFmt: PCT, tone: toneFor(roomPct),
         caption: L.kpi.roomsCaption(totals.roomsCleaned, totals.rooms) },
-      { label: L.kpi.beds, value: bedPct ?? '—', numFmt: PCT, tone: toneFor(bedPct),
+      totals.dormRooms > 0 && { label: L.kpi.beds, value: bedPct ?? '—', numFmt: PCT, tone: toneFor(bedPct),
         caption: L.kpi.bedsCaption(totals.bedsCleaned, totals.bedsToClean) },
+      totals.privateRooms > 0 && { label: L.kpi.privates, value: privatePct ?? '—', numFmt: PCT, tone: toneFor(privatePct),
+        caption: L.kpi.privatesCaption(totals.privateCleaned, totals.privateRooms) },
       { label: L.kpi.extra, value: totals.extraTime, numFmt: INT, tone: null, caption: L.kpi.extraCaption },
       { label: L.kpi.team, value: activeCleaners.length, numFmt: INT, tone: null, caption: L.kpi.teamCaption },
-    ];
+    ].filter(Boolean).slice(0, 4);
     cards.forEach((card, i) => {
       const c1 = i * 2;
       sh.merge(4, c1, 4, c1 + 1, card.label, S.kpiLabel);
@@ -544,6 +570,10 @@ export function generateDailyReport({
       [I.roomsCompleted, totals.roomsCleaned, INT, TONE.good.text],
       [I.roomsPending, totals.rooms - totals.roomsCleaned, INT,
         totals.rooms - totals.roomsCleaned > 0 ? TONE.bad.text : null],
+      [I.privateAssigned, totals.privateRooms, INT],
+      [I.privateCleaned, totals.privateCleaned, INT, totals.privateCleaned ? TONE.good.text : null],
+      [I.dormAssigned, totals.dormRooms, INT],
+      [I.dormCleaned, totals.dormCleaned, INT, totals.dormCleaned ? TONE.good.text : null],
       [I.bedsToClean, totals.bedsToClean, INT],
       [I.bedsCleaned, totals.bedsCleaned, INT, TONE.good.text],
       [I.bedsSkipped, totals.bedsSkipped, INT, C.muted],
@@ -552,6 +582,7 @@ export function generateDailyReport({
       [I.activeCleaners, activeCleaners.length, INT],
       [I.pendingRequests, pendingRequests, INT, pendingRequests > 0 ? TONE.warn.text : null],
       [I.roomPct, roomPct ?? '—', PCT, toneFor(roomPct).text, true],
+      [I.privatePct, privatePct ?? '—', PCT, toneFor(privatePct).text, true],
       [I.bedPct, bedPct ?? '—', PCT, toneFor(bedPct).text, true],
     ];
     indicatorRows.forEach(([label, value, numFmt, color, bold], i) => {
@@ -690,7 +721,7 @@ export function generateDailyReport({
   {
     const sh = createSheet();
     const headers = [L.cols.cleaner, L.cols.roomsAssigned, L.cols.roomsCompleted, L.cols.bedsCleaned,
-      L.cols.bedsSkipped, L.cols.extraTime, L.cols.extraCleanings, L.completion, L.progress];
+      L.cols.privateCleaned, L.cols.bedsSkipped, L.cols.extraTime, L.cols.extraCleanings, L.completion, L.progress];
     const LAST = headers.length - 1;
     drawBanner(sh, LAST, L, { title: L.sheets.cleaners, ...bannerInfo });
 
@@ -709,11 +740,12 @@ export function generateDailyReport({
       sh.set(r, 1, pc.rooms, S.td(i, { align: 'center', numFmt: INT }));
       sh.set(r, 2, pc.roomsCleaned, S.td(i, { align: 'center', numFmt: INT }));
       sh.set(r, 3, pc.bedsCleaned, S.td(i, { align: 'center', numFmt: INT }));
-      sh.set(r, 4, pc.bedsSkipped, S.td(i, { align: 'center', numFmt: INT, color: C.muted }));
-      sh.set(r, 5, pc.extraTime, S.td(i, { align: 'center', numFmt: INT, color: pc.extraTime ? TONE.warn.text : null }));
-      sh.set(r, 6, pc.extraCleanings, S.td(i, { align: 'center', numFmt: INT }));
-      sh.set(r, 7, pc.pct ?? '—', { ...S.tag(tone), numFmt: PCT });
-      sh.set(r, 8, progressBar(pc.pct), S.bar(tone, i));
+      sh.set(r, 4, pc.privateCleaned, S.td(i, { align: 'center', numFmt: INT }));
+      sh.set(r, 5, pc.bedsSkipped, S.td(i, { align: 'center', numFmt: INT, color: C.muted }));
+      sh.set(r, 6, pc.extraTime, S.td(i, { align: 'center', numFmt: INT, color: pc.extraTime ? TONE.warn.text : null }));
+      sh.set(r, 7, pc.extraCleanings, S.td(i, { align: 'center', numFmt: INT }));
+      sh.set(r, 8, pc.pct ?? '—', { ...S.tag(tone), numFmt: PCT });
+      sh.set(r, 9, progressBar(pc.pct), S.bar(tone, i));
       sh.height(r, 20);
     });
 
@@ -725,16 +757,17 @@ export function generateDailyReport({
       sh.set(r, 0, L.total, S.total({ align: 'left' }));
       [
         [1, totals.rooms], [2, totals.roomsCleaned], [3, totals.bedsCleaned],
-        [4, totals.bedsSkipped], [5, totals.extraTime], [6, totals.extraCleanings],
+        [4, totals.privateCleaned], [5, totals.bedsSkipped], [6, totals.extraTime],
+        [7, totals.extraCleanings],
       ].forEach(([c, v]) => {
         sh.set(r, c, v, S.total({ numFmt: INT }), `SUM(${col(c)}${first}:${col(c)}${lastRow})`);
       });
-      sh.set(r, 7, roomPct ?? 0, S.total({ numFmt: PCT }), `IF(B${r + 1}=0,0,C${r + 1}/B${r + 1})`);
-      sh.set(r, 8, progressBar(roomPct), { ...S.total({ align: 'left' }), font: { name: 'Consolas', sz: 10, bold: true, color: { rgb: C.navy } } });
+      sh.set(r, 8, roomPct ?? 0, S.total({ numFmt: PCT }), `IF(B${r + 1}=0,0,C${r + 1}/B${r + 1})`);
+      sh.set(r, 9, progressBar(roomPct), { ...S.total({ align: 'left' }), font: { name: 'Consolas', sz: 10, bold: true, color: { rgb: C.navy } } });
       sh.height(r, 22);
     }
 
-    XLSX.utils.book_append_sheet(wb, sh.finish({ cols: [22, 12, 12, 12, 12, 13, 12, 14, 24] }), L.sheets.cleaners);
+    XLSX.utils.book_append_sheet(wb, sh.finish({ cols: [22, 12, 12, 12, 12, 12, 13, 12, 14, 24] }), L.sheets.cleaners);
   }
 
   /* ── Sheet 4: Notes & alerts ────────────────────────────────────────── */

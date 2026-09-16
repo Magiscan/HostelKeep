@@ -10,6 +10,7 @@ import {
 } from '../utils/permissions';
 import { buildDailyLog, localDateStr } from '../utils/dailyLog';
 import { useDailyLogAutosave } from '../hooks/useDailyLogAutosave';
+import { describeSubscription } from '../utils/subscription';
 
 const AppContext = createContext();
 
@@ -105,6 +106,7 @@ export function AppProvider({ children }) {
   const [roles, setRoles] = useState(DEFAULT_ROLES);
   const [rolesLoaded, setRolesLoaded] = useState(false);
   const [staff, setStaff] = useState([]);
+  const [billing, setBilling] = useState(null);
 
   // Which hostel each listener has actually delivered data for. Keyed by code
   // rather than a boolean so that switching hostel can never pair the new code
@@ -128,6 +130,7 @@ export function AppProvider({ children }) {
       setRoles(DEFAULT_ROLES);
       setRolesLoaded(false);
       setStaff([]);
+      setBilling(null);
       setReadyFor({});
     } else {
       setHostel({ name: '', code: '' });
@@ -140,6 +143,7 @@ export function AppProvider({ children }) {
       setRoles(DEFAULT_ROLES);
       setRolesLoaded(false);
       setStaff([]);
+      setBilling(null);
       setReadyFor({});
     }
   }, [currentUser]);
@@ -217,7 +221,23 @@ export function AppProvider({ children }) {
       setStaff(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }, (e) => console.warn('staff listener stopped:', e.code));
 
+    // The subscription. Top-level billing/{code}, written only by you in the
+    // Firebase console. Read by every member so the paywall can render.
+    const unsubBilling = onSnapshot(
+      doc(db, 'billing', hostelCode),
+      (snap) => {
+        setBilling(snap.exists() ? snap.data() : null);
+        markReady('billing', hostelCode);
+      },
+      (e) => {
+        console.warn('billing listener stopped:', e.code);
+        setBilling(null);
+        markReady('billing', hostelCode);
+      },
+    );
+
     return () => {
+      unsubBilling();
       unsubHostel();
       unsubFloors();
       unsubRooms();
@@ -268,14 +288,31 @@ export function AppProvider({ children }) {
     );
   }, [hostelCode, rolesLoaded, mayReadExtraRequests, markReady]);
 
+  // ── Subscription ──
+  // Re-evaluated every minute so a trial or period that ends while the
+  // dashboard is open locks it without a reload.
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (!hostelCode) return undefined;
+    const id = setInterval(() => setClock(Date.now()), 60 * 1000);
+    return () => clearInterval(id);
+  }, [hostelCode]);
+
+  const subscription = useMemo(() => ({
+    loaded: !!hostelCode && readyFor.billing === hostelCode,
+    ...describeSubscription(readyFor.billing === hostelCode ? billing : null, clock),
+  }), [hostelCode, readyFor.billing, billing, clock]);
+
   // ── Daily history autosave ──
   // Runs on manager-side devices that can change the day's state. Must match
   // the dailyLogs write rule in firestore.rules (export OR assign).
   const autosaveEnabled = useMemo(() => {
     if (!userData || userData.role === 'cleaner' || !rolesLoaded) return false;
+    // Every dailyLogs write is gated by isPaid() — don't fire denied writes.
+    if (!subscription.active) return false;
     const u = { ...userData };
     return canDo(u, roles, 'export') || canDo(u, roles, 'assign');
-  }, [userData, roles, rolesLoaded]);
+  }, [userData, roles, rolesLoaded, subscription.active]);
 
   const dataReady = !!hostelCode
     && readyFor.hostel === hostelCode
@@ -736,6 +773,7 @@ export function AppProvider({ children }) {
     closeDayBeforeWipe,
     lastAutoSavedAt,
     autosaveError,
+    subscription,
     roles,
     rolesLoaded,
     staff,
@@ -783,6 +821,7 @@ export function AppProvider({ children }) {
     closeDayBeforeWipe,
     lastAutoSavedAt,
     autosaveError,
+    subscription,
     roles,
     rolesLoaded,
     staff,

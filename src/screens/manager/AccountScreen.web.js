@@ -56,10 +56,10 @@ export default function AccountScreen() {
   const {
     user, logout, changeOwnPassword, switchHostel,
   } = useAuth();
-  const { hostel, updateHostel, roles } = useApp();
+  const { hostel, updateHostel, roles, subscription } = useApp();
 
   const owner = isOwner(user);
-  const canRename = canDo(user, roles, 'editRooms');
+  const canRename = canDo(user, roles, 'editRooms') && subscription.active;
   const hostelCodes = user?.hostelCodes || [];
   const canDeleteHostelOnly = owner && hostelCodes.length > 1;
 
