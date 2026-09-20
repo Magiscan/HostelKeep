@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal, Pressable, ScrollView,
-  TextInput, Platform, Image, 
+  TextInput, Platform, Image, KeyboardAvoidingView, 
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +15,8 @@ import TeamScreen from './TeamScreen';
 import AssignScreen from './AssignScreen';
 import ExtraRequestsScreen from './ExtraRequestsScreen';
 import AccountScreen from '../AccountScreen';
+import ReportsScreen from './ReportsScreen';
+import { contactMailto, CONTACT_EMAIL } from '../../utils/subscription';
 import { COLORS } from '../../theme/colors';
 import { FONTS, DISPLAY, FONT_SIZE } from '../../theme/typography';
 import { SPACING } from '../../theme/spacing';
@@ -54,8 +56,8 @@ export const CONTENT_BOTTOM_PAD = 122;
 export default function ManagerApp() {
   const { t, i18n } = useTranslation();
   const { user, logout, updateProfile } = useAuth();
-  const { hostel, updateHostel, hostelCode, extraRequests } = useApp();
-  const { notifications, unreadCount, markAsRead, clearAll, deleteAllNotifications } =
+  const { hostel, updateHostel, hostelCode, extraRequests, subscription } = useApp();
+  const { notifications, unreadCount, markAsRead, clearAll } =
     useNotifications();
   const insets = useSafeAreaInsets();
 
@@ -101,24 +103,53 @@ export default function ManagerApp() {
     onRemove:  ()    => updateProfile({ photoUri: null }),
   });
 
+  const isPro = !!subscription?.active;
+
   const handleNotifyPro = async () => {
     setShowPro(false);
+    if (isPro) { setTab('live'); return; }
+    updateProfile({ proInterest: true, proInterestAt: new Date().toISOString() }).catch(() => {});
     try {
-      await updateProfile({
-        proInterest: true,
-        proInterestAt: new Date().toISOString(),
-      });
-    } catch (_) {
-      // non-critical — never block the confirmation on this
+      await Linking.openURL(contactMailto({
+        intent: 'subscribe', hostelCode, hostelName: hostel.name, email: user.email,
+      }));
+    } catch {
+      // No mail app on the device — at least show where to write.
+      toast.show(t('pro.writeTo', { email: CONTACT_EMAIL, defaultValue: `Write to ${CONTACT_EMAIL}` }));
     }
-    toast.show(t('pro.notified') || "We'll let you know.");
   };
 
   const handleContact = () =>
-    Linking.openURL(
-      'mailto:hello@kohciao.com?subject=' +
-        encodeURIComponent('HostelKeep Pro'),
-    );
+    Linking.openURL(`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(`HostelKeep — ${hostelCode}`)}`)
+      .catch(() => toast.show(CONTACT_EMAIL));
+
+  // If the subscription lapses while Live is open, fall back to Assign.
+  useEffect(() => {
+    if (tab === 'live' && !isPro) setTab('assign');
+  }, [tab, isPro]);
+
+  // "Clear all" hides notifications from this panel only — Live activities reads
+  // the same documents, so they must stay.
+  const notifTime = (n) => n.timestampMs
+    ?? (typeof n.timestamp?.toMillis === 'function' ? n.timestamp.toMillis() : new Date(n.timestamp).getTime());
+  const clearedAt = user?.notificationsClearedAt?.[hostelCode] || 0;
+  const panelNotifications = useMemo(
+    () => notifications.filter(n => notifTime(n) > clearedAt),
+    [notifications, clearedAt],
+  );
+  const panelUnread = panelNotifications.filter(n => !n.read).length;
+
+  const clearPanel = async () => {
+    const newest = Math.max(Date.now(), ...panelNotifications.map(notifTime));
+    clearAll();
+    try {
+      await updateProfile({
+        notificationsClearedAt: { ...(user?.notificationsClearedAt || {}), [hostelCode]: newest },
+      });
+    } catch (e) {
+      console.warn('Could not clear notifications:', e.message);
+    }
+  };
 
   // Four primary tabs. Rooms/Setup moved to the hostel button beside the tab
   // bar — it's configuration, not daily workflow, and this keeps the bar from
@@ -131,9 +162,8 @@ export default function ManagerApp() {
       icon: 'flag',
       badge: pendingRequestCount,
     },
-    // Not a screen — a Pro teaser. `pro: true` is handled in onPress below.
-    { key: 'live', label: t('manager.tabLive') || 'Live', icon: 'monitoring', pro: true },
-  ], [t, pendingRequestCount]);
+    { key: 'live', label: t('manager.tabLive') || 'Live', icon: 'monitoring', pro: !isPro },
+  ], [t, pendingRequestCount, isPro]);
 
   const initials = (user.username || '?').trim().charAt(0).toUpperCase();
   const hostelInitials = (hostel.name || 'H')
@@ -151,6 +181,7 @@ export default function ManagerApp() {
       case 'setup':         return <SetupScreen bottomPad={CONTENT_BOTTOM_PAD} />;
       case 'team':          return <TeamScreen bottomPad={CONTENT_BOTTOM_PAD} />;
       case 'account':       return <AccountScreen bottomPad={CONTENT_BOTTOM_PAD} />;
+      case 'live':          return <ReportsScreen bottomPad={CONTENT_BOTTOM_PAD} scrollTopSignal={scrollTopSignal} />;
       default:              return <AssignScreen bottomPad={CONTENT_BOTTOM_PAD} />;
     }
   };
@@ -194,10 +225,10 @@ export default function ManagerApp() {
           activeOpacity={0.8}
         >
           <Icon name="notifications" size={24} color={COLORS.primary} />
-          {unreadCount > 0 && (
+          {panelUnread > 0 && (
             <View style={styles.notifBadge}>
               <Text style={styles.notifBadgeText}>
-                {unreadCount > 99 ? '99+' : unreadCount}
+                {panelUnread > 99 ? '99+' : panelUnread}
               </Text>
             </View>
           )}
@@ -299,47 +330,52 @@ export default function ManagerApp() {
             onPress: () => { setShowSetupSheet(false); setTab('team'); },
           },
         ]}
-        proLabel={t('manager.buyPro') || 'Get HostelKeep Pro'}
+        proLabel={isPro ? t('manager.proActive', 'HostelKeep Pro · active') : (t('manager.buyPro') || 'Get HostelKeep Pro')}
         onPro={() => { setShowSetupSheet(false); setShowPro(true); }}
         feedbackLabel={t('manager.feedback') || 'Send feedback'}
-        onFeedback={() => Linking.openURL('mailto:hello@kohciao.com')}
+        onFeedback={() => Linking.openURL('mailto:kohciaostudio@gmail.com')}
         closeLabel={t('close')}
       />
 
       {/* ── Edit hostel name ── */}
       <Modal visible={editVisible} transparent animationType="fade" onRequestClose={() => setEditVisible(false)}>
-        <Pressable style={styles.centerBackdrop} onPress={() => setEditVisible(false)}>
-          <Pressable onPress={() => {}} style={styles.dialog}>
-            <Text style={styles.sheetTitle}>{t('manager.editPropertyName')}</Text>
-            <TextInput
-              style={styles.input}
-              value={newName}
-              onChangeText={setNewName}
-              placeholder={t('manager.propertyNamePlaceholder')}
-              placeholderTextColor={COLORS.textMuted}
-              autoCapitalize="words"
-            />
-            <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
-              <TouchableOpacity
-                onPress={() => setEditVisible(false)}
-                style={[styles.halfBtn, styles.halfBtnGhost]}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.halfBtnGhostText}>{t('cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={saveName}
-                disabled={!newName.trim()}
-                style={[styles.halfBtn, !newName.trim() && { backgroundColor: COLORS.border }]}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.halfBtnText, !newName.trim() && { color: COLORS.textMuted }]}>
-                  {t('save')}
-                </Text>
-              </TouchableOpacity>
-            </View>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={styles.centerBackdrop} onPress={() => setEditVisible(false)}>
+            <Pressable onPress={() => {}} style={styles.dialog}>
+              <Text style={styles.sheetTitle}>{t('manager.editPropertyName')}</Text>
+              <TextInput
+                style={styles.input}
+                value={newName}
+                onChangeText={setNewName}
+                placeholder={t('manager.propertyNamePlaceholder')}
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="words"
+              />
+              <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
+                <TouchableOpacity
+                  onPress={() => setEditVisible(false)}
+                  style={[styles.halfBtn, styles.halfBtnGhost]}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.halfBtnGhostText}>{t('cancel')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={saveName}
+                  disabled={!newName.trim()}
+                  style={[styles.halfBtn, !newName.trim() && { backgroundColor: COLORS.border }]}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.halfBtnText, !newName.trim() && { color: COLORS.textMuted }]}>
+                    {t('save')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── Notifications ── */}
@@ -356,7 +392,7 @@ export default function ManagerApp() {
               <Text style={[styles.sheetTitle, { flex: 1 }]}>
                 {t('notifications') || 'Notifications'}
               </Text>
-              {unreadCount > 0 && (
+              {panelUnread > 0 && (
                 <TouchableOpacity onPress={clearAll} activeOpacity={0.7}>
                   <Text style={styles.linkText}>{t('markAllRead') || 'Mark all read'}</Text>
                 </TouchableOpacity>
@@ -364,12 +400,12 @@ export default function ManagerApp() {
             </View>
 
             <ScrollView style={{ maxHeight: 380 }}>
-              {notifications.length === 0 ? (
+              {panelNotifications.length === 0 ? (
                 <Text style={styles.emptyHint}>
                   {t('noNotifications') || 'No notifications yet.'}
                 </Text>
               ) : (
-                notifications.map(item => (
+                panelNotifications.map(item => (
                   <TouchableOpacity
                     key={item.id}
                     style={[styles.notifRow, item.read && { opacity: 0.55 }]}
@@ -394,15 +430,15 @@ export default function ManagerApp() {
               )}
             </ScrollView>
 
-            {notifications.length > 0 && (
+            {panelNotifications.length > 0 && (
               <TouchableOpacity
-                onPress={deleteAllNotifications}
-                style={[styles.outlineBtn, { borderColor: COLORS.dangerBorder }]}
+                onPress={clearPanel}
+                style={styles.outlineBtn}
                 activeOpacity={0.8}
               >
-                <Icon name="delete" size={22} color={COLORS.danger} />
-                <Text style={[styles.outlineBtnText, { color: COLORS.danger }]}>
-                  {t('deleteAll') || 'Delete all'}
+                <Icon name="visibility_off" size={22} color={COLORS.primary} />
+                <Text style={styles.outlineBtnText}>
+                  {t('clearAll') || 'Clear all'}
                 </Text>
               </TouchableOpacity>
             )}
@@ -435,19 +471,23 @@ export default function ManagerApp() {
       <ProSheet
         visible={showPro}
         onClose={() => setShowPro(false)}
-        title={t('pro.title') || 'More power, coming soon'}
-        subtitle={t('pro.sub') || 'HostelKeep Pro adds live monitoring, deeper reports and multi-property support.'}
+        title={isPro
+          ? t('pro.activeTitle', "You're on HostelKeep Pro")
+          : t('pro.title', 'Get HostelKeep Pro')}
+        subtitle={isPro
+          ? t('pro.activeSub', 'Live activities, daily history and the web dashboard are unlocked for this hostel.')
+          : t('pro.subscribeSub', 'Live activities, daily history and the web dashboard. To subscribe, contact us by email.')}
         features={[
           { icon: 'monitoring',      title: t('pro.f1') || 'Live board',        sub: t('pro.f1sub') || 'See every room update the moment it happens.' },
           { icon: 'bar_chart',       title: t('pro.f2') || 'Reports & history', sub: t('pro.f2sub') || 'Export daily and monthly performance.' },
           { icon: 'apartment',       title: t('pro.f3') || 'Multi-property',    sub: t('pro.f3sub') || 'Run several hostels from one account.' },
           { icon: 'support_agent',   title: t('pro.f4') || 'Priority support',  sub: t('pro.f4sub') || 'Talk to a human, fast.' },
         ]}
-        notifyLabel={t('pro.notify') || 'Notify me at launch'}
+        notifyLabel={isPro ? t('pro.openLive', 'Open live activities') : t('pro.subscribe', 'Subscribe to Pro')}
         onNotify={handleNotifyPro}
         learnMoreLabel={t('pro.learnMore') || 'Learn more'}
-        learnMoreUrl="https://comingsoon.com"
-        contactLabel={t('pro.talk') || 'Talk to KohCiao'}
+        learnMoreUrl="https://app.hostelkeep.com"
+        contactLabel={t('pro.emailUs', { email: CONTACT_EMAIL, defaultValue: CONTACT_EMAIL })}
         onContact={handleContact}
         closeLabel={t('close')}
       />

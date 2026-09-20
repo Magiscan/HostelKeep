@@ -6,6 +6,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, Modal, Pressable, TouchableOpacity, ScrollView,
   Animated, Easing, Dimensions, StyleSheet, Platform,
+  Keyboard, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from '../Icon';
@@ -14,9 +15,25 @@ import {
 } from '../../theme/tokens';
 import { type } from '../../theme/typography';
 
+// iOS reports the keyboard before it animates, so the sheet can travel with it.
+// Android only reports it afterwards, so `did*` is the only option there.
+const KB_SHOW = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+const KB_HIDE = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+// Clearance kept above the sheet when the keyboard is up, so its top edge
+// never tucks under the status bar or a notch.
+const TOP_GAP = 52;
+
 /* ── BottomSheet ───────────────────────────────────────────────────
    Scrim rgba(11,31,58,0.55) (0.62 for the paywall), sheet anchored to the
-   bottom, radius 26, max-height 88%, internal scroll.                     */
+   bottom, radius 26, max-height 88%, internal scroll.
+
+   KEYBOARD. A Modal is its own window: `adjustResize` does not resize it, so a
+   sheet pinned to `bottom: 0` sits underneath the keyboard and takes any input
+   it contains down with it. The sheet is lifted by the measured keyboard
+   height, re-capped against the room that is actually left, and its body
+   always scrolls — see sheetMax and the ScrollView below for why each of the
+   three is load-bearing.                                                    */
 export function BottomSheet({
   visible,
   onClose,
@@ -25,10 +42,21 @@ export function BottomSheet({
   children,
   variant = 'light',        // 'light' | 'navy'  (navy = Pro paywall)
   maxHeightRatio = 0.88,
-  scrollable = true,
+  // eslint-disable-next-line no-unused-vars
+  scrollable = true,        // accepted for compatibility; see the body below
 }) {
   const navy = variant === 'navy';
   const slide = useRef(new Animated.Value(1)).current;
+  const { height: screenH } = useWindowDimensions();
+  const [kbHeight, setKbHeight] = useState(0);
+
+  // The Modal's own window height, measured. This is the only value that
+  // reflects whether Android already resized the window for the keyboard —
+  // useWindowDimensions() does not update on keyboard show, which is why
+  // both the lift and the height cap were a full keyboard out.
+  const [rootH, setRootH] = useState(0);
+  const fullRootH = useRef(0);
+  if (rootH > fullRootH.current) fullRootH.current = rootH;
 
   useEffect(() => {
     Animated.timing(slide, {
@@ -39,14 +67,46 @@ export function BottomSheet({
     }).start();
   }, [visible, slide]);
 
+  // Only listen while the sheet is on screen, and reset on the way out — a
+  // stale offset would leave the next sheet floating above the bottom edge.
+  useEffect(() => {
+    if (!visible) {
+      setKbHeight(0);
+      return undefined;
+    }
+    const show = Keyboard.addListener(KB_SHOW, e => setKbHeight(e?.endCoordinates?.height || 0));
+    const hide = Keyboard.addListener(KB_HIDE, () => setKbHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, [visible]);
+
+  const closeAndDismiss = useCallback(() => {
+    Keyboard.dismiss();
+    onClose && onClose();
+  }, [onClose]);
+
   const translateY = slide.interpolate({ inputRange: [0, 1], outputRange: [0, 600] });
-  const Body = scrollable ? ScrollView : View;
+
+  // Window already shorter than we've seen it ⇒ the OS made room itself, so
+  // bottom:0 is already above the keys and we must not lift again.
+  const windowResized = fullRootH.current - rootH > 80;
+  const lift = windowResized ? 0 : kbHeight;
+  const keyboardUp = kbHeight > 0 || windowResized;
+
+  const H = rootH || screenH;           // screenH only until the first layout
+  // With the keyboard up the sheet takes all the room above it. maxHeightRatio
+  // was chosen against the WHOLE screen, so re-applying it to what the keyboard
+  // left over gives a ratio of a ratio — a stub of a sheet with its content
+  // spilling out of the top.
+  const sheetMax = keyboardUp
+    ? Math.max(200, H - lift - TOP_GAP)
+    : H * maxHeightRatio;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={closeAndDismiss}>
       <Pressable
         style={[styles.scrim, { backgroundColor: navy ? GLASS.overlayPro : GLASS.overlay }]}
-        onPress={onClose}
+        onPress={closeAndDismiss}
+        onLayout={e => setRootH(e.nativeEvent.layout.height)}
         accessibilityLabel="Close"
       />
       <Animated.View
@@ -54,12 +114,15 @@ export function BottomSheet({
           styles.sheet,
           {
             backgroundColor: navy ? BRAND.navy : NEUTRAL.surface,
-            maxHeight: Dimensions.get('window').height * maxHeightRatio,
+            bottom: lift,
+            maxHeight: sheetMax,
             transform: [{ translateY }],
           },
         ]}
       >
-        <SafeAreaView edges={['bottom']}>
+        {/* The home-indicator inset is only worth paying for when the sheet is
+            actually sitting on the bottom edge. */}
+        <SafeAreaView style={{ flexShrink: 1 }} edges={keyboardUp ? [] : ['bottom']}>
           <View style={styles.grabber} />
           {(title || subtitle) && (
             <View style={styles.sheetHead}>
@@ -79,13 +142,24 @@ export function BottomSheet({
               )}
             </View>
           )}
-          <Body
-            contentContainerStyle={scrollable ? styles.sheetBody : undefined}
-            style={!scrollable ? styles.sheetBody : undefined}
+          {/* Always a ScrollView, whatever `scrollable` says. A plain View
+              taller than the sheet's maxHeight neither clips nor scrolls — it
+              overflows, and since the sheet is anchored at the BOTTOM it
+              overflows upward, off the top of the screen. Switching component
+              type when the keyboard appears is not an option either: it
+              remounts the children, the focused TextInput loses focus, the
+              keyboard closes, and the type switches back — a flicker loop. */}
+          <ScrollView
+            style={{ flexShrink: 1 }}
+            contentContainerStyle={styles.sheetBody}
             showsVerticalScrollIndicator={false}
+            bounces={false}
+            // Without this the first tap on a button only dismisses the
+            // keyboard, and the press is swallowed.
+            keyboardShouldPersistTaps="handled"
           >
             {children}
-          </Body>
+          </ScrollView>
         </SafeAreaView>
       </Animated.View>
     </Modal>
@@ -258,7 +332,7 @@ export function Confetti({ fire, onDone }) {
 const styles = StyleSheet.create({
   scrim: { ...StyleSheet.absoluteFillObject },
   sheet: {
-    position: 'absolute', left: 0, right: 0, bottom: 0,
+    position: 'absolute', left: 0, right: 0,
     borderTopLeftRadius: RADII.sheet, borderTopRightRadius: RADII.sheet,
     ...SHADOWS.toolbar,
   },

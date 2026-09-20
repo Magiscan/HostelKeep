@@ -102,240 +102,6 @@ function FloorSuggestions({ existing, onAdd, t }) {
   );
 }
 
-// ─── Room Form Drawer ─────────────────────────────────────────────
-function RoomFormPanel({ visible, floors, room, onSave, onCancel, roomAttributes = [], t }) {
-  const [form, setForm] = useState(
-    room
-      ? { ...room, attributes: room.attributes || {} }
-      : { name: '', type: 'private', floorId: floors?.[0]?.id || '', beds: [], attributes: {} }
-  );
-  const [namingScheme, setNamingScheme] = useState(
-    room?.beds?.length ? guessScheme(room.beds) : 'letters'
-  );
-  const [bedCount, setBedCount] = useState(room?.beds?.length || 0);
-
-  const prevRoomId = useRef(room?.id);
-  useEffect(() => {
-    if (prevRoomId.current !== room?.id) {
-      prevRoomId.current = room?.id;
-      if (room) {
-        setForm({ ...room, attributes: room.attributes || {} });
-        setNamingScheme(guessScheme(room.beds || []));
-        setBedCount((room.beds || []).length);
-      } else {
-        setForm({ name: '', type: 'private', floorId: floors?.[0]?.id || '', beds: [], attributes: {} });
-        setNamingScheme('letters');
-        setBedCount(0);
-      }
-    }
-  }, [room]);
-
-  // Adding/removing beds only touches the beds at the edges — it never
-  // overwrites names you've already customized on the beds that remain.
-  useEffect(() => {
-    if (form.type === 'dorm') {
-      setForm(f => ({ ...f, beds: resizeBeds(f.beds, bedCount, namingScheme) }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bedCount, form.type]);
-
-  // Explicitly switching Letters/Numbers is a deliberate "start over" action,
-  // so it regenerates every bed name from scratch.
-  const handleSchemeChange = (v) => {
-    setNamingScheme(v);
-    if (form.type === 'dorm') {
-      setForm(f => ({ ...f, beds: generateBeds(bedCount, v) }));
-    }
-  };
-
-  const renameBed = (bedId, newName) => {
-    setForm(f => ({
-      ...f,
-      beds: (f.beds || []).map(b => (b.id === bedId ? { ...b, name: newName } : b)),
-    }));
-  };
-
-  const toggleAttribute = (attr) => {
-    setForm(prev => ({
-      ...prev,
-      attributes: { ...prev.attributes, [attr]: !prev.attributes?.[attr] },
-    }));
-  };
-
-    // A private room with no attributes can never register as "needs work",
-  // so it would silently vanish from every filter and printed sheet.
-  const needsAttribute = form.type === 'private' && roomAttributes.length > 0;
-  const hasAttribute = Object.values(form.attributes || {}).some(Boolean);
-
-  // A dorm with zero beds is equally inert.
-  const needsBeds = form.type === 'dorm';
-
-  const isValid = !!form.name.trim()
-    && !!form.floorId
-    && (!needsAttribute || hasAttribute)
-    && (!needsBeds || bedCount > 0);
-
-  const handleSave = () => {
-    const cleanAttributes = {};
-    if (form.attributes) {
-      Object.entries(form.attributes).forEach(([key, val]) => {
-        if (val) cleanAttributes[key] = true;
-      });
-    }
-    onSave({ ...form, attributes: cleanAttributes });
-  };
-
-  if (!visible) return null;
-
-    return (
-      <BottomSheet
-        visible={visible}
-        onClose={onCancel}
-        maxHeightRatio={0.92}
-        scrollable
-      >
-        <View style={styles.panelHeader}>
-          <Text style={styles.sheetTitle}>{room ? t('editRoom') : t('addRoom')}</Text>
-          <TouchableOpacity onPress={onCancel} style={styles.panelClose}>
-            <Icon name="close" size={20} color={COLORS.textMuted} />
-          </TouchableOpacity>
-        </View>
-
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={0}
-          >
-            <View style={{ gap: 4 }}>
-          <Text style={styles.fieldLabel}>{t('roomName')}</Text>
-          <Input
-            value={form.name}
-            onChangeText={v => setForm(f => ({ ...f, name: v }))}
-            placeholder={t('setup.roomNamePlaceholder')}
-            autoCapitalize="words"
-            style={{ marginBottom: SPACING[4] }}
-          />
-
-          <Text style={styles.fieldLabel}>{t('floor')}</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING[2], marginBottom: SPACING[4] }}>
-            {floors?.map(fl => {
-              const isActive = form.floorId === fl.id;
-              return (
-                <Chip
-                  key={fl.id}
-                  label={fl.name}
-                  selected={isActive}
-                  onPress={() => setForm(f => ({ ...f, floorId: fl.id }))}
-                  icon={isActive ? 'checkmark' : undefined}
-                />
-              );
-            })}
-          </View>
-
-          <Text style={styles.fieldLabel}>{t('roomType')}</Text>
-          <ToggleGroup
-            options={[{ label: t('private'), value: 'private' }, { label: t('dormitory'), value: 'dorm' }]}
-            value={form.type}
-            onChange={v => setForm(f => ({ ...f, type: v }))}
-          />
-
-          {form.type === 'private' && roomAttributes.length > 0 && (
-            <View style={{ marginTop: SPACING[4], marginBottom: SPACING[4] }}>
-              <Text style={styles.fieldLabel}>{t('roomFeatures')}</Text>
-              {!hasAttribute && (
-                <Text style={styles.warn}>
-                  {t('setup.attributeRequired')
-                    || 'Pick at least one — a private room with nothing to clean never shows up on a sheet.'}
-                </Text>
-              )}
-              {roomAttributes.map(attr => (
-                <TouchableOpacity
-                  key={attr}
-                  style={styles.attributeRow}
-                  onPress={() => toggleAttribute(attr)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.checkbox, form.attributes?.[attr] && styles.checkboxActive]}>
-                    {form.attributes?.[attr] && <Icon name="checkmark" size={16} color={COLORS.white} />}
-                  </View>
-                  <Text style={styles.attributeLabel}>{attr}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {form.type === 'dorm' && (
-            <View style={{ marginTop: SPACING[4] }}>
-              <Text style={styles.fieldLabel}>{t('bedNaming')}</Text>
-              <ToggleGroup
-                options={[{ label: t('letters'), value: 'letters' }, { label: t('numbers'), value: 'numbers' }]}
-                value={namingScheme}
-                onChange={handleSchemeChange}
-              />
-              <Text style={styles.bedNamingHint}>
-                {t('setup.bedNamingHint', "Tap any bed below to rename it — handy if beds aren't lettered in order (e.g. A, B, D, F) or your hostel uses its own naming.")}
-              </Text>
-              <Text style={styles.fieldLabel}>{t('numberOfBeds')}</Text>
-                <View style={styles.stepperRow}>
-                  <TouchableOpacity
-                    style={styles.stepperBtn}
-                    onPress={() => setBedCount(n => Math.max(0, n - 1))}
-                    disabled={bedCount === 0}
-                    activeOpacity={0.7}
-                  >
-                    <Icon name="remove" size={24} color={bedCount === 0 ? COLORS.textMuted : COLORS.primary} />
-                  </TouchableOpacity>
-                  <View style={styles.stepperValue}>
-                    <Text style={styles.stepperNum}>{bedCount}</Text>
-                    <Text style={styles.stepperUnit}>{t('beds')}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.stepperBtn}
-                    onPress={() => setBedCount(n => n + 1)}
-                    activeOpacity={0.7}
-                  >
-                    <Icon name="add" size={24} color={COLORS.primary} />
-                  </TouchableOpacity>
-                </View>
-              {bedCount > 0 && (
-                <>
-                  <Text style={styles.bedGridHint}>
-                    {t('setup.bedRenameHint') || 'Tap a bed to rename it.'}
-                  </Text>
-                <View style={styles.bedGrid}>
-                  {form.beds?.map(b => (
-                    <View key={b.id} style={styles.bedGridCell}>
-                      <TextInput
-                        value={b.name}
-                        onChangeText={v => renameBed(b.id, v)}
-                        style={styles.bedNameInput}
-                        maxLength={12}
-                      />
-                    </View>
-                  ))}
-                </View>
-                </>
-              )}
-            </View>
-          )}
-        </View>
-      </KeyboardAvoidingView>
-
-        <View style={styles.panelFooter}>
-          <TouchableOpacity onPress={onCancel} style={[styles.halfBtn, styles.halfBtnGhost]}>
-            <Text style={styles.halfBtnGhostText}>{t('cancel')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleSave}
-            disabled={!isValid}
-            style={[styles.halfBtn, { backgroundColor: COLORS.primary }, !isValid && { opacity: 0.5 }]}
-          >
-            <Text style={[styles.halfBtnText, { color: COLORS.white }]}>{t('save')}</Text>
-          </TouchableOpacity>
-        </View>
-    </BottomSheet>
-  );
-}
-
 // ─── Attributes Management Dialog ────────────────────────────────
 function AttributesDialog({ visible, attributes, rooms, onSave, onClose, t }) {
   const [newAttr, setNewAttr] = useState('');
@@ -497,6 +263,12 @@ export default function SetupScreen({ bottomPad = 0 }) {
 
   const toggleFloor = (floorId) => setExpandedFloors(prev => ({ ...prev, [floorId]: !prev[floorId] }));
 
+  // `step` is seeded once, at mount. Without this, deleting the last floor
+  // leaves the screen on step 2 with nothing to put a room on.
+  useEffect(() => {
+    if (floors.length === 0 && step === 2) setStep(1);
+  }, [floors.length, step]);
+
   const sortedFloors = useMemo(() => {
     return [...floors].sort((a, b) => {
       const order = (name) => {
@@ -516,6 +288,15 @@ export default function SetupScreen({ bottomPad = 0 }) {
   };
 
   const handleSaveRoom = async (form) => {
+    // A room whose floor doesn't exist renders nowhere — the list is grouped by
+    // floor — but still counts, so the room total and the list disagree.
+    if (!form.floorId || !floors.some(f => f.id === form.floorId)) {
+      Alert.alert(
+        t('error'),
+        t('setup.pickFloorFirst') || 'Pick a floor for this room first.',
+      );
+      return;
+    }
     try {
       if (editingRoom) {
         await saveRoom({ ...form, id: editingRoom.id });
@@ -563,8 +344,15 @@ export default function SetupScreen({ bottomPad = 0 }) {
   // ── Step 0: Hostel name ──────────────────────────────────────
   if (step === 0) {
     return (
-      <View style={styles.safe}>
-        <View style={styles.wizardWrap}>
+      <KeyboardAvoidingView
+        style={styles.safe}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
+          contentContainerStyle={styles.wizardWrap}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.wizardCard}>
             <SectionTitle title={t('buildHostel')} subtitle={t('setup.startWithName')} />
             <Text style={styles.fieldLabel}>{t('propertyName')}</Text>
@@ -577,16 +365,23 @@ export default function SetupScreen({ bottomPad = 0 }) {
             />
             <Button title={t('continue')} onPress={saveHostel} disabled={!hName.trim()} />
           </View>
-        </View>
-      </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 
   // ── Step 1: Floors ───────────────────────────────────────────
   if (step === 1) {
     return (
-      <View style={styles.safe}>
-        <View style={styles.wizardWrap}>
+      <KeyboardAvoidingView
+        style={styles.safe}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
+          contentContainerStyle={styles.wizardWrap}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           <View style={styles.wizardCard}>
             <SectionTitle title={t('setup.tellAboutFloors')} subtitle={t('setup.floorsAutoGenerated')} />
             <Text style={styles.fieldLabel}>{t('floorsQuestions')}</Text>
@@ -614,8 +409,8 @@ export default function SetupScreen({ bottomPad = 0 }) {
               disabled={isNaN(parseInt(floorCount, 10)) || parseInt(floorCount, 10) < 0}
             />
           </View>
-        </View>
-      </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     );
   }
 
@@ -821,7 +616,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.background, position: 'relative' },
 
   /* wizard steps */
-  wizardWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING[6] },
+  wizardWrap: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING[6] },
   wizardCard: {
     width: '100%', maxWidth: 460,
     backgroundColor: COLORS.surface, borderRadius: RADIUS.lg,

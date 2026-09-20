@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
-  TouchableOpacity, Modal, Pressable, TextInput, Image, Alert,
+  TouchableOpacity, Modal, Pressable, TextInput, Image,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,14 +11,13 @@ import Icon from '../components/Icon';
 // Concrete module path, not the barrel — a directory import needs a file named
 // exactly `index.js`, which breaks on EAS if the local file is `Index.js`.
 import { Wordmark } from '../components/brand/Glass';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth, looksLikeEmail } from '../contexts/AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from '../theme/colors';
-import { FONTS, DISPLAY, FONT_SIZE } from '../theme/typography';
-import { SPACING } from '../theme/spacing';
-import { RADIUS } from '../theme/radius';
+import { FONTS, DISPLAY } from '../theme/typography';
 import { SHADOW } from '../theme/shadows';
 import { ProSheet, ContactSheet } from '../components/brand/Sheets';
+import { CONTACT_EMAIL } from '../utils/subscription';
 
 /**
  * Transcribed from the prototype ("HostelKeep App.dc.html", isLogin branch),
@@ -30,7 +29,29 @@ import { ProSheet, ContactSheet } from '../components/brand/Sheets';
  *   ├─ brand:     logo 58² + "HostelKeep" Fredoka 27      (margin-top 46)
  *   ├─ heading:   title Fredoka 34 + sub 16              (margin-top 24)
  *   └─ card:      white, radius 24, padding 20, gap 14   (margin-top 22)
- *        code · username · password(+eye) · forgot · Sign in 56 · create
+ *        identifier · code (cleaners only) · password(+eye) · forgot ·
+ *        Sign in 56 · create
+ *
+ * ALIGNED WITH THE WEB VERSION. The form used to demand a hostel code, a
+ * username and a password from everyone, which stopped working the moment
+ * managers moved onto real email addresses:
+ *
+ *   • `canSubmit` required a hostel code, so a manager — who has none to give
+ *     — could never enable the button.
+ *   • Even past that, AuthContext.login only reads loginLookup for a NON-email
+ *     identifier, and managers have no lookup row. The username path could
+ *     only ever fail for them.
+ *
+ * So there is now one identifier field, exactly as on web: an email means a
+ * manager and signs in directly; anything else means a housekeeper, and only
+ * then is the hostel code asked for. `looksLikeEmail` makes the call, the same
+ * helper AuthContext branches on — one rule, not two that can drift.
+ *
+ * Forgot-password follows suit. It used to pass (username, hostelCode) to
+ * requestPasswordReset, which takes an email address and nothing else; the
+ * call was silently useless. Managers now get Firebase's reset mail, and
+ * housekeepers — who have synthetic addresses and no inbox — are told to ask
+ * their manager, which is the only thing that actually works for them.
  *
  * Note there is NO "Housekeeping Intelligence" tagline under the wordmark —
  * that span is empty in the final prototype.
@@ -55,7 +76,8 @@ try {
    fill #FBFCFE, text 17/500. Column gap 7.                              */
 function Field({
   label, value, onChangeText, placeholder, secure, onToggleSecure,
-  showSecure, autoCapitalize = 'none', letterSpacing = 0,
+  showSecure, autoCapitalize = 'none', letterSpacing = 0, keyboardType,
+  hint, onSubmitEditing, returnKeyType,
 }) {
   const [focused, setFocused] = useState(false);
 
@@ -71,6 +93,9 @@ function Field({
           secureTextEntry={secure && !showSecure}
           autoCapitalize={autoCapitalize}
           autoCorrect={false}
+          keyboardType={keyboardType}
+          onSubmitEditing={onSubmitEditing}
+          returnKeyType={returnKeyType}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           style={[
@@ -97,6 +122,7 @@ function Field({
           </TouchableOpacity>
         )}
       </View>
+      {!!hint && <Text style={styles.hint}>{hint}</Text>}
     </View>
   );
 }
@@ -106,11 +132,13 @@ export default function LoginScreen() {
   const { login, requestPasswordReset } = useAuth();
   const navigation = useNavigation();
 
+  // One field for both roles: managers type their email, cleaners their name.
+  const [identifier, setIdentifier] = useState('');
   const [hostelCode, setHostelCode] = useState('');
-  const [name, setName] = useState('');
   const [pass, setPass] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [err, setErr] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [showLangModal, setShowLangModal] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
@@ -118,14 +146,19 @@ export default function LoginScreen() {
   const [showContact, setShowContact] = useState(false);
 
   const currentLang = LANGS.find(l => l.code === i18n.language) || LANGS[0];
-  const canSubmit = !!(hostelCode.trim() && name.trim() && pass) && !loading;
+
+  // An email means a manager, who signs in directly and needs no hostel code.
+  const isManagerLogin = looksLikeEmail(identifier);
+  const canSubmit =
+    !!(identifier.trim() && pass && (isManagerLogin || hostelCode.trim())) && !loading;
 
   const handleSignIn = async () => {
     if (!canSubmit) return;
     setLoading(true);
     setErr('');
+    setNotice('');
     try {
-      await login(name.trim(), pass, hostelCode.trim().toUpperCase());
+      await login(identifier.trim(), pass, hostelCode.trim().toUpperCase());
     } catch (e) {
       setErr(e.message || t('loginError'));
     } finally {
@@ -134,23 +167,27 @@ export default function LoginScreen() {
   };
 
   const handleForgotPassword = async () => {
-    if (!name.trim() || !hostelCode.trim()) {
-      Alert.alert(
-        t('error') || 'Error',
-        t('enterCodeAndUserFirst')
-          || 'Please enter your username and hostel code first.',
+    setErr('');
+    if (!isManagerLogin) {
+      // Cleaners have no inbox of their own — their manager resets them.
+      setNotice(
+        t('cleanerResetHint')
+        || 'Ask your manager to reset your password from the Team screen. If you are a manager, enter your email address above.',
       );
       return;
     }
-    const message = await requestPasswordReset(name, hostelCode);
-    Alert.alert(t('passwordReset') || 'Password reset', message);
+    const message = await requestPasswordReset(identifier.trim());
+    setNotice(message);
   };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        // 'height' rather than undefined on Android: with edgeToEdgeEnabled the
+        // window no longer resizes for the keyboard, so a plain ScrollView has
+        // nothing to scroll into and the lower fields stay covered.
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView
           contentContainerStyle={styles.scroll}
@@ -199,28 +236,36 @@ export default function LoginScreen() {
               {t('loginTitle') || 'Hello there!'}
             </Text>
             <Text style={styles.subtitle}>
-              {t('loginSub') || 'Sign in with your hostel code and username.'}
+              {t('loginSub') || "Sign in to manage today's cleaning."}
             </Text>
           </View>
 
           {/* ── Form card ── */}
           <View style={styles.card}>
             <Field
-              label={t('hostelCode')}
-              value={hostelCode}
-              onChangeText={v => setHostelCode(v.toUpperCase())}
-              placeholder="e.g. SUNSET"
-              autoCapitalize="characters"
-              letterSpacing={0.7}
+              label={t('emailOrUsername') || 'Email or username'}
+              value={identifier}
+              onChangeText={setIdentifier}
+              placeholder="you@hostel.com"
+              keyboardType="email-address"
+              hint={isManagerLogin
+                ? (t('managerSignInHint') || 'Signing in as a manager.')
+                : (t('identifierHint')
+                  || 'Managers use their email. Housekeepers use the username their manager gave them.')}
             />
 
-            <Field
-              label={t('username')}
-              value={name}
-              onChangeText={setName}
-              placeholder={t('username')}
-              autoCapitalize="words"
-            />
+            {/* Housekeepers only — a manager's email already identifies the
+                hostel, and they have no code of their own to type. */}
+            {!isManagerLogin && (
+              <Field
+                label={t('hostelCode')}
+                value={hostelCode}
+                onChangeText={v => setHostelCode(v.toUpperCase())}
+                placeholder="e.g. SUNSET"
+                autoCapitalize="characters"
+                letterSpacing={0.7}
+              />
+            )}
 
             <Field
               label={t('password')}
@@ -230,12 +275,21 @@ export default function LoginScreen() {
               secure
               showSecure={showPass}
               onToggleSecure={() => setShowPass(v => !v)}
+              returnKeyType="go"
+              onSubmitEditing={handleSignIn}
             />
 
             {!!err && (
               <View style={styles.errorBanner}>
                 <Icon name="error" size={18} color={COLORS.danger} />
                 <Text style={styles.errorText}>{err}</Text>
+              </View>
+            )}
+
+            {!!notice && (
+              <View style={styles.noticeBanner}>
+                <Icon name="mail" size={18} color={COLORS.primary} />
+                <Text style={styles.noticeText}>{notice}</Text>
               </View>
             )}
 
@@ -289,7 +343,6 @@ export default function LoginScreen() {
                 {t('createHostel') || 'Create a new hostel'}
               </Text>
             </TouchableOpacity>
-                        
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -393,7 +446,7 @@ export default function LoginScreen() {
               </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={styles.linkTitle}>{t('contactUs') || 'Contact us'}</Text>
-                <Text style={styles.linkSub} numberOfLines={1}>hello@kohciao.com</Text>
+                <Text style={styles.linkSub} numberOfLines={1}>{CONTACT_EMAIL}</Text>
               </View>
               <Icon name="chevron_right" size={20} color={COLORS.textMuted} />
             </TouchableOpacity>
@@ -409,23 +462,23 @@ export default function LoginScreen() {
         </Pressable>
       </Modal>
 
-            <ProSheet
+      <ProSheet
         visible={showPro}
         onClose={() => setShowPro(false)}
-        title={t('pro.title') || 'More power, coming soon'}
-        subtitle={t('pro.sub')
-          || 'HostelKeep Pro adds live monitoring, deeper reports and multi-property support.'}
+        title={t('pro.title') || 'Get HostelKeep Pro'}
+        subtitle={t('pro.subscribeSub')
+          || 'Live activities, daily history and the web dashboard. To subscribe, contact us by email.'}
         features={[
           { icon: 'monitoring',    title: t('pro.f1') || 'Live board',        sub: t('pro.f1sub') || 'See every room update the moment it happens.' },
           { icon: 'bar_chart',     title: t('pro.f2') || 'Reports & history', sub: t('pro.f2sub') || 'Export daily and monthly performance.' },
           { icon: 'apartment',     title: t('pro.f3') || 'Multi-property',    sub: t('pro.f3sub') || 'Run several hostels from one account.' },
           { icon: 'support_agent', title: t('pro.f4') || 'Priority support',  sub: t('pro.f4sub') || 'Talk to a human, fast.' },
         ]}
-        notifyLabel={t('pro.notify') || 'Notify me at launch'}
+        notifyLabel={t('pro.subscribe') || 'Subscribe to Pro'}
         onNotify={() => { setShowPro(false); setShowContact(true); }}
         learnMoreLabel={t('pro.learnMore') || 'Learn more'}
-        learnMoreUrl="https://kohciao.com"
-        contactLabel={t('pro.talk') || 'Talk to KohCiao'}
+        learnMoreUrl="https://app.hostelkeep.com"
+        contactLabel={t('pro.emailUs', { email: CONTACT_EMAIL, defaultValue: CONTACT_EMAIL })}
         onContact={() => { setShowPro(false); setShowContact(true); }}
         closeLabel={t('close')}
       />
@@ -576,6 +629,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  hint: {
+    fontFamily: FONTS.regular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: COLORS.textMuted,
+  },
 
   errorBanner: {
     flexDirection: 'row',
@@ -593,6 +652,23 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.medium,
     fontSize: 14,
     color: COLORS.danger,
+  },
+
+  noticeBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: 14,
+    padding: 12,
+  },
+  noticeText: {
+    flex: 1,
+    minWidth: 0,
+    fontFamily: FONTS.medium,
+    fontSize: 14,
+    lineHeight: 19,
+    color: COLORS.primary,
   },
 
   forgotBtn: {

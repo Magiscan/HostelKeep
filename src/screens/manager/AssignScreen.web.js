@@ -212,6 +212,12 @@ export default function AssignScreen({ onReady }) {
     }).length;
   }, 0), [rooms, roomStatus]);
 
+  // ── Private rooms to clean (for glance) ──────────────────────
+  // Same test as the "To prepare" filter, so the two numbers always agree.
+  const privatesToClean = useMemo(() => rooms.filter(r =>
+    r.type === 'private' && roomNeedsAssignment(r, roomStatus[r.id] || {})
+  ).length, [rooms, roomStatus]);
+
   // ── Filtered rooms ───────────────────────────────────────────
   const filteredRooms = useMemo(() => {
     let list = rooms;
@@ -1044,9 +1050,15 @@ export default function AssignScreen({ onReady }) {
                         </Text>
                       </View>
                       <View style={styles.glanceRow}>
-                        <Text style={styles.glanceLabel}>Beds to clean</Text>
+                        <Text style={styles.glanceLabel}>Dorm beds to clean</Text>
                         <Text style={[styles.glanceValue, { color: STATUS.dirty.text }]}>
                           {dirtyBeds}
+                        </Text>
+                      </View>
+                      <View style={styles.glanceRow}>
+                        <Text style={styles.glanceLabel}>Private rooms to clean</Text>
+                        <Text style={[styles.glanceValue, { color: STATUS.dirty.text }]}>
+                          {privatesToClean}
                         </Text>
                       </View>
                     </View>
