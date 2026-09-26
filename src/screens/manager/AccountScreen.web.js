@@ -34,7 +34,11 @@ import { useApp } from '../../contexts/AppContext';
 import { deleteOwnAccount, deleteHostel } from '../../utils/accountDeletion';
 import { canDo, isOwner } from '../../utils/permissions';
 
-const PRIVACY_URL = 'https://keepclean-hostel.web.app/privacy.html';
+const PRIVACY_URLS = {
+  en: 'https://hostelkeep.com/privacy',
+  it: 'https://hostelkeep.com/it/privacy',
+  es: 'https://hostelkeep.com/es/privacy',
+};
 const MIN_PASSWORD = 8;
 const DANGER = '#B91C1C';
 
@@ -52,11 +56,13 @@ function InfoRow({ label, value, mono, action }) {
 }
 
 export default function AccountScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const {
     user, logout, changeOwnPassword, switchHostel,
   } = useAuth();
   const { hostel, updateHostel, roles, subscription } = useApp();
+
+  const privacyUrl = PRIVACY_URLS[(i18n.language || 'en').slice(0, 2)] || PRIVACY_URLS.en;
 
   const owner = isOwner(user);
   const canRename = canDo(user, roles, 'editRooms') && subscription.active;
@@ -255,7 +261,7 @@ export default function AccountScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() => Linking.openURL(PRIVACY_URL)}
+                onPress={() => Linking.openURL(privacyUrl)}
                 style={d.listRow}
                 activeOpacity={0.8}
               >

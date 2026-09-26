@@ -26,7 +26,11 @@ import { deleteOwnAccount } from '../utils/accountDeletion';
 
 // Must point at your live policy — App Review checks that the in-app link and
 // the App Store Connect metadata field resolve to the same page.
-const PRIVACY_URL = 'https://keepclean-hostel.web.app/privacy.html';
+const PRIVACY_URLS = {
+  en: 'https://hostelkeep.com/privacy',
+  it: 'https://hostelkeep.com/it/privacy',
+  es: 'https://hostelkeep.com/es/privacy',
+};
 
 const MIN_PASSWORD = 8;
 
@@ -97,11 +101,13 @@ function Field({ label, value, onChangeText, placeholder, secure, autoCapitalize
 }
 
 export default function AccountScreen({ bottomPad = 0 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user, logout, changeOwnPassword } = useAuth();
   const { hostel, updateHostel } = useApp();
 
   const isManager = user?.role === 'manager';
+
+  const privacyUrl = PRIVACY_URLS[(i18n.language || 'en').slice(0, 2)] || PRIVACY_URLS.en;
 
   const [showPassword, setShowPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -212,12 +218,12 @@ export default function AccountScreen({ bottomPad = 0 }) {
           <ActionRow
             icon="key"
             label={t('changePassword') || 'Change password'}
-            onPress={() => setShowPassword(true)}
+            onPress={() => setShowPassword(true )}
           />
           <ActionRow
             icon="shield_person"
             label={t('privacyPolicy') || 'Privacy Policy'}
-            onPress={() => Linking.openURL(PRIVACY_URL)}
+            onPress={() => Linking.openURL(privacyUrl)}
           />
         </View>
 

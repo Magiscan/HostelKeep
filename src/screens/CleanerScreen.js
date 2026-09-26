@@ -11,6 +11,7 @@ import Icon from '../components/Icon';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { usePushRegistration } from '../hooks/usePushRegistration';
+import AccountScreen from './AccountScreen';
 // Imported from the concrete modules rather than the barrel file. A directory
 // import ('../components/brand') needs a file named exactly `index.js`; on a
 // case-insensitive filesystem a stray `Index.js` appears to work locally and
@@ -505,6 +506,8 @@ function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, 
     });
   }, [floors]);
 
+  // Any existing request blocks a new one: the document ID is the room ID, so a
+  // second setDoc would be an update, which needs 'approve'.
   const requestedRoomIds = (extraRequests || []).map(r => r.id);
   const eligibleRooms = (rooms || []).filter(
     r => !r.assignedTo && !(roomStatus?.[r.id]?.extraCleaning) && !requestedRoomIds.includes(r.id),
@@ -531,7 +534,7 @@ function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, 
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       quality: 0.3,
       base64: true,
       allowsEditing: false,
@@ -633,6 +636,7 @@ export default function CleanerScreen() {
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [cancelRequestId, setCancelRequestId] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
   const [expandedFloors, setExpandedFloors] = useState({});
 
   const myRooms = rooms.filter(r => r.assignedTo === user.uid);
@@ -674,6 +678,10 @@ export default function CleanerScreen() {
 
   const pendingRequests = extraRequests.filter(
     req => req.cleanerId === user.uid && req.status === 'pending',
+  );
+
+  const rejectedRequests = extraRequests.filter(
+    req => req.cleanerId === user.uid && req.status === 'rejected',
   );
 
   const sortedFloors = useMemo(() => {
@@ -731,7 +739,12 @@ export default function CleanerScreen() {
                 key={room.id}
                 room={room}
                 status={roomStatus[room.id] || {}}
-                onUpdate={upd => updateRoomStatus(room.id, { ...roomStatus[room.id], ...upd })}
+                onUpdate={upd => {
+                  updateRoomStatus(room.id, { ...roomStatus[room.id], ...upd })
+                    .catch(() => toast.show(
+                      t('saveFailed') || "Couldn't save — check your connection and try again."
+                    ));
+                }}
                 t={t}
               />
             ))}
@@ -740,6 +753,27 @@ export default function CleanerScreen() {
       </View>
     );
   });
+
+  // Account takeover. A cleaner has no "manager stack" to push a screen onto —
+  // CleanerScreen is the whole world they live in — so the account screen is
+  // rendered in place of the room list, with its own back bar.
+  if (showAccount) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.accountBar}>
+          <TouchableOpacity
+            onPress={() => setShowAccount(false)}
+            style={styles.iconBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Icon name="arrow_back" size={24} color={COLORS.primary} />
+          </TouchableOpacity>
+          <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>{t('account') || 'Account'}</Text>
+        </View>
+        <AccountScreen />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -791,6 +825,36 @@ export default function CleanerScreen() {
           </View>
         )}
 
+        {/* ── Declined requests ── */}
+        {rejectedRequests.length > 0 && (
+          <View style={styles.rejectedCard}>
+            <Text style={styles.pendingTitle}>
+              {t('cleanerScreen.declinedRequests', { defaultValue: 'Not approved' })}
+            </Text>
+            <Text style={styles.rejectedSub}>
+              {t('cleanerScreen.declinedHint', {
+                defaultValue: 'Your manager didn\'t approve these. Tap ✓ to clear — you can ask again after that.',
+              })}
+            </Text>
+            {rejectedRequests.map(req => {
+              const room = rooms.find(r => r.id === req.id);
+              return (
+                <View key={req.id} style={styles.pendingRow}>
+                  <Icon name="cancel" size={22} color={COLORS.danger} />
+                  <Text style={styles.pendingRoom}>{room?.name || t('unknownRoom')}</Text>
+                  <TouchableOpacity
+                    onPress={() => cancelExtraRoomRequest(req.id)}
+                    style={styles.iconBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Icon name="check" size={22} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
         {/* ── My rooms ── */}
         {regularRooms.length > 0 && (
           <>
@@ -808,7 +872,7 @@ export default function CleanerScreen() {
         )}
 
         {/* ── Empty ── */}
-        {myRooms.length === 0 && pendingRequests.length === 0 && (
+        {myRooms.length === 0 && pendingRequests.length === 0 && rejectedRequests.length === 0 && (
           <View style={styles.emptyBox}>
             <Text style={styles.emptyIcon}>✨</Text>
             <Text style={styles.emptyTitle}>{t('noRoomsAssigned')}</Text>
@@ -910,7 +974,7 @@ export default function CleanerScreen() {
         onChangePhoto={pickProfilePhoto}
         langLabel={(LANGS.find(l => l.code === i18n.language) || LANGS[0]).label}
         onLanguage={() => { setShowProfile(false); setShowLang(true); }}
-        // onAccount={() => setShowAccount(true)}
+        onAccount={() => { setShowProfile(false); setShowAccount(true); }}
         onSignOut={() => { setShowProfile(false); logout(); }}
         labels={{ language: t('manager.language'), account: t('account'), signOut: t('signOut') }}
       />
@@ -1040,6 +1104,21 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
 
+  rejectedCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: COLORS.dangerBorder,
+    padding: SPACING.lg,
+    gap: 4,
+  },
+  rejectedSub: {
+    fontFamily: FONTS.regular,
+    fontSize: FONT_SIZE.sm,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.xs,
+  },
+
   /* Sections */
   sectionTitle: {
     fontFamily: DISPLAY.semiBold,
@@ -1047,6 +1126,14 @@ const styles = StyleSheet.create({
     lineHeight: 27,
     color: COLORS.primary,
     marginBottom: SPACING.md,
+  },
+
+  accountBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingHorizontal: 18,
+    paddingVertical: SPACING.sm,
   },
 
   /* Buttons */

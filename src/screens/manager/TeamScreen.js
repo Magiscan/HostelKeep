@@ -23,10 +23,11 @@ import { buildCleanerColors } from '../../utils/cleanerColor';
  * — which meant a manager checking "how is everyone doing?" had to go
  * elsewhere. The data was already in context; it just wasn't shown.
  *
- * Password reset still routes through resetCleanerPassword in AuthContext,
- * which changes the password in place rather than deleting and recreating the
- * account. Deleting still routes through deleteCleaner in AppContext, which
- * also frees the login lookup so the name can be reused.
+ * Password reset routes through resetCleanerPassword in AuthContext. On the
+ * Spark plan the client SDK cannot change another user's password, so it
+ * DELETES AND RECREATES the account and migrates their room assignments to the
+ * new uid. Known consequence: extraRequests keep the old cleanerId, and
+ * buildCleanerColors sorts by uid, so a reset reshuffles avatar colours.
  */
 
 const MIN_PASSWORD = 8;

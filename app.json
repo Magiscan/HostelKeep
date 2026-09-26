@@ -2,25 +2,22 @@
   "expo": {
     "version": "1.1.0",
     "name": "HostelKeep",
-    "slug": "KeepCleanBlank",
+    "slug": "hostelkeep",
     "orientation": "portrait",
     "scheme": "hostelkeep",
     "description": "Manage daily hostel room cleaning: assign rooms to cleaners, track progress in real time, and handle extra-room requests.",
     "primaryColor": "#0B1F3A",
-
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#F4F6FA"
     },
-
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.keepclean",
+      "bundleIdentifier": "com.hostelkeep.app",
       "buildNumber": "10",
       "infoPlist": {
         "NSCameraUsageDescription": "HostelKeep uses your camera so you can attach a photo of a room when requesting an extra cleaning.",
@@ -28,16 +25,15 @@
         "ITSAppUsesNonExemptEncryption": false
       }
     },
-
     "android": {
       "versionCode": 10,
-      "package": "com.keepclean",
+      "package": "com.hostelkeep.app",
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.READ_MEDIA_IMAGES",
         "android.permission.POST_NOTIFICATIONS",
-        "android.permission.INTERNET"
+        "android.permission.INTERNET",
+        "android.permission.RECORD_AUDIO"
       ],
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
@@ -53,12 +49,10 @@
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "pan"
     },
-
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro"
     },
-
     "plugins": [
       "expo-secure-store",
       "expo-font",
@@ -88,8 +82,8 @@
         "expo-build-properties",
         {
           "android": {
-            "compileSdkVersion": 35,
-            "targetSdkVersion": 35,
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
             "minSdkVersion": 24
           },
           "ios": {
@@ -98,11 +92,11 @@
         }
       ]
     ],
-
     "extra": {
       "eas": {
-        "projectId": "f9873d21-3fa5-4cc1-b18c-d6c6f846511d"
+        "projectId": "d3e65e31-78d3-457a-843b-e82c9bbb4218"
       }
-    }
+    },
+    "owner": "tryout2000"
   }
 }

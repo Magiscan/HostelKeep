@@ -46,7 +46,7 @@ export function usePushRegistration(user) {
             name: 'Default',
             importance: Notifications.AndroidImportance.HIGH,
             vibrationPattern: [0, 250, 250, 250],
-            lightColor: '#2563EB',
+            lightColor: '#0B1F3A',
           });
         }
 

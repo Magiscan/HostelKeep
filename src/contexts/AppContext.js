@@ -26,7 +26,7 @@ async function getManagerTokens(hostelCode) {
   const managersQuery = query(
     collection(db, 'users'),
     where('hostelCode', '==', hostelCode),
-    where('role', '==', 'manager')
+    where('role', 'in', ['manager', 'staff']),
   );
   const snapshot = await getDocs(managersQuery);
   const tokenSet = new Set();
@@ -382,14 +382,24 @@ export function AppProvider({ children }) {
     // write after the first — only a transition is newsworthy.
     const prev = roomStatus[roomId] || {};
 
+    const uid = auth.currentUser?.uid;
+    const me = uid ? cleaners.find(c => c.id === uid) : null;
+
+    // A cleaner must send managerNotes and assignmentBedStatus back byte-identical
+    // to committed state or the rules reject the whole write. CleanerScreen echoes
+    // a cached copy, which goes stale the moment a manager edits either one. With
+    // merge:true, omitting them leaves them untouched — the rule then compares
+    // committed against committed and always passes.
+    const payload = me
+      ? (({ managerNotes, assignmentBedStatus, ...rest }) => rest)(newStatus)
+      : newStatus;
+
     const promise = setDoc(
       doc(db, 'hostels', hostelCode, 'roomStatus', roomId),
-      stamp(newStatus),
+      stamp(payload),
       { merge: true },
     );
 
-    const uid = auth.currentUser?.uid;
-    const me = uid ? cleaners.find(c => c.id === uid) : null;
     if (!hostelCode || !me) return promise;
 
     const room = rooms.find(r => r.id === roomId);
@@ -611,19 +621,31 @@ export function AppProvider({ children }) {
       imageBase64: imageBase64 || null,
     });
 
+    // roomId is the document ID, not the room's name. Managers read these
+    // strings in the notification panel, so always resolve the name first.
+    const room = rooms.find(r => r.id === roomId);
+    const roomName = room?.name || roomId;
+    const who = cleaners.find(c => c.id === cleanerUid)?.username;
+
     notifyHostel(hostelCode, {
       type: 'extra_request',
       roomId,
-      message: `Extra room requested for ${roomId}`,
+      // Without a bucket the ID is extra_request__<room>__<day>, so a second
+      // request for the same room on the same day is a duplicate and is denied.
+      // Now that a rejected request can be re-raised, that has to change.
+      bucket: bucketOf(`${cleanerUid}_${Math.floor(Date.now() / 60000)}`),
+      message: who
+        ? `Extra room ${roomName} requested by ${who}`
+        : `Extra room ${roomName} requested`,
     });
 
     sendPushToManagers(
       hostelCode,
       'Extra Room Request',
-      `Room ${roomId} requested by a cleaner.`,
-      { type: 'extra_request', roomId }
+      who ? `${who} asked for room ${roomName}.` : `Room ${roomName} was requested.`,
+      { type: 'extra_request', roomId },
     ).catch(e => console.warn('Push failed:', e));
-  }, [hostelCode]);
+  }, [hostelCode, rooms, cleaners]);
 
   const approveExtraRoom = useCallback(async (roomId, cleanerUid) => {
     if (!hostelCode) return;
@@ -640,13 +662,27 @@ export function AppProvider({ children }) {
     });
   }, [hostelCode]);
 
-  const rejectExtraRoom = useCallback(async (roomId) => {
+  const rejectExtraRoom = useCallback(async (roomId, cleanerUid) => {
     if (!hostelCode) return;
+    // Marked, not deleted. The cleaner has no notification panel, so a card on
+    // their own screen is the only way they learn of a rejection. They dismiss
+    // it themselves, which deletes the document and frees the room — a delete
+    // the rules already allow for whoever raised the request.
     await updateDoc(doc(db, 'hostels', hostelCode, 'extraRequests', roomId), {
       status: 'rejected',
       imageBase64: null,   // privacy.html promises deletion on resolve
     });
-  }, [hostelCode]);
+
+    if (cleanerUid) {
+      const room = rooms.find(r => r.id === roomId);
+      sendPushToCleaner(
+        cleanerUid,
+        'Extra room declined',
+        `Your request for room ${room?.name || roomId} was not approved.`,
+        { type: 'extra_rejected', roomId },
+      ).catch(e => console.warn('Push failed:', e.message));
+    }
+  }, [hostelCode, rooms]);
 
   const cancelExtraRoomRequest = useCallback(async (roomId) => {
     if (!hostelCode) return;

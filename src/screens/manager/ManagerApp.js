@@ -23,10 +23,12 @@ import { SPACING } from '../../theme/spacing';
 import { RADIUS } from '../../theme/radius';
 import { SHADOW } from '../../theme/shadows';
 import { Linking } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { ProSheet, ProfileMenu, SetupSheet } from '../../components/brand/Sheets';
 import { ToastHost, useToast } from '../../components/brand';
 import { useAvatarPicker } from '../../hooks/useAvatarPicker';
 import { AvatarPickerSheet, LanguageSheet } from '../../components/brand/Pickers';
+import WelcomeSheet from '../../components/brand/WelcomeSheet';
 
 /**
  * HostelKeep 2.0 manager shell.
@@ -72,6 +74,7 @@ export default function ManagerApp() {
   const [editVisible, setEditVisible] = useState(false);
   const [newName, setNewName] = useState(hostel.name || '');
   const [showLang, setShowLang] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
   const toast = useToast();
   const avatar = useAvatarPicker();
 
@@ -127,6 +130,25 @@ export default function ManagerApp() {
   useEffect(() => {
     if (tab === 'live' && !isPro) setTab('assign');
   }, [tab, isPro]);
+
+  // Managers only. Cleaners run a different app, and staff are desktop-only.
+  useEffect(() => {
+    if (user?.role === 'manager' && !user?.tutorialSeenAt) setShowWelcome(true);
+  }, [user?.role, user?.tutorialSeenAt]);
+
+  // Tapping a push notification jumps to the room it names. Registered once for
+  // the life of the app — no dependency on user or tab, since the callbacks
+  // only set state via setters that are already stable.
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data || {};
+      if (data.roomId) {
+        setTab('assign');
+        setHighlightRoomId(data.roomId);
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   // "Clear all" hides notifications from this panel only — Live activities reads
   // the same documents, so they must stay.
@@ -490,6 +512,19 @@ export default function ManagerApp() {
         contactLabel={t('pro.emailUs', { email: CONTACT_EMAIL, defaultValue: CONTACT_EMAIL })}
         onContact={handleContact}
         closeLabel={t('close')}
+      />
+
+      <WelcomeSheet
+        visible={showWelcome}
+        hostelCode={hostelCode}
+        t={t}
+        onDone={() => {
+          setShowWelcome(false);
+          // Skip counts as seen. Someone who dismissed it has decided; showing
+          // it again every launch is a nag. `optimistic` local state means the
+          // sheet closes instantly even if the write is slow or fails.
+          updateProfile({ tutorialSeenAt: new Date().toISOString() }).catch(() => {});
+        }}
       />
       <ToastHost toast={toast} />
     </SafeAreaView>

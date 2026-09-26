@@ -140,6 +140,7 @@ export function AuthProvider({ children }) {
             hostelCodes: data.hostelCodes || (data.hostelCode ? [data.hostelCode] : []),
             recoveryEmail: data.recoveryEmail || null,
             photoUri: data.photoUri || null,
+            tutorialSeenAt: data.tutorialSeenAt || null,
             notificationsClearedAt: data.notificationsClearedAt || {},
           });
 

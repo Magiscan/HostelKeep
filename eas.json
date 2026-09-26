@@ -9,13 +9,24 @@
       "distribution": "internal"
     },
     "preview": {
+      "environment": "production",
       "distribution": "internal",
       "android": { "buildType": "apk" }
     },
     "production": {
+      "environment": "production",
       "autoIncrement": true,
       "android": { "buildType": "app-bundle" },
       "ios": { "resourceClass": "m-medium" }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./play-service-account.json",
+        "track": "internal",
+        "releaseStatus": "draft"
+      }
     }
   }
 }

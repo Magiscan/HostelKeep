@@ -7,8 +7,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "export": "expo export --platform web",
-    "postexport": "node scripts/copy-privacy.js"
+    "export": "expo export --platform web"
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
@@ -26,7 +25,6 @@
     "expo-blur": "~15.0.8",
     "expo-build-properties": "~1.0.10",
     "expo-constants": "~18.0.13",
-    "expo-dev-client": "~6.0.21",
     "expo-device": "~8.0.10",
     "expo-file-system": "~19.0.24",
     "expo-font": "~14.0.12",
@@ -60,6 +58,7 @@
   "private": true,
   "devDependencies": {
     "babel-plugin-transform-remove-console": "^6.9.4",
-    "babel-preset-expo": "~54.0.10"
+    "babel-preset-expo": "~54.0.10",
+    "expo-dev-client": "~6.0.21"
   }
 }

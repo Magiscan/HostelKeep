@@ -21,6 +21,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Notifications from 'expo-notifications';
 
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { AppProvider, useApp } from './src/contexts/AppContext';
@@ -30,6 +31,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import CreateHostelScreen from './src/screens/CreateHostelScreen';
 import ManagerApp from './src/screens/manager/ManagerApp';
 import CleanerScreen from './src/screens/CleanerScreen';
+import AccountScreen from './src/screens/AccountScreen';
 // FIXED: was an inline require() inside render, which re-resolves on every
 // render and defeats bundling. A static import lets Metro pick the .web
 // variant on web and tree-shake it out of native builds.
@@ -43,6 +45,17 @@ import { COLORS } from './src/theme';
 import { useFonts, BRAND_FONTS } from './src/fonts';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// Must run once before any notification arrives. Without it nothing is shown
+// while the app is in the foreground, on either platform.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 const NavTheme = {
   ...DefaultTheme,
@@ -78,6 +91,22 @@ function AuthStack() {
 // staff on native get this instead.
 function StaffNotOnMobile() {
   const { logout } = useAuth();
+  const [showAccount, setShowAccount] = useState(false);
+
+  if (showAccount) {
+    return (
+      <View style={styles.flex}>
+        <Text
+          onPress={() => setShowAccount(false)}
+          style={{ padding: 18, fontSize: 15, fontWeight: '600', color: COLORS.primary }}
+        >
+          ← Back
+        </Text>
+        <AccountScreen />
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.centered, { padding: 32, gap: 14 }]}>
       <Text style={{ fontSize: 18, fontWeight: '600', color: COLORS.text, textAlign: 'center' }}>
@@ -86,7 +115,10 @@ function StaffNotOnMobile() {
       <Text style={{ fontSize: 15, lineHeight: 21, color: COLORS.textSecondary, textAlign: 'center' }}>
         Open HostelKeep in a browser on a computer to use your account.
       </Text>
-      <Text onPress={logout} style={{ marginTop: 8, fontSize: 15, fontWeight: '600', color: COLORS.primary }}>
+      <Text onPress={() => setShowAccount(true)} style={{ marginTop: 8, fontSize: 15, fontWeight: '600', color: COLORS.primary }}>
+        Account & privacy
+      </Text>
+      <Text onPress={logout} style={{ fontSize: 15, fontWeight: '600', color: COLORS.primary }}>
         Sign out
       </Text>
     </View>

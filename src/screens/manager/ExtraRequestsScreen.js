@@ -111,7 +111,7 @@ const RequestCard = React.memo(function RequestCard({
 
           <TouchableOpacity
             style={[styles.rejectBtn, busy && { opacity: 0.6 }]}
-            onPress={() => onReject(req.id)}
+            onPress={() => onReject(req.id, req.cleanerId)}
             disabled={busy}
             activeOpacity={0.85}
           >
@@ -184,10 +184,10 @@ export default function ExtraRequestsScreen({ bottomPad = 0 }) {
     }
   }, [approveExtraRoom, t]);
 
-  const handleReject = useCallback(async (roomId) => {
+  const handleReject = useCallback(async (roomId, cleanerId) => {
     setBusyId(roomId);
     try {
-      await rejectExtraRoom(roomId);
+      await rejectExtraRoom(roomId, cleanerId);
     } catch (e) {
       Alert.alert(t('error') || 'Error', e.message);
     } finally {
