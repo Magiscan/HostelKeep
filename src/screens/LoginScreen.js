@@ -17,7 +17,7 @@ import { COLORS } from '../theme/colors';
 import { FONTS, DISPLAY } from '../theme/typography';
 import { SHADOW } from '../theme/shadows';
 import { ProSheet, ContactSheet } from '../components/brand/Sheets';
-import { CONTACT_EMAIL } from '../utils/subscription';
+import { CONTACT_EMAIL, SALES_ALLOWED } from '../utils/subscription';
 
 /**
  * Transcribed from the prototype ("HostelKeep App.dc.html", isLogin branch),
@@ -417,24 +417,26 @@ export default function LoginScreen() {
 
             <View style={styles.linkDivider} />
 
-            <TouchableOpacity
-              onPress={() => setShowPro(true)}
-              style={styles.linkRow}
-              activeOpacity={0.7}
-            >
-              <View style={styles.linkIcon}>
-                <Icon name="workspace_premium" size={20} color={COLORS.accentDark} />
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.linkTitle}>
-                  Hostel<Text style={{ color: COLORS.accent }}>Keep</Text> Pro
-                </Text>
-                <Text style={styles.linkSub} numberOfLines={1}>
-                  {t('pro.loginSub') || 'Live board, reports, multi-property'}
-                </Text>
-              </View>
-              <Icon name="chevron_right" size={20} color={COLORS.textMuted} />
-            </TouchableOpacity>
+            {SALES_ALLOWED && (
+              <TouchableOpacity
+                onPress={() => setShowPro(true)}
+                style={styles.linkRow}
+                activeOpacity={0.7}
+              >
+                <View style={styles.linkIcon}>
+                  <Icon name="workspace_premium" size={20} color={COLORS.accentDark} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.linkTitle}>
+                    Hostel<Text style={{ color: COLORS.accent }}>Keep</Text> Pro
+                  </Text>
+                  <Text style={styles.linkSub} numberOfLines={1}>
+                    {t('pro.loginSub') || 'Live board, reports, multi-property'}
+                  </Text>
+                </View>
+                <Icon name="chevron_right" size={20} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               onPress={() => setShowContact(true)}
@@ -462,26 +464,27 @@ export default function LoginScreen() {
         </Pressable>
       </Modal>
 
-      <ProSheet
-        visible={showPro}
-        onClose={() => setShowPro(false)}
-        title={t('pro.title') || 'Get HostelKeep Pro'}
-        subtitle={t('pro.subscribeSub')
-          || 'Live activities, daily history and the web dashboard. To subscribe, contact us by email.'}
-        features={[
-          { icon: 'monitoring',    title: t('pro.f1') || 'Live board',        sub: t('pro.f1sub') || 'See every room update the moment it happens.' },
-          { icon: 'bar_chart',     title: t('pro.f2') || 'Reports & history', sub: t('pro.f2sub') || 'Export daily and monthly performance.' },
-          { icon: 'apartment',     title: t('pro.f3') || 'Multi-property',    sub: t('pro.f3sub') || 'Run several hostels from one account.' },
-          { icon: 'support_agent', title: t('pro.f4') || 'Priority support',  sub: t('pro.f4sub') || 'Talk to a human, fast.' },
-        ]}
-        notifyLabel={t('pro.subscribe') || 'Subscribe to Pro'}
-        onNotify={() => { setShowPro(false); setShowContact(true); }}
-        learnMoreLabel={t('pro.learnMore') || 'Learn more'}
-        learnMoreUrl="https://app.hostelkeep.com"
-        contactLabel={t('pro.emailUs', { email: CONTACT_EMAIL, defaultValue: CONTACT_EMAIL })}
-        onContact={() => { setShowPro(false); setShowContact(true); }}
-        closeLabel={t('close')}
-      />
+      {SALES_ALLOWED && (
+        <ProSheet
+          visible={showPro}
+          onClose={() => setShowPro(false)}
+          title={t('pro.title')}
+          subtitle={t('pro.subscribeSub')}
+          features={[
+            { icon: 'monitoring',      title: t('pro.f1'), sub: t('pro.f1sub') },
+            { icon: 'desktop_windows', title: t('pro.f2'), sub: t('pro.f2sub') },
+            { icon: 'bar_chart',       title: t('pro.f3'), sub: t('pro.f3sub') },
+            { icon: 'shield_person',   title: t('pro.f4'), sub: t('pro.f4sub') },
+          ]}
+          notifyLabel={t('pro.subscribe')}
+          onNotify={() => { setShowPro(false); setShowContact(true); }}
+          learnMoreLabel={t('pro.learnMore')}
+          learnMoreUrl="https://hostelkeep.com/#pricing"
+          contactLabel={t('pro.emailUs', { email: CONTACT_EMAIL, defaultValue: CONTACT_EMAIL })}
+          onContact={() => { setShowPro(false); setShowContact(true); }}
+          closeLabel={t('close')}
+        />
+      )}
 
       <ContactSheet
         visible={showContact}

@@ -15,7 +15,7 @@
   const WELCOME_TEMPLATE_ID = 'template_yv989ip';
   const PUBLIC_KEY = 'VadQA8HKnjAkRoMFh';
 
-  const SIGN_IN_URL = 'https://app.hostelkeep.com';
+  const SIGN_IN_URL = 'https://hostelkeep.com/#pricing';
 
   /**
    * Sends the hostel code to a new manager.

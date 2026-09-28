@@ -16,7 +16,6 @@ import AssignScreen from './AssignScreen';
 import ExtraRequestsScreen from './ExtraRequestsScreen';
 import AccountScreen from '../AccountScreen';
 import ReportsScreen from './ReportsScreen';
-import { contactMailto, CONTACT_EMAIL } from '../../utils/subscription';
 import { COLORS } from '../../theme/colors';
 import { FONTS, DISPLAY, FONT_SIZE } from '../../theme/typography';
 import { SPACING } from '../../theme/spacing';
@@ -107,24 +106,6 @@ export default function ManagerApp() {
   });
 
   const isPro = !!subscription?.active;
-
-  const handleNotifyPro = async () => {
-    setShowPro(false);
-    if (isPro) { setTab('live'); return; }
-    updateProfile({ proInterest: true, proInterestAt: new Date().toISOString() }).catch(() => {});
-    try {
-      await Linking.openURL(contactMailto({
-        intent: 'subscribe', hostelCode, hostelName: hostel.name, email: user.email,
-      }));
-    } catch {
-      // No mail app on the device — at least show where to write.
-      toast.show(t('pro.writeTo', { email: CONTACT_EMAIL, defaultValue: `Write to ${CONTACT_EMAIL}` }));
-    }
-  };
-
-  const handleContact = () =>
-    Linking.openURL(`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(`HostelKeep — ${hostelCode}`)}`)
-      .catch(() => toast.show(CONTACT_EMAIL));
 
   // If the subscription lapses while Live is open, fall back to Assign.
   useEffect(() => {
@@ -352,7 +333,7 @@ export default function ManagerApp() {
             onPress: () => { setShowSetupSheet(false); setTab('team'); },
           },
         ]}
-        proLabel={isPro ? t('manager.proActive', 'HostelKeep Pro · active') : (t('manager.buyPro') || 'Get HostelKeep Pro')}
+        proLabel={isPro ? t('manager.proActive', 'HostelKeep Pro · active') : 'HostelKeep Pro'}
         onPro={() => { setShowSetupSheet(false); setShowPro(true); }}
         feedbackLabel={t('manager.feedback') || 'Send feedback'}
         onFeedback={() => Linking.openURL('mailto:kohciaostudio@gmail.com')}
@@ -489,28 +470,21 @@ export default function ManagerApp() {
         }}
       />
 
-      {/* ── Pro (static — no gating logic yet, see PHASE-A-NOTES) ── */}
+      {/* ── Pro — read-only status. Purchase is arranged off-app. ── */}
       <ProSheet
         visible={showPro}
         onClose={() => setShowPro(false)}
-        title={isPro
-          ? t('pro.activeTitle', "You're on HostelKeep Pro")
-          : t('pro.title', 'Get HostelKeep Pro')}
-        subtitle={isPro
-          ? t('pro.activeSub', 'Live activities, daily history and the web dashboard are unlocked for this hostel.')
-          : t('pro.subscribeSub', 'Live activities, daily history and the web dashboard. To subscribe, contact us by email.')}
+        title={isPro ? t('pro.activeTitle') : t('pro.lockedTitle')}
+        subtitle={isPro ? t('pro.activeSub') : t('pro.lockedSub')}
         features={[
-          { icon: 'monitoring',      title: t('pro.f1') || 'Live board',        sub: t('pro.f1sub') || 'See every room update the moment it happens.' },
-          { icon: 'bar_chart',       title: t('pro.f2') || 'Reports & history', sub: t('pro.f2sub') || 'Export daily and monthly performance.' },
-          { icon: 'apartment',       title: t('pro.f3') || 'Multi-property',    sub: t('pro.f3sub') || 'Run several hostels from one account.' },
-          { icon: 'support_agent',   title: t('pro.f4') || 'Priority support',  sub: t('pro.f4sub') || 'Talk to a human, fast.' },
+          { icon: 'monitoring',      title: t('pro.f1'), sub: t('pro.f1sub') },
+          { icon: 'desktop_windows', title: t('pro.f2'), sub: t('pro.f2sub') },
+          { icon: 'bar_chart',       title: t('pro.f3'), sub: t('pro.f3sub') },
+          { icon: 'shield_person',   title: t('pro.f4'), sub: t('pro.f4sub') },
         ]}
-        notifyLabel={isPro ? t('pro.openLive', 'Open live activities') : t('pro.subscribe', 'Subscribe to Pro')}
-        onNotify={handleNotifyPro}
-        learnMoreLabel={t('pro.learnMore') || 'Learn more'}
-        learnMoreUrl="https://app.hostelkeep.com"
-        contactLabel={t('pro.emailUs', { email: CONTACT_EMAIL, defaultValue: CONTACT_EMAIL })}
-        onContact={handleContact}
+        notifyLabel={isPro ? t('pro.openLive') : undefined}
+        onNotify={isPro ? () => { setShowPro(false); setTab('live'); } : undefined}
+        note={isPro ? undefined : t('pro.whereToGet')}
         closeLabel={t('close')}
       />
 

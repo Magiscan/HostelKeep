@@ -66,13 +66,9 @@ async function squareCrop(asset) {
   return out.base64 ? `data:image/jpeg;base64,${out.base64}` : null;
 }
 
-/**
- * `MediaTypeOptions` is deprecated in recent SDKs in favour of a string array.
- * Prefer the new shape, fall back to the old one.
- */
-const MEDIA_TYPES = ImagePicker.MediaType
-  ? ['images']
-  : ImagePicker.MediaTypeOptions?.Images;
+// The array form is the current API. `MediaTypeOptions` is deprecated in
+// expo-image-picker 15 and removed in 16, so there's nothing to fall back to.
+const MEDIA_TYPES = ['images'];
 
 // allowsEditing is deliberately absent — see the note at the top.
 // `exif: false` keeps the payload down; we don't need orientation metadata
@@ -112,7 +108,13 @@ export function useAvatarPicker() {
   }, [config, close]);
 
   const fromGallery = useCallback(async () => {
-    if (Platform.OS !== 'web') {
+    // Android 13+ uses the system Photo Picker, which runs in its own process
+    // and hands back a single URI without needing any runtime permission.
+    // READ_MEDIA_IMAGES is blocked in app.json for that reason —
+    // requestMediaLibraryPermissionsAsync would return "denied" and abort
+    // before the picker even opened. iOS still prompts, and still needs its
+    // NSPhotoLibraryUsageDescription string.
+    if (Platform.OS === 'ios') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Photos unavailable', 'Allow photo access in your device settings to choose an image.');

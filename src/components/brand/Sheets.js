@@ -31,6 +31,7 @@ export function ProSheet({
   learnMoreUrl,
   contactLabel,
   onContact,
+  note,                    // plain text, no link: where Pro is managed
   closeLabel = 'Close',
 }) {
   return (
@@ -56,10 +57,14 @@ export function ProSheet({
               ))}
             </View>
 
-            <TouchableOpacity style={s.proPrimary} onPress={onNotify} activeOpacity={0.9}>
-              <Icon name="notifications_active" size={22} color={BRAND.navy} />
-              <Text style={s.proPrimaryText}>{notifyLabel}</Text>
-            </TouchableOpacity>
+            {!!onNotify && (
+              <TouchableOpacity style={s.proPrimary} onPress={onNotify} activeOpacity={0.9}>
+                <Icon name="monitoring" size={22} color={BRAND.navy} />
+                <Text style={s.proPrimaryText}>{notifyLabel}</Text>
+              </TouchableOpacity>
+            )}
+
+            {!!note && <Text style={s.proNote}>{note}</Text>}
 
             {!!learnMoreUrl && (
               <TouchableOpacity
@@ -441,6 +446,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
   },
   proOutlineText: { ...type('label', { fontSize: 16, color: '#FFFFFF' }) },
+  proNote: { ...type('body', { fontSize: 14, lineHeight: 20, color: '#C6D3E4', textAlign: 'center' }) },
   proClose: { minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   proCloseText: { ...type('label', { fontSize: 15, color: '#A9BCD5' }) },
 

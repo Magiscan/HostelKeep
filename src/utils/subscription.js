@@ -19,10 +19,17 @@
 // with none — unsubscribed — and every trial or subscription is switched on by
 // you in the Firebase console after the owner gets in touch.
 
+import { Platform } from 'react-native';
+
 export const GRACE_DAYS = 3;            // keep in sync with firestore.rules
 export const ACTIVE_STATUSES = ['trialing', 'active', 'past_due'];
 const KNOWN_STATUSES = [...ACTIVE_STATUSES, 'canceled'];
 export const CONTACT_EMAIL = 'kohciaostudio@gmail.com';
+
+// Store-distributed builds (Android now, iOS later) must not sell Pro or steer
+// people to buy it outside the store: Google Play Payments policy, App Store 3.1.1.
+// The web app is not store-distributed, so it keeps its subscribe/trial flow.
+export const SALES_ALLOWED = Platform.OS === 'web';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

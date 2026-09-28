@@ -111,7 +111,7 @@ export function ContactDialog({ visible, intent = 'subscribe', onClose }) {
           <Text style={styles.body}>
             {trial
               ? 'Send us an email and we\'ll switch on your free trial, usually within one working day.'
-              : 'To subscribe to the Pro version, contact us by email. We\'ll send you the plans and activate your subscription as soon as it\'s confirmed.'}
+              : 'HostelKeep Pro is €38 per month per property, plus VAT. Email us and we\u2019ll send the invoice details and activate it as soon as payment is confirmed.'}
           </Text>
 
           <View style={{ gap: 10 }}>
@@ -190,7 +190,9 @@ export default function PaywallScreen() {
   } else if (!subscription.exists && firstHostel) {
     icon = 'waving_hand';
     title = 'Welcome to HostelKeep';
-    body = 'Your hostel is ready. To start using the dashboard, ask us for a free trial — we\'ll switch it on for you.';
+    body = 'Your hostel is ready, and it works free in the HostelKeep mobile app for you and your team. '
+         + 'This desktop dashboard is part of HostelKeep Pro (€38 per month per property, plus VAT). '
+         + 'Ask us for a free trial and we\u2019ll switch it on.';
     primary = { label: 'Request a free trial', intent: 'trial', icon: 'rocket_launch' };
     secondary = { label: 'Subscribe to Pro', intent: 'subscribe' };
   } else if (!subscription.exists) {
@@ -198,10 +200,10 @@ export default function PaywallScreen() {
     body = 'Each property has its own subscription. Get in touch to activate this one.';
   } else if (subscription.status === 'trialing') {
     title = 'Your free trial has ended';
-    body = 'Subscribe to keep assigning rooms, tracking progress and saving your daily history.';
+    body = 'The desktop dashboard is paused. Everything keeps working in the mobile app. Subscribe to get the dashboard back.';
   } else {
     title = 'Your subscription has ended';
-    body = 'Renew to get back into the dashboard.';
+    body = 'The desktop dashboard is paused. Everything keeps working in the mobile app. Renew to get the dashboard back.';
   }
 
   const showEnded = subscription.exists && !subscription.incomplete && subscription.endsAt;
