@@ -24,6 +24,7 @@ import { FONTS } from '../../theme/typography';
 import { BRAND, NEUTRAL, STATUS, ACCENT } from '../../theme/tokens';
 import { buildCleanerColors } from '../../utils/cleanerColor';
 import useBreakpoint from '../../hooks/useBreakpoint';
+import { useTranslation } from 'react-i18next';
 
 const SUNKEN = '#F8FAFC';
 const HAIRLINE = '#EEF2F7';
@@ -31,6 +32,7 @@ const HAIRLINE = '#EEF2F7';
 /* Progress ring. SVG via raw <svg> because react-native-svg's web build adds a
    wrapper that fights the flex sizing here, and this is a web-only file. */
 function ProgressRing({ pct = 0, size = 132, stroke = 12 }) {
+  const { t } = useTranslation();
   const clamped = Math.max(0, Math.min(100, pct));
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -59,7 +61,7 @@ function ProgressRing({ pct = 0, size = 132, stroke = 12 }) {
         alignItems: 'center', justifyContent: 'center',
       }}>
         <Text style={styles.ringValue}>{clamped}%</Text>
-        <Text style={styles.ringLabel}>complete</Text>
+        <Text style={styles.ringLabel}>{t('ringComplete')}</Text>
       </div>
     </div>
   );
@@ -116,6 +118,7 @@ function activityLook(type) {
 }
 
 export default function ReportsScreen() {
+  const { t } = useTranslation();
   const {
     rooms = [], roomStatus = {}, cleaners = [], floors = [], extraRequests = [],
   } = useApp();
@@ -169,19 +172,19 @@ export default function ReportsScreen() {
 
   const kpis = [
     {
-      key: 'total', icon: 'meeting_room', value: rooms.length, label: 'Rooms today',
+      key: 'total', icon: 'meeting_room', value: rooms.length, label: t('kpiRoomsToday'),
       chipBg: NEUTRAL.slateChip, chipFg: BRAND.navy,
     },
     {
-      key: 'cleaned', icon: 'verified', value: cleanedRooms, label: 'Cleaned',
+      key: 'cleaned', icon: 'verified', value: cleanedRooms, label: t('statCleaned'),
       chipBg: STATUS.inspected.bg, chipFg: STATUS.inspected.text,
     },
     {
-      key: 'pending', icon: 'cleaning_services', value: pendingRooms, label: 'Still to do',
+      key: 'pending', icon: 'cleaning_services', value: pendingRooms, label: t('statStillToDo'),
       chipBg: STATUS.dirty.bg, chipFg: STATUS.dirty.text,
     },
     {
-      key: 'requests', icon: 'flag', value: pendingRequests, label: 'Requests waiting',
+      key: 'requests', icon: 'flag', value: pendingRequests, label: t('statRequestsWaiting'),
       chipBg: STATUS.early.bg, chipFg: STATUS.early.text,
     },
   ];
@@ -208,7 +211,7 @@ export default function ReportsScreen() {
 
         <View style={styles.split}>
           <View style={styles.colMain}>
-            <Panel title="Shift completion" subtitle="Across every assigned room">
+            <Panel title={t('panelShiftCompletion')} subtitle={t('panelShiftCompletionSub')}>
               <View style={[styles.ringRow, isMobile && { flexDirection: 'column' }]}>
                 <ProgressRing pct={progressPct} />
                 <View style={styles.ringStats}>
@@ -216,31 +219,31 @@ export default function ReportsScreen() {
                     <Text style={[styles.ringStatValue, { color: STATUS.inspected.text }]}>
                       {cleanedRooms}
                     </Text>
-                    <Text style={styles.ringStatLabel}>Cleaned</Text>
+                    <Text style={styles.ringStatLabel}>{t('ringCleaned')}</Text>
                   </View>
                   <View style={styles.ringStat}>
                     <Text style={[styles.ringStatValue, { color: STATUS.dirty.text }]}>
                       {pendingRooms}
                     </Text>
-                    <Text style={styles.ringStatLabel}>Pending</Text>
+                    <Text style={styles.ringStatLabel}>{t('ringPending')}</Text>
                   </View>
                   <View style={styles.ringStat}>
                     <Text style={styles.ringStatValue}>{assignedRooms.length}</Text>
-                    <Text style={styles.ringStatLabel}>Assigned</Text>
+                    <Text style={styles.ringStatLabel}>{t('ringAssigned')}</Text>
                   </View>
                   <View style={styles.ringStat}>
                     <Text style={[styles.ringStatValue, { color: NEUTRAL.text3 }]}>
                       {rooms.length - assignedRooms.length}
                     </Text>
-                    <Text style={styles.ringStatLabel}>Unassigned</Text>
+                    <Text style={styles.ringStatLabel}>{t('ringUnassigned')}</Text>
                   </View>
                 </View>
               </View>
             </Panel>
 
-            <Panel title="Housekeeper pace" subtitle={`${cleanerStats.length} on the roster`}>
+            <Panel title={t('panelHousekeeperPace')} subtitle={t('panelHousekeeperPaceSub', { count: cleanerStats.length })}>
               {cleanerStats.length === 0 ? (
-                <Text style={styles.empty}>Nobody on the team yet.</Text>
+                <Text style={styles.empty}>{t('nobodyOnTeam')}</Text>
               ) : (
                 <View style={{ gap: 16 }}>
                   {cleanerStats.map(c => (
@@ -256,9 +259,9 @@ export default function ReportsScreen() {
               )}
             </Panel>
 
-            <Panel title="Floor coverage">
+            <Panel title={t('panelFloorCoverage')}>
               {floorStats.length === 0 ? (
-                <Text style={styles.empty}>No floors set up.</Text>
+                <Text style={styles.empty}>{t('noFloorsSetUp')}</Text>
               ) : (
                 <View style={{ gap: 16 }}>
                   {floorStats.map(f => (
@@ -270,12 +273,12 @@ export default function ReportsScreen() {
           </View>
 
           <View style={styles.colSide}>
-            <Panel title="Extra requests">
+            <Panel title={t('panelExtraRequests')}>
               <View style={styles.miniGrid}>
                 {[
-                  { label: 'Pending', value: pendingRequests, ...STATUS.dirty },
-                  { label: 'Approved', value: approvedRequests, ...STATUS.inspected },
-                  { label: 'Rejected', value: rejectedRequests, ...STATUS.error },
+                  { label: t('pending'), value: pendingRequests, ...STATUS.dirty },
+                  { label: t('approved'), value: approvedRequests, ...STATUS.inspected },
+                  { label: t('rejected'), value: rejectedRequests, ...STATUS.error },
                 ].map(s => (
                   <View key={s.label} style={[styles.miniStat, { backgroundColor: s.bg }]}>
                     <Text style={[styles.miniValue, { color: s.text }]}>{s.value}</Text>
@@ -285,10 +288,10 @@ export default function ReportsScreen() {
               </View>
             </Panel>
 
-            <Panel title="Activity" subtitle="Everything logged today" padded={false}>
+            <Panel title={t('panelActivityLog')} subtitle={t('panelActivityLogSub')} padded={false}>
               <View style={styles.activityList}>
                 {activity.length === 0 ? (
-                  <Text style={styles.empty}>Nothing logged yet today.</Text>
+                  <Text style={styles.empty}>{t('nothingLoggedToday')}</Text>
                 ) : activity.map((a, i) => (
                   <View
                     key={a.id}

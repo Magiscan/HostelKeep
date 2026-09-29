@@ -27,7 +27,7 @@ export default function Header({
   return (
     <View style={styles.header}>
       <View style={styles.greetingBlock}>
-        <Text style={styles.greeting}>Good Morning 👋</Text>
+        <Text style={styles.greeting}>{t('goodMorningShort')}</Text>
         <Text style={styles.hostelName}>{hostelName}</Text>
         <Text style={styles.date}>{dayName}, {dateStr}</Text>
       </View>

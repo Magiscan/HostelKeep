@@ -4,6 +4,7 @@ import AppCard from '../Card/AppCard';
 import { COLORS } from '../../theme/colors';
 import { FONTS, FONT_SIZE } from '../../theme/typography';
 import { SPACING } from '../../theme/spacing';
+import { useTranslation } from 'react-i18next';
 
 const STATUS_COLORS = {
   Cleaned: COLORS.success,
@@ -12,14 +13,21 @@ const STATUS_COLORS = {
   Info: COLORS.primary,
 };
 
+const STATUS_LABELS = {
+  Cleaned: t('statusCleaned'),
+  Pending: t('statusPending'),
+  // add 'High' / 'Info' here if those statuses are ever used
+};
+
 export default function RecentActivity({ activities = [], onViewAll }) {
+  const { t } = useTranslation();
   return (
     <AppCard style={styles.card}>
       <View style={styles.titleRow}>
-        <Text style={styles.title}>Recent Activity</Text>
+        <Text style={styles.title}>{t('recentActivity')}</Text>
         {onViewAll && (
           <TouchableOpacity onPress={onViewAll} activeOpacity={0.7}>
-            <Text style={styles.viewAll}>View all</Text>
+            <Text style={styles.viewAll}>{t('viewAll')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -29,11 +37,11 @@ export default function RecentActivity({ activities = [], onViewAll }) {
           <View key={a.id} style={styles.row}>
             <Text style={styles.time}>{a.time}</Text>
             <Text style={styles.text} numberOfLines={1}>{a.text}</Text>
-            <Text style={[styles.status, { color }]}>{a.status}</Text>
+            <Text style={[styles.status, { color }]}>{STATUS_LABELS[a.status] || a.status}</Text>
           </View>
         );
       })}
-      {activities.length === 0 && <Text style={styles.empty}>No recent activity yet.</Text>}
+      {activities.length === 0 && <Text style={styles.empty}>{t('noRecentActivity')}</Text>}
     </AppCard>
   );
 }

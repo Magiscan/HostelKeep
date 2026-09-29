@@ -14,6 +14,7 @@ import Icon from '../Icon';
 import { COLORS } from '../../theme/colors';
 import { FONTS } from '../../theme/typography';
 import { BRAND, NEUTRAL } from '../../theme/tokens';
+import { useTranslation } from 'react-i18next';
 
 /**
  * @param {string}  title
@@ -31,13 +32,15 @@ export default function PageHeader({
   unreadCount = 0,
   onOpenNotifications,
   actions = [],
-}) {
+})
+ {
+  const { t } = useTranslation();
   return (
     <View style={styles.header}>
       <View style={styles.row}>
         <View style={styles.titleBlock}>
-          <Text style={styles.title} numberOfLines={1}>{title}</Text>
-          {!!subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+          <Text style={styles.title} numberOfLines={1}>{t(title)}</Text>
+          {!!subtitle && <Text style={styles.subtitle}>{t(subtitle)}</Text>}
         </View>
 
         <View style={styles.actions}>
@@ -47,7 +50,7 @@ export default function PageHeader({
               style={styles.bell}
               activeOpacity={0.7}
               accessibilityRole="button"
-              accessibilityLabel={`Notifications, ${unreadCount} unread`}
+              accessibilityLabel={t('notificationsUnread', { count: unreadCount })}
             >
               <Icon name="notifications" size={21} color={COLORS.textSecondary} />
               {unreadCount > 0 && (

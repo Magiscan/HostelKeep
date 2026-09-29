@@ -187,7 +187,7 @@ function RoomFormPanel({ visible, floors, room, onSave, onCancel, roomAttributes
       visible={visible}
       onClose={onCancel}
       title={room ? t('editRoom') : t('addRoom')}
-      subtitle="Structure only · beds, type and floor"
+      subtitle={t('roomFormSub')}
       footer={
         <>
           <TouchableOpacity onPress={onCancel} style={styles.btnGhost} activeOpacity={0.8}>
@@ -284,10 +284,7 @@ function RoomFormPanel({ visible, floors, room, onSave, onCancel, roomAttributes
               );
             })}
           </View>
-          <Text style={styles.hint}>
-            A private room is cleaned as one unit — no individual beds. What to clean is
-            set per shift on the Assign screen.
-          </Text>
+          <Text style={styles.hint}>{t('privateRoomHint')}</Text>
         </View>
       )}
 
@@ -340,7 +337,7 @@ function RoomFormPanel({ visible, floors, room, onSave, onCancel, roomAttributes
                 <TextInput
                   value={b.name}
                   onChangeText={v => renameBed(b.id, v)}
-                  placeholder="Bed name"
+                  placeholder={t('bedNamePlaceholder')}
                   placeholderTextColor={NEUTRAL.text4}
                   maxLength={12}
                   style={styles.bedInput}
@@ -356,10 +353,7 @@ function RoomFormPanel({ visible, floors, room, onSave, onCancel, roomAttributes
             ))}
           </View>
 
-          <Text style={styles.hint}>
-            Bed names are what housekeepers see on their sheet. Removing a bed drops its
-            state for today.
-          </Text>
+          <Text style={styles.hint}>{t('bedNamesHint')}</Text>
         </View>
       )}
     </Drawer>
@@ -546,6 +540,7 @@ function FloorManagementDialog({ visible, floors, onAddFloor, onRemoveFloor, onC
 // Stays centered — a destructive confirm is a interruption, not a workspace,
 // and sliding it in from the right would read as another editing surface.
 function ConfirmDialog({ visible, title, message, confirmLabel, onConfirm, onCancel, singleAction }) {
+  const { t } = useTranslation();
   if (!visible) return null;
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
@@ -557,7 +552,7 @@ function ConfirmDialog({ visible, title, message, confirmLabel, onConfirm, onCan
           <View style={styles.confirmActions}>
             {!singleAction && (
               <TouchableOpacity onPress={onCancel} style={[styles.btnGhost, { flex: 1 }]} activeOpacity={0.8}>
-                <Text style={styles.btnGhostText}>Cancel</Text>
+                <Text style={styles.btnGhostText}>{t('cancelAction')}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -569,7 +564,7 @@ function ConfirmDialog({ visible, title, message, confirmLabel, onConfirm, onCan
               ]}
               activeOpacity={0.9}
             >
-              <Text style={styles.btnPrimaryText}>{confirmLabel || 'Delete'}</Text>
+              <Text style={styles.btnPrimaryText}>{confirmLabel || t('deleteAction')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -775,7 +770,7 @@ export default function SetupScreen({ onReady }) {
           <TextInput
             value={roomSearch}
             onChangeText={setRoomSearch}
-            placeholder="Search a room…"
+            placeholder={t('searchRoomShortPlaceholder')}
             placeholderTextColor={COLORS.textMuted}
             style={styles.searchInput}
           />
@@ -819,7 +814,7 @@ export default function SetupScreen({ onReady }) {
                 <View style={styles.floorBar} />
                 <Text style={styles.floorName}>{floor.name}</Text>
                 <Text style={styles.floorMeta}>
-                  {fr.length} {fr.length !== 1 ? 'rooms' : 'room'}
+                  {fr.length} {fr.length !== 1 ? t('setup.roomsPlural') : t('setup.roomSingular')}
                 </Text>
                 <View style={{ flex: 1 }} />
                 <Icon

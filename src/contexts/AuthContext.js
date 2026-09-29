@@ -16,13 +16,15 @@ import {
   setPersistence,
   inMemoryPersistence,
 } from 'firebase/auth';
+import { Platform } from 'react-native';
 import {
   doc, getDoc, setDoc, deleteDoc, writeBatch, collection, query, where,
-  getDocs, updateDoc, getFirestore, terminate
+  getDocs, updateDoc, getFirestore, terminate, deleteField,
 } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
 import { auth, db, firebaseConfig } from '../firebase';
 import { sendWelcomeEmail } from '../services/email';
+import i18n from '../i18n';
 
 const AuthContext = createContext();
 
@@ -53,24 +55,24 @@ const lookupKey = (hostelCode, username) =>
 function friendlyAuthError(e) {
   const code = e?.code || '';
   if (code.includes('wrong-password') || code.includes('invalid-credential'))
-    return 'Incorrect email or password. Please try again.';
+    return i18n.t('authWrongPassword');
   if (code.includes('user-not-found'))
-    return 'Invalid username, hostel code, or password.';
+    return i18n.t('authUserNotFound');
   if (code.includes('invalid-email'))
-    return 'That email address is not valid.';
+    return i18n.t('authInvalidEmail');
   if (code.includes('too-many-requests'))
-    return 'Too many failed attempts. Please wait a few minutes.';
+    return i18n.t('authTooManyRequests');
   if (code.includes('network-request-failed'))
-    return 'Network error. Check your internet connection.';
+    return i18n.t('authNetworkError');
   if (code.includes('email-already-in-use'))
-    return 'That email already has a HostelKeep account. Use a different address, or sign in with it.';
+    return i18n.t('authEmailInUse');
   if (code.includes('weak-password'))
-    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+    return i18n.t('authWeakPassword', { min: MIN_PASSWORD_LENGTH });
   if (code.includes('requires-recent-login'))
-    return 'Please sign in again before changing this.';
+    return i18n.t('authRecentLogin');
   if (code.includes('permission-denied'))
-    return 'You do not have permission to do that.';
-  return e?.message || 'Something went wrong. Please try again.';
+    return i18n.t('authPermissionDenied');
+  return e?.message || i18n.t('authGenericError');
 }
 
 /** 6 characters, no confusable 0/O/1/I. */
@@ -102,7 +104,7 @@ async function reserveCode(secondaryDb, uid, attempts = 6) {
       throw e;
     }
   }
-  throw new Error('Could not allocate a hostel code. Please try again.');
+  throw new Error(i18n.t('authCodeAllocationFailed'));
 }
 
 export function AuthProvider({ children }) {
@@ -128,6 +130,17 @@ export function AuthProvider({ children }) {
 
         if (userDoc.exists()) {
           const data = userDoc.data();
+
+          if (!data.hostelCode) {
+            // Nothing under the rules is readable without a hostel, and the
+            // rooms listener that flips `loaded` never starts, so the app
+            // would spin forever on the loading indicator. Sign out instead.
+            console.warn('User has no hostel:', firebaseUser.uid);
+            await firebaseSignOut(auth);
+            setUser(null);
+            return;          // `finally` still runs setLoading(false)
+          }
+
           // Only ever trust role/hostelCode from Firestore, which clients can
           // no longer write.
           setUser({
@@ -205,25 +218,27 @@ export function AuthProvider({ children }) {
   //                      which only ever holds a synthetic address.
   const login = useCallback(async (identifier, password, hostelCode) => {
     const id = (identifier || '').trim();
-    if (!id) throw new Error('Enter your email or username.');
+    if (!id) throw new Error(i18n.t('authEnterIdentifier'));
 
     let email;
 
     if (looksLikeEmail(id)) {
       email = id.toLowerCase();
     } else {
-      if (!hostelCode || !hostelCode.trim()) {
-        throw new Error('Enter your hostel code.');
-      }
+        if (!hostelCode || !hostelCode.trim()) {
+          throw new Error(i18n.t('authEnterHostelCode'));
+        }
       try {
         const snap = await getDoc(doc(db, 'loginLookup', lookupKey(hostelCode, id)));
-        if (!snap.exists()) throw new Error('Invalid username or hostel code.');
-        email = snap.data().email;
-        if (!email) throw new Error('Invalid username or hostel code.');
+          if (!snap.exists()) throw new Error(i18n.t('authInvalidUsernameOrCode'));
+          email = snap.data().email;
+          if (!email) throw new Error(i18n.t('authInvalidUsernameOrCode'));
       } catch (e) {
-        throw new Error(
-          e.message.startsWith('Invalid') ? e.message : friendlyAuthError(e),
-        );
+      // Same intent, language-independent: an already-formatted i18n message
+      // contains the localized word for "Invalid" and shouldn't be re-wrapped.
+      throw new Error(e.message === i18n.t('authInvalidUsernameOrCode')
+        ? e.message
+        : friendlyAuthError(e));
       }
     }
 
@@ -248,18 +263,18 @@ export function AuthProvider({ children }) {
   const createHostel = useCallback(
     async ({ hostelName, username, password, recoveryEmail }) => {
       if (password.length < MIN_PASSWORD_LENGTH) {
-        throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+        throw new Error(i18n.t('authWeakPassword', { min: MIN_PASSWORD_LENGTH }));
       }
 
       const email = (recoveryEmail || '').trim().toLowerCase();
       if (!isRealEmail(email)) {
-        throw new Error('Enter a valid email address. It is how you sign in and reset your password.');
+        throw new Error(i18n.t('authValidEmailRequired'));
       }
 
       const cleanName = username.trim();
       const cleanHostel = hostelName.trim();
       if (!cleanName || !cleanHostel) {
-        throw new Error('Hostel name and manager name are both required.');
+        throw new Error(i18n.t('authHostelAndManagerRequired'));
       }
 
       provisioningRef.current = true;
@@ -313,7 +328,7 @@ export function AuthProvider({ children }) {
           // Roll the auth account back so the address stays reusable — without
           // this, a failed attempt permanently blocks that email.
           await deleteUser(cred.user).catch(() => {});
-          throw new Error('Hostel setup failed. Please try again.');
+          throw new Error(i18n.t('authHostelSetupFailed'));
         }
 
         // Best-effort: the code is shown on screen either way, so a mail
@@ -352,9 +367,9 @@ export function AuthProvider({ children }) {
   // Same secondary-app technique, for the same reason: signing the cleaner in
   // on the primary app would log the manager out.
   const registerCleaner = useCallback(async (username, password, hostelCode) => {
-    if (!hostelCode) throw new Error('Hostel code is missing.');
+    if (!hostelCode) throw new Error(i18n.t('authHostelCodeMissing'));
     if (password.length < MIN_PASSWORD_LENGTH) {
-      throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+      throw new Error(i18n.t('authWeakPassword', { min: MIN_PASSWORD_LENGTH }));
     }
 
     const cleanName = username.trim();
@@ -364,7 +379,7 @@ export function AuthProvider({ children }) {
     // create() on the lookup document fails if it already exists.
     const existing = await getDoc(doc(db, 'loginLookup', key));
     if (existing.exists()) {
-      throw new Error('Someone in your hostel already uses that name.');
+      throw new Error(i18n.t('authUsernameTaken'));
     }
 
     // Random suffix, not Date.now() — two cleaners created in the same
@@ -409,17 +424,17 @@ export function AuthProvider({ children }) {
   // they need no loginLookup row — so nothing about them is readable pre-auth.
   const registerStaff = useCallback(
     async ({ username, email, password, roleId, hostelCode }) => {
-      if (!hostelCode) throw new Error('Hostel code is missing.');
-      if (!roleId) throw new Error('Pick a role for this person.');
+      if (!hostelCode) throw new Error(i18n.t('authHostelCodeMissing'));
+      if (!roleId) throw new Error(i18n.t('authPickRole'));
       if (password.length < MIN_PASSWORD_LENGTH) {
-        throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+        throw new Error(i18n.t('authWeakPassword', { min: MIN_PASSWORD_LENGTH }));
       }
 
       const cleanName = (username || '').trim();
       const cleanEmail = (email || '').trim().toLowerCase();
-      if (!cleanName) throw new Error('Enter a name.');
+      if (!cleanName) throw new Error(i18n.t('authEnterName'));
       if (!isRealEmail(cleanEmail)) {
-        throw new Error('Enter a valid email address. It is how they sign in.');
+        throw new Error(i18n.t('authValidEmailForStaff'));
       }
 
       let secondaryApp;
@@ -457,7 +472,7 @@ export function AuthProvider({ children }) {
 
   // ── Move a staff member onto a different role (owner action) ───
   const setStaffRole = useCallback(async (uid, roleId) => {
-    if (!roleId || roleId === 'owner') throw new Error('Pick a valid role.');
+    if (!roleId || roleId === 'owner') throw new Error(i18n.t('authPickValidRole'));
     await updateDoc(doc(db, 'users', uid), { roleId });
   }, []);
 
@@ -479,11 +494,11 @@ export function AuthProvider({ children }) {
   const resetCleanerPassword = useCallback(
     async (cleanerUid, newPassword, hostelCode) => {
       if (newPassword.length < MIN_PASSWORD_LENGTH) {
-        throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+        throw new Error(i18n.t('authWeakPassword', { min: MIN_PASSWORD_LENGTH }));
       }
 
       const oldDoc = await getDoc(doc(db, 'users', cleanerUid));
-      if (!oldDoc.exists()) throw new Error('That cleaner no longer exists.');
+      if (!oldDoc.exists()) throw new Error(i18n.t('authCleanerGone'));
       const { username } = oldDoc.data();
 
       // 1. Remove the old lookup so the name is free to reuse.
@@ -521,10 +536,10 @@ export function AuthProvider({ children }) {
   // ── Change your own password ───────────────────────────────────
   const changeOwnPassword = useCallback(async (currentPassword, newPassword) => {
     if (newPassword.length < MIN_PASSWORD_LENGTH) {
-      throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+      throw new Error(i18n.t('authWeakPassword', { min: MIN_PASSWORD_LENGTH }));
     }
     const current = auth.currentUser;
-    if (!current) throw new Error('You are not signed in.');
+    if (!current) throw new Error(i18n.t('authNotSignedIn'));
 
     try {
       const credential = EmailAuthProvider.credential(current.email, currentPassword);
@@ -567,10 +582,10 @@ export function AuthProvider({ children }) {
   const migrateManagerEmail = useCallback(async (newEmail, currentPassword) => {
     const email = (newEmail || '').trim().toLowerCase();
     if (!isRealEmail(email)) {
-      throw new Error('Enter a valid email address.');
+      throw new Error(i18n.t('authValidEmailRequiredShort'));
     }
     const current = auth.currentUser;
-    if (!current) throw new Error('You are not signed in.');
+    if (!current) throw new Error(i18n.t('authNotSignedIn'));
 
     try {
       const credential = EmailAuthProvider.credential(current.email, currentPassword);
@@ -580,7 +595,7 @@ export function AuthProvider({ children }) {
       throw new Error(friendlyAuthError(e));
     }
 
-    return `Check ${email} and click the link to confirm. You'll sign in with that address from then on.`;
+    return i18n.t('authMigrateEmailSent', { email });
   }, []);
 
   const needsEmailMigration = useMemo(
@@ -590,9 +605,9 @@ export function AuthProvider({ children }) {
 
     // ── Switch the active hostel ───────────────────────────────────
   const switchHostel = useCallback(async (code) => {
-    if (!user?.uid) throw new Error('You are not signed in.');
+    if (!user?.uid) throw new Error(i18n.t('authNotSignedIn'));
     if (!user.hostelCodes?.includes(code)) {
-      throw new Error('That hostel is not on your account.');
+      throw new Error(i18n.t('authHostelNotOnAccount'));
     }
     if (code === user.hostelCode) return;
 
@@ -602,11 +617,11 @@ export function AuthProvider({ children }) {
 
   // ── Add another hostel to this account ─────────────────────────
   const addHostel = useCallback(async (hostelName) => {
-    if (!user?.uid) throw new Error('You are not signed in.');
-    if (user.role !== 'manager') throw new Error('Only managers can add a hostel.');
+    if (!user?.uid) throw new Error(i18n.t('authNotSignedIn'));
+    if (user.role !== 'manager') throw new Error(i18n.t('authOnlyManagersAddHostel'));
 
     const cleanName = (hostelName || '').trim();
-    if (!cleanName) throw new Error('Enter a name for the hostel.');
+    if (!cleanName) throw new Error(i18n.t('authEnterHostelName'));
 
     const existing = user.hostelCodes || [user.hostelCode];
     const code = await reserveCode(db, user.uid);
@@ -643,7 +658,23 @@ export function AuthProvider({ children }) {
     return code;
   }, [user?.uid, user?.role, user?.email, user?.username, user?.hostelCode, user?.hostelCodes]);
 
-  const logout = useCallback(() => firebaseSignOut(auth), []);
+  const logout = useCallback(async () => {
+    const uid = auth.currentUser?.uid;
+    if (uid && Platform.OS !== 'web') {
+      try {
+        // Bounded, so a phone with no signal still signs out promptly. The
+        // write is best-effort: if it fails, the next sign-in from another
+        // device overwrites the token anyway.
+        await Promise.race([
+          updateDoc(doc(db, 'users', uid), { pushToken: deleteField() }),
+          new Promise((resolve) => setTimeout(resolve, 3000)),
+        ]);
+      } catch (_) {
+        // Offline or denied: fall through and sign out regardless.
+      }
+    }
+    await firebaseSignOut(auth);
+  }, []);
 
   const updateProfile = useCallback(async (patch) => {
     if (!user?.uid) return;

@@ -17,18 +17,28 @@ import { Drawer, drawerStyles as d } from '../../components/Dashboard/Drawer.web
 import { EmptyState } from '../../components/UI';
 
 // ─── Bed state definitions ────────────────────────────────────────
-const BED_STATES = [
-  { key: 'clean',    short: 'Dirty',  label: 'To clean',   icon: 'cleaning_services', bg: STATUS.dirty.bg,    border: STATUS.dirty.border,    text: STATUS.dirty.text,    accent: BRAND.yellow },
-  { key: 'stayover', short: 'Stay',   label: 'Stay-over',  icon: 'bed',               bg: STATUS.cleaned.bg,   border: STATUS.cleaned.border,   text: STATUS.cleaned.text,   accent: STATUS.cleaned.border },
-  { key: 'late',     short: 'Late',   label: 'Late c/out', icon: 'hourglass_top',     bg: STATUS.late.bg,      border: STATUS.late.border,      text: STATUS.late.text,      accent: STATUS.late.border },
-  { key: 'early',    short: 'Early',  label: 'Early c/in', icon: 'login',             bg: STATUS.early.bg,     border: STATUS.early.border,     text: STATUS.early.text,     accent: STATUS.early.border },
-  { key: 'noone',    short: 'Done',   label: 'Inspected',  icon: 'check_circle',      bg: STATUS.excluded.bg,  border: STATUS.excluded.border,  text: STATUS.excluded.text,  accent: ACCENT.complete },
+const buildBedStates = (t) => [
+  { key: 'clean',    short: t('bedShortDirty'), label: t('bedState_clean'),    icon: 'cleaning_services', bg: STATUS.dirty.bg,    border: STATUS.dirty.border,    text: STATUS.dirty.text,    accent: BRAND.yellow },
+  { key: 'stayover', short: t('bedShortStay'),  label: t('bedState_stayover'), icon: 'bed',               bg: STATUS.cleaned.bg,  border: STATUS.cleaned.border,  text: STATUS.cleaned.text,  accent: STATUS.cleaned.border },
+  { key: 'late',     short: t('bedShortLate'),  label: t('bedState_late'),     icon: 'hourglass_top',     bg: STATUS.late.bg,     border: STATUS.late.border,     text: STATUS.late.text,     accent: STATUS.late.border },
+  { key: 'early',    short: t('bedShortEarly'), label: t('bedState_early'),    icon: 'login',             bg: STATUS.early.bg,    border: STATUS.early.border,    text: STATUS.early.text,    accent: STATUS.early.border },
+  { key: 'noone',    short: t('bedShortDone'),  label: t('bedState_noone'),    icon: 'check_circle',      bg: STATUS.excluded.bg, border: STATUS.excluded.border, text: STATUS.excluded.text, accent: ACCENT.complete },
 ];
-const BED_BY_KEY = Object.fromEntries(BED_STATES.map(s => [s.key, s]));
 // Rank: stayover and noone are both "no work", but stayover should not outrank dirty.
 const BED_RANK = { stayover: 0, noone: 1, clean: 2, early: 3, late: 4 };
 
-/* ─── Accent colour for the room card ────────────────────────── */
+/* ─── Accent colour for the room card ──────────────────────────
+   Colours don't change with language, so the accent lookup stays at
+   module scope. Only the translated BED_STATES lives inside the
+   component (labels/initials depend on t). */
+const BED_ACCENT = {
+  clean:    BRAND.yellow,
+  stayover: STATUS.cleaned.border,
+  late:     STATUS.late.border,
+  early:    STATUS.early.border,
+  noone:    ACCENT.complete,
+};
+
 function accentFor(room, status) {
   if (status.cleaned) return ACCENT.complete;
   const assigns = status.assignmentBedStatus || {};
@@ -38,7 +48,7 @@ function accentFor(room, status) {
     const s = assigns[b.id]?.status || 'noone';
     return BED_RANK[s] > BED_RANK[acc] ? s : acc;
   }, 'noone');
-  return BED_BY_KEY[worst].accent;
+  return BED_ACCENT[worst] || BRAND.yellow;
 }
 
 // ─── Confirm dialog ──────────────────────────────────────────────
@@ -52,10 +62,10 @@ function ConfirmDialog({ visible, title, message, confirmLabel, onConfirm, onCan
         <Text style={confirmStyles.message}>{message}</Text>
         <View style={confirmStyles.actions}>
           <TouchableOpacity onPress={onCancel} style={[confirmStyles.halfBtn, confirmStyles.halfBtnGhost]}>
-            <Text style={confirmStyles.halfBtnGhostText}>Cancel</Text>
+            <Text style={confirmStyles.halfBtnGhostText}>{t('cancelAction')}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={onConfirm} style={[confirmStyles.halfBtn, { backgroundColor: COLORS.danger }]}>
-            <Text style={confirmStyles.halfBtnText}>{confirmLabel || 'Confirm'}</Text>
+            <Text style={confirmStyles.halfBtnText}>{confirmLabel || t('confirm')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -156,6 +166,11 @@ const xlsStyles = {
 
 export default function AssignScreen({ onReady }) {
   const { t } = useTranslation();
+  const BED_STATES = useMemo(() => buildBedStates(t), [t]);
+  const BED_BY_KEY = useMemo(
+    () => Object.fromEntries(BED_STATES.map(s => [s.key, s])),
+    [BED_STATES],
+  );
   const { width } = useWindowDimensions();
   const isNarrow = width < 900;
   const {
@@ -348,9 +363,8 @@ export default function AssignScreen({ onReady }) {
     );
     if (orphaned.length) {
       const names = orphaned.map(r => r.name).join(', ');
-      const msg = `${names}\n\n` + (t('unassignedWarningMsg')
-        || "These won't appear on any sheet. Assign them first, or print anyway.");
-      const proceed = window.confirm(msg + '\n\nPrint anyway?');
+      const msg = `${names}\n\n` + t('unassignedWarningMsg');
+      const proceed = window.confirm(msg + '\n\n' + t('confirm'));
       if (!proceed) return;
     }
     const assignedCleanerIds = [...new Set(rooms.filter(r => r.assignedTo).map(r => r.assignedTo))];
@@ -361,7 +375,7 @@ export default function AssignScreen({ onReady }) {
     const wb = XLSX.utils.book_new();
     const dateStr = formatDateIT(new Date());
     const usedSheetNames = new Set();
-    const COLS = ['Room', 'Beds', 'Flags', 'Notes', 'Done'];
+    const COLS = [t('thRoom'), t('beds'), t('roomFlagsHeading'), t('colNotes'), t('bedShortDone')];
     const COL_COUNT = COLS.length;
 
     assignedCleanerIds.forEach(cleanerId => {
@@ -383,7 +397,7 @@ export default function AssignScreen({ onReady }) {
 
         if (status.commonOnly) {
           isCommonOnly = true;
-          bedsText = 'Common areas only';
+          bedsText = t('cleanCommonOnlyShort');
         } else if (room.type === 'dorm' && room.beds?.length) {
           const assign = status.assignmentBedStatus || {};
           const lines = room.beds
@@ -406,8 +420,8 @@ export default function AssignScreen({ onReady }) {
         if (!isCommonOnly && !hasActionableWork) return;
 
         const flagParts = [];
-        if (status.earlyCheckIn) flagParts.push('Early check-in');
-        if (status.lateCheckOut) flagParts.push('Late check-out');
+        if (status.earlyCheckIn) flagParts.push(t('earlyCheckInLabel'));
+        if (status.lateCheckOut) flagParts.push(t('lateCheckOutLabel'));  
         const flagsText = flagParts.join('\n');
         const notesText = status.managerNotes || '';
 
@@ -433,7 +447,7 @@ export default function AssignScreen({ onReady }) {
       const blankStartRow = dataEndRow + 1;
       const blankEndRow = blankStartRow + EXTRA_BLANK_ROWS - 1;
       const signatureRow = blankEndRow + 1;
-      aoa.push(['Signature:', '', '', 'End Time:', '']);
+      aoa.push([t('signatureLabel'), '', '', t('endTimeLabel'), '']);
 
       const ws = XLSX.utils.aoa_to_sheet(aoa);
       ws['!merges'] = [
@@ -645,7 +659,7 @@ export default function AssignScreen({ onReady }) {
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Search a room…"
+            placeholder={t('searchRoomPlaceholder')}
             placeholderTextColor={NEUTRAL.text4}
             style={styles.searchInput}
           />
@@ -767,7 +781,7 @@ export default function AssignScreen({ onReady }) {
                                   onPress={() => toggleRoomSelection(room.id)}
                                   style={[styles.checkbox, isSelected && styles.checkboxOn]}
                                   activeOpacity={0.7}
-                                  accessibilityLabel="Select room"
+                                  accessibilityLabel={t('selectRoom')}
                                 >
                                   {isSelected && <Icon name="check" size={15} color="#FFFFFF" />}
                                 </TouchableOpacity>
@@ -779,7 +793,7 @@ export default function AssignScreen({ onReady }) {
                                   <Text style={[styles.typePillText, {
                                     color: room.type === 'dorm' ? '#7C4A15' : NEUTRAL.text2,
                                   }]}>
-                                    {room.type === 'dorm' ? 'Dorm' : 'Private'}
+                                    {room.type === 'dorm' ? t('typeDormShort') : t('typePrivateShort')}
                                   </Text>
                                 </View>
                                 <Text style={styles.bedsLabel} numberOfLines={1}>
@@ -803,13 +817,13 @@ export default function AssignScreen({ onReady }) {
                                 {status.earlyCheckIn && (
                                   <View style={[styles.flag, { backgroundColor: STATUS.early.bg, borderColor: STATUS.early.border }]}>
                                     <Icon name="login" size={15} color={STATUS.early.text} />
-                                    <Text style={[styles.flagText, { color: STATUS.early.text }]}>Early c/in</Text>
+                                    <Text style={[styles.flagText, { color: STATUS.early.text }]}>{t('bedState_early')}</Text>
                                   </View>
                                 )}
                                 {status.lateCheckOut && (
                                   <View style={[styles.flag, { backgroundColor: STATUS.late.bg, borderColor: STATUS.late.border }]}>
                                     <Icon name="hourglass_top" size={15} color={STATUS.late.text} />
-                                    <Text style={[styles.flagText, { color: STATUS.late.text }]}>Late c/out</Text>
+                                    <Text style={[styles.flagText, { color: STATUS.late.text }]}>{t('bedState_late')}</Text>
                                   </View>
                                 )}
                               </View>
@@ -883,7 +897,7 @@ export default function AssignScreen({ onReady }) {
                               <View style={[styles.checkboxSm, isFrozen && styles.checkboxOn]}>
                                 {isFrozen && <Icon name="check" size={14} color="#FFFFFF" />}
                               </View>
-                              <Text style={styles.commonToggleText}>Clean common areas only</Text>
+                              <Text style={styles.commonToggleText}>{t('cleanCommonOnlyShort')}</Text>
                             </TouchableOpacity>
 
                             <View style={styles.cardFoot}>
@@ -895,7 +909,7 @@ export default function AssignScreen({ onReady }) {
                                   style={[styles.hkName, !currentCleaner && { color: NEUTRAL.text4 }]}
                                   numberOfLines={1}
                                 >
-                                  {currentCleaner ? currentCleaner.username : 'Unassigned'}
+                                  {currentCleaner ? currentCleaner.username : t('unassignedLower')}
                                 </Text>
                               </View>
                               <View style={styles.footBtns}>
@@ -916,7 +930,7 @@ export default function AssignScreen({ onReady }) {
                                   >
                                     <Icon name="person_add" size={17} color={BRAND.navy} />
                                     <Text style={styles.assignText}>
-                                      {currentCleaner ? 'Reassign' : t('assign')}
+                                      {currentCleaner ? t('reassign') : t('assign')}
                                     </Text>
                                   </TouchableOpacity>
                                 )}
@@ -955,7 +969,7 @@ export default function AssignScreen({ onReady }) {
             ) : (
               <View style={{ flex: 1 }}>
                 <View style={styles.railHead}>
-                  <Text style={styles.railOverline}>Shift panel</Text>
+                  <Text style={styles.railOverline}>{t('shiftPanelHeading')}</Text>
                   <TouchableOpacity onPress={() => setSidebarOpen(false)} style={styles.railClose} activeOpacity={0.7}>
                     <Icon name="right_panel_close" size={19} color={NEUTRAL.text3} />
                   </TouchableOpacity>
@@ -969,9 +983,9 @@ export default function AssignScreen({ onReady }) {
                   >
                     <Icon name="groups" size={20} color={BRAND.navy} />
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text style={styles.railSectionTitle}>Working today</Text>
+                      <Text style={styles.railSectionTitle}>{t('workingTodayHeading')}</Text>
                       <Text style={styles.railSectionSub}>
-                        {activeCleaners.length} on shift
+                        {t('onShiftCount', { count: activeCleaners.length })}
                       </Text>
                     </View>
                     <Icon name={teamOpen ? 'expand_less' : 'expand_more'} size={22} color={NEUTRAL.text3} />
@@ -980,12 +994,12 @@ export default function AssignScreen({ onReady }) {
                   {teamOpen && (
                     <View style={{ gap: 10, marginTop: 12 }}>
                       <View style={styles.railHint}>
-                        <Text style={styles.railHintText}>Tap a name to put them on shift.</Text>
+                        <Text style={styles.railHintText}>{t('tapNameToShift')}</Text>
                         <TouchableOpacity
                           onPress={() => setActiveCleanerIds(new Set(cleaners.map(c => c.id)))}
                           activeOpacity={0.7}
                         >
-                          <Text style={styles.railAllOn}>All on</Text>
+                          <Text style={styles.railAllOn}>{t('allOn')}</Text>
                         </TouchableOpacity>
                       </View>
 
@@ -1037,26 +1051,26 @@ export default function AssignScreen({ onReady }) {
                   )}
 
                   <View style={styles.glance}>
-                    <Text style={styles.railOverline}>Today at a glance</Text>
+                    <Text style={styles.railOverline}>{t('todayAtGlance')}</Text>
                     <View style={{ gap: 12, marginTop: 14 }}>
                       <View style={styles.glanceRow}>
-                        <Text style={styles.glanceLabel}>Rooms in play</Text>
+                        <Text style={styles.glanceLabel}>{t('roomsInPlay')}</Text>
                         <Text style={styles.glanceValue}>{counts.all}</Text>
                       </View>
                       <View style={styles.glanceRow}>
-                        <Text style={styles.glanceLabel}>Needs assignment</Text>
+                        <Text style={styles.glanceLabel}>{t('needsAssignmentShort')}</Text>
                         <Text style={[styles.glanceValue, { color: STATUS.waiting.text }]}>
                           {counts.unassigned}
                         </Text>
                       </View>
                       <View style={styles.glanceRow}>
-                        <Text style={styles.glanceLabel}>Dorm beds to clean</Text>
+                        <Text style={styles.glanceLabel}>{t('dormBedsToClean')}</Text>
                         <Text style={[styles.glanceValue, { color: STATUS.dirty.text }]}>
                           {dirtyBeds}
                         </Text>
                       </View>
                       <View style={styles.glanceRow}>
-                        <Text style={styles.glanceLabel}>Private rooms to clean</Text>
+                        <Text style={styles.glanceLabel}>{t('privatesToClean')}</Text>
                         <Text style={[styles.glanceValue, { color: STATUS.dirty.text }]}>
                           {privatesToClean}
                         </Text>
@@ -1078,7 +1092,7 @@ export default function AssignScreen({ onReady }) {
             <View style={styles.bulkBadge}>
               <Text style={styles.bulkBadgeText}>{selectedRoomIds.size}</Text>
             </View>
-            <Text style={styles.bulkCountText}>selected</Text>
+            <Text style={styles.bulkCountText}>{t('selectedCount')}</Text>
           </View>
 
           {/* Divider */}
@@ -1122,7 +1136,7 @@ export default function AssignScreen({ onReady }) {
           >
             <Icon name="person_add" size={18} color={BRAND.yellow} />
             <Text style={styles.bulkPrimaryText}>
-              {displayCleaner ? `Assign to ${displayCleaner.username}` : 'Assign to…'}
+              {displayCleaner ? t('assignToName', { name: displayCleaner.username }) : t('assignToPlaceholder')}
             </Text>
           </TouchableOpacity>
           )}
@@ -1135,7 +1149,7 @@ export default function AssignScreen({ onReady }) {
               activeOpacity={0.8}
             >
               <Icon name="person_remove" size={18} color="#B91C1C" />
-              <Text style={styles.bulkDangerText}>Clear assign</Text>
+              <Text style={styles.bulkDangerText}>{t('clearAssign')}</Text>
             </TouchableOpacity>
           )}
 
@@ -1146,21 +1160,21 @@ export default function AssignScreen({ onReady }) {
           {canAssign && (
             <TouchableOpacity onPress={() => bulkSetBeds('clean')} style={styles.bulkGhost} activeOpacity={0.8}>
               <Icon name="cleaning_services" size={18} color={NEUTRAL.text2} />
-              <Text style={styles.bulkGhostText}>All dirty</Text>
+              <Text style={styles.bulkGhostText}>{t('allDirty')}</Text>
             </TouchableOpacity>
           )}
 
           {canAssign && (
             <TouchableOpacity onPress={() => bulkSetBeds('noone')} style={styles.bulkGhost} activeOpacity={0.8}>
               <Icon name="verified" size={18} color={NEUTRAL.text2} />
-              <Text style={styles.bulkGhostText}>Reset states</Text>
+              <Text style={styles.bulkGhostText}>{t('resetStates')}</Text>
             </TouchableOpacity>
           )}
 
           {canAssign && (
             <TouchableOpacity onPress={bulkToggleCommon} style={styles.bulkGhost} activeOpacity={0.8}>
               <Icon name="layers" size={18} color={NEUTRAL.text2} />
-              <Text style={styles.bulkGhostText}>Common only</Text>
+              <Text style={styles.bulkGhostText}>{t('commonOnlyShort')}</Text>
             </TouchableOpacity>
           )}
 
@@ -1176,7 +1190,10 @@ export default function AssignScreen({ onReady }) {
         <Pressable style={styles.pickerScrim} onPress={() => setBulkPickerOpen(false)}>
           <Pressable style={styles.pickerCard} onPress={() => {}}>
             <Text style={styles.pickerTitle}>
-              Assign {selectedRoomIds.size} {selectedRoomIds.size === 1 ? 'room' : 'rooms'} to
+              {t('assignRoomsToCount', {
+                count: selectedRoomIds.size,
+                room: selectedRoomIds.size === 1 ? t('setup.roomSingular') : t('setup.roomsPlural'),
+              })}
             </Text>
             {activeCleaners.map(c => (
               <TouchableOpacity
@@ -1194,9 +1211,7 @@ export default function AssignScreen({ onReady }) {
               </TouchableOpacity>
             ))}
             {activeCleaners.length === 0 && (
-              <Text style={styles.pickerEmpty}>
-                Nobody is on shift — turn someone on in the shift panel.
-              </Text>
+              <Text style={styles.pickerEmpty}>{t('nobodyOnShift')}</Text>
             )}
           </Pressable>
         </Pressable>
@@ -1208,10 +1223,12 @@ export default function AssignScreen({ onReady }) {
           visible
           onClose={closePanel}
           width={580}
-          title={`Room ${selectedRoom.name}`}
-          subtitle={`${selectedRoom.type === 'dorm'
-            ? `Dorm · ${selectedRoom.beds?.length || 0} ${t('beds')}`
-            : t('private')}${selectedCleaner ? ` · ${selectedCleaner.username}` : ' · Unassigned'}`}
+          title={t('roomDrawerTitle', { name: selectedRoom.name })}
+          subtitle={`${
+            selectedRoom.type === 'dorm'
+              ? t('roomDrawerSubDorm', { count: selectedRoom.beds?.length || 0, beds: t('beds') })
+              : t('roomDrawerSubPrivate')
+          }${selectedCleaner ? ` · ${selectedCleaner.username}` : ` · ${t('unassignedLower')}`}`}
           footer={
             <>
               <TouchableOpacity onPress={closePanel} style={d.btnGhost} activeOpacity={0.8}>
@@ -1222,7 +1239,7 @@ export default function AssignScreen({ onReady }) {
                 style={styles.saveStatesBtn}
                 activeOpacity={0.8}
               >
-                <Text style={styles.saveStatesText}>Save states only</Text>
+                <Text style={styles.saveStatesText}>{t('saveStatesOnly')}</Text>
               </TouchableOpacity>
               <View style={{ flex: 1 }} />
               <TouchableOpacity
@@ -1237,7 +1254,9 @@ export default function AssignScreen({ onReady }) {
                   color={selectedCleaner ? BRAND.yellow : NEUTRAL.text4}
                 />
                 <Text style={[d.btnPrimaryText, !selectedCleaner && { color: NEUTRAL.text4 }]}>
-                  {selectedCleaner ? `Assign to ${selectedCleaner.username}` : 'Pick a housekeeper first'}
+                  {selectedCleaner
+                    ? t('assignToName', { name: selectedCleaner.username })
+                    : t('pickHousekeeperFirst')}
                 </Text>
               </TouchableOpacity>
             </>
@@ -1245,7 +1264,7 @@ export default function AssignScreen({ onReady }) {
         >
           {/* ── Housekeeper ── */}
           <View>
-            <Text style={d.overline}>Housekeeper</Text>
+            <Text style={d.overline}>{t('housekeeperLabel')}</Text>
             <View style={styles.hkPickRow}>
               {activeCleaners.map(c => {
                 const on = selectedCleaner?.id === c.id;
@@ -1276,8 +1295,8 @@ export default function AssignScreen({ onReady }) {
               {commonOnly && <Icon name="check" size={15} color="#FFFFFF" />}
             </View>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.commonCardTitle}>Clean common areas only</Text>
-              <Text style={styles.commonCardSub}>Bed states are ignored for today.</Text>
+              <Text style={styles.commonCardTitle}>{t('cleanCommonOnlyShort')}</Text>
+              <Text style={styles.commonCardSub}>{t('bedStatesIgnored')}</Text> 
             </View>
           </TouchableOpacity>
 
@@ -1285,7 +1304,7 @@ export default function AssignScreen({ onReady }) {
           {selectedRoom.type === 'dorm' && selectedRoom.beds?.length > 0 && !commonOnly && (
             <View>
               <View style={styles.sectionHead}>
-                <Text style={[d.overline, { marginBottom: 0 }]}>Bed states</Text>
+                <Text style={[d.overline, { marginBottom: 0 }]}>{t('bedStatesHeading')}</Text>
                 <TouchableOpacity
                   onPress={() => setBedAssignments(prev => {
                     const next = { ...prev };
@@ -1296,7 +1315,7 @@ export default function AssignScreen({ onReady }) {
                   })}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.sectionAction}>Set all to dirty</Text>
+                  <Text style={styles.sectionAction}>{t('setAllToDirty')}</Text>
                 </TouchableOpacity>
               </View>
 
@@ -1349,7 +1368,7 @@ export default function AssignScreen({ onReady }) {
           {/* ── What to clean (private) ── */}
           {selectedRoom.type === 'private' && !commonOnly && Object.keys(assignmentAttributes).length > 0 && (
             <View>
-              <Text style={d.overline}>What to clean</Text>
+              <Text style={d.overline}>{t('whatToClean')}</Text>
               <View style={styles.hkPickRow}>
                 {Object.keys(assignmentAttributes).map(attr => {
                   const on = !!assignmentAttributes[attr];
@@ -1380,7 +1399,7 @@ export default function AssignScreen({ onReady }) {
 
           {/* ── Room flags ── */}
           <View>
-            <Text style={d.overline}>Room flags</Text>
+            <Text style={d.overline}>{t('roomFlagsHeading')}</Text>
             <View style={styles.flagBtnRow}>
               <TouchableOpacity
                 onPress={() => setEarlyCheckIn(v => !v)}
@@ -1392,7 +1411,7 @@ export default function AssignScreen({ onReady }) {
               >
                 <Icon name="login" size={18} color={earlyCheckIn ? STATUS.early.text : NEUTRAL.text2} />
                 <Text style={[styles.flagBtnText, earlyCheckIn && { color: STATUS.early.text }]}>
-                  Early check-in
+                  {t('earlyCheckInLabel')}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -1405,7 +1424,7 @@ export default function AssignScreen({ onReady }) {
               >
                 <Icon name="hourglass_top" size={18} color={lateCheckOut ? STATUS.late.text : NEUTRAL.text2} />
                 <Text style={[styles.flagBtnText, lateCheckOut && { color: STATUS.late.text }]}>
-                  Late check-out
+                  {t('lateCheckOutLabel')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1413,7 +1432,7 @@ export default function AssignScreen({ onReady }) {
 
           {/* ── Note ── */}
           <View>
-            <Text style={d.overline}>Note for the housekeeper</Text>
+            <Text style={d.overline}>{t('noteForHousekeeper')}</Text>
             <TextInput
               value={managerNotes}
               onChangeText={setManagerNotes}
@@ -1449,7 +1468,7 @@ export default function AssignScreen({ onReady }) {
                     activeOpacity={0.7}
                   >
                     <Icon name="refresh" size={19} color={NEUTRAL.text2} />
-                    <Text style={styles.menuItemText}>{t('resetBeds') || 'Reset beds'}</Text>
+                    <Text style={styles.menuItemText}>{t('resetBeds')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.menuItem}

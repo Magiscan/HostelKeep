@@ -489,6 +489,7 @@ export default function LoginScreen() {
       <ContactSheet
         visible={showContact}
         onClose={() => setShowContact(false)}
+        email={CONTACT_EMAIL}
         title={t('contact.title') || 'Write to KohCiao'}
         defaultSubject="HostelKeep"
         labels={{

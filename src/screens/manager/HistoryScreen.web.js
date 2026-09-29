@@ -256,7 +256,7 @@ export default function HistoryScreen({ onReady }) {
         {/* Controls: date picker + search */}
         <View style={styles.controls}>
           <View style={styles.dateArea}>
-            <Text style={styles.controlLabel}>Date</Text>
+            <Text style={styles.controlLabel}>{t('dateLabel')}</Text>
             <View style={styles.dateRow}>
               <TouchableOpacity style={styles.arrowButton} onPress={() => changeDate(-1)} activeOpacity={0.75}>
                 <Icon name="arrow_back" size={19} color={NEUTRAL.text} />
@@ -293,20 +293,20 @@ export default function HistoryScreen({ onReady }) {
                   onPress={() => { setSelectedDate(today); setSearch(''); }}
                   activeOpacity={0.75}
                 >
-                  <Text style={styles.todayButtonText}>Today</Text>
+                  <Text style={styles.todayButtonText}>{t('todayButton')}</Text>
                 </TouchableOpacity>
               )}
             </View>
           </View>
 
           <View style={styles.searchContainer}>
-            <Text style={styles.controlLabel}>Search</Text>
+            <Text style={styles.controlLabel}>{t('searchLabel')}</Text>
             <View style={styles.searchBox}>
               <Icon name="search" size={18} color={NEUTRAL.text3} />
               <TextInput
                 value={search}
                 onChangeText={setSearch}
-                placeholder="Search rooms or housekeepers…"
+                placeholder={t('searchRoomsOrCleaners')}
                 placeholderTextColor={NEUTRAL.text4}
                 style={styles.searchInput}
               />
@@ -322,16 +322,16 @@ export default function HistoryScreen({ onReady }) {
         {/* Loading */}
         {loading && (
           <View style={styles.loadingBox}>
-            <Text style={styles.loadingText}>Loading history...</Text>
+            <Text style={styles.loadingText}>{t('loadingHistory')}</Text>
           </View>
         )}
 
         {/* No history */}
         {!loading && !history && (
           <View style={styles.noHistory}>
-            <Text style={styles.emptyTitle}>No history for this date</Text>
+            <Text style={styles.emptyTitle}>{t('noHistoryTitle')}</Text>
             <Text style={styles.emptyText}>
-              There is no cleaning activity recorded for {formatDate(selectedDate)}.
+              {t('noHistoryBody', { date: formatDate(selectedDate) })}
             </Text>
           </View>
         )}
@@ -343,11 +343,11 @@ export default function HistoryScreen({ onReady }) {
             <View style={styles.progressCard}>
               <View style={styles.progressHeader}>
                 <View>
-                  <Text style={styles.cardEyebrow}>Progress on this day</Text>
+                  <Text style={styles.cardEyebrow}>{t('progressOnDay')}</Text>
                   <View style={styles.progressNumberRow}>
                     <Text style={styles.progressNumber}>{stats.percentage}%</Text>
                     <Text style={styles.progressDescription}>
-                      {stats.cleaned} of {stats.total} rooms completed
+                      {t('roomsCompletedOf', { done: stats.cleaned, total: stats.total })}
                     </Text>
                   </View>
                 </View>
@@ -362,7 +362,7 @@ export default function HistoryScreen({ onReady }) {
                   <Text style={[styles.progressStatusText, {
                     color: stats.percentage === 100 ? STATUS.inspected.text : STATUS.dirty.text,
                   }]}>
-                    {stats.percentage === 100 ? 'Complete' : 'In progress'}
+                    {stats.percentage === 100 ? t('completeStatus') : t('inProgressStatus')}
                   </Text>
                 </View>
               </View>
@@ -376,10 +376,10 @@ export default function HistoryScreen({ onReady }) {
 
               <View style={styles.statGrid}>
                 {[
-                  { label: 'Total rooms', value: stats.total, color: NEUTRAL.text },
-                  { label: 'Cleaned', value: stats.cleaned, color: STATUS.inspected.text },
-                  { label: 'Pending', value: stats.pending, color: STATUS.dirty.text },
-                  { label: 'Extra time', value: `+${stats.extraTime}m`, color: BRAND.navy },
+                  { label: t('statTotalRooms'), value: stats.total, color: NEUTRAL.text },
+                  { label: t('statCleaned'), value: stats.cleaned, color: STATUS.inspected.text },
+                  { label: t('statPending'), value: stats.pending, color: STATUS.dirty.text },
+                  { label: t('statExtraTime'), value: `+${stats.extraTime}m`, color: BRAND.navy },
                 ].map(s => (
                   <View key={s.label} style={styles.stat}>
                     <Text style={[styles.statValue, { color: s.color }]}>{s.value}</Text>
@@ -391,17 +391,20 @@ export default function HistoryScreen({ onReady }) {
 
             {/* Cleaner section */}
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Cleaner activity</Text>
+              <Text style={styles.sectionTitle}>{t('cleanerActivityHeading')}</Text>
               <Text style={styles.sectionSubtitle}>
-                {visibleCleaners.length} {visibleCleaners.length === 1 ? 'housekeeper' : 'housekeepers'} · Select one to see their rooms
+                {t('cleanerCountSubtitle', {
+                  count: visibleCleaners.length,
+                  housekeeper: visibleCleaners.length === 1 ? t('housekeeperSingular') : t('housekeeperPlural'),
+                })}
               </Text>
             </View>
 
             {/* Search empty */}
             {visibleCleaners.length === 0 && (
               <View style={styles.searchEmpty}>
-                <Text style={styles.searchEmptyTitle}>No rooms found</Text>
-                <Text style={styles.searchEmptyText}>Try another room or cleaner name.</Text>
+                <Text style={styles.searchEmptyTitle}>{t('noRoomsFoundTitle')}</Text>
+                <Text style={styles.searchEmptyText}>{t('noRoomsFoundBody')}</Text>
               </View>
             )}
 
@@ -419,7 +422,7 @@ export default function HistoryScreen({ onReady }) {
                         <View style={styles.cleanerDetails}>
                           <Text style={styles.cleanerName}>{cleaner.name}</Text>
                           <Text style={styles.cleanerRooms}>
-                            {cleaner.cleaned} of {cleaner.total} rooms completed
+                            {t('roomsCompletedOf', { done: cleaner.cleaned, total: cleaner.total })}
                           </Text>
                         </View>
                       </View>
@@ -468,7 +471,7 @@ export default function HistoryScreen({ onReady }) {
                                     <Text style={styles.roomNote} numberOfLines={1}>{room.notes}</Text>
                                   ) : null}
                                   {room.extraTime > 0 ? (
-                                    <Text style={styles.extraTime}>Extra time: {room.extraTime} min</Text>
+                                    <Text style={styles.extraTime}>{t('extraTimeLabel', { minutes: room.extraTime })}</Text>
                                   ) : null}
                                 </View>
                               )}
@@ -480,7 +483,7 @@ export default function HistoryScreen({ onReady }) {
                               <Text style={[styles.roomPillText, {
                                 color: room.cleaned ? STATUS.inspected.text : STATUS.dirty.text,
                               }]}>
-                                {room.cleaned ? 'Cleaned' : 'Pending'}
+                                {room.cleaned ? t('statusCleaned') : t('statusPending')}
                               </Text>
                             </View>
                           </View>

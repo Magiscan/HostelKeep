@@ -45,34 +45,34 @@ const FILL_SUBTLE    = 'rgba(255,255,255,0.06)';
 const FILL_ACTIVE    = 'rgba(255,255,255,0.12)';
 const HAIRLINE       = 'rgba(255,255,255,0.1)';
 
-const NAV_SECTIONS = [
+const buildNavSections = (t) => [
   {
-    label: 'Overview',
+    label: t('sidebarOverview'),
     items: [
-      { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+      { key: 'dashboard', label: t('sidebarDashboard'), icon: 'dashboard' },
     ],
   },
   {
-    label: 'Operations',
+    label: t('sidebarOperations'),
     items: [
-      { key: 'rooms', label: 'Rooms', icon: 'bed' },
-      { key: 'assign', label: 'Assign', icon: 'swap_horiz' },
-      { key: 'team', label: 'Team', icon: 'group' },
-      { key: 'extraRequests', label: 'Extra requests', icon: 'flag' },
+      { key: 'rooms', label: t('sidebarRooms'), icon: 'bed' },
+      { key: 'assign', label: t('sidebarAssign'), icon: 'swap_horiz' },
+      { key: 'team', label: t('sidebarTeam'), icon: 'group' },
+      { key: 'extraRequests', label: t('sidebarExtraRequests'), icon: 'flag' },
     ],
   },
   {
-    label: 'Insights',
+    label: t('sidebarInsights'),
     items: [
-      { key: 'reports', label: 'Live Activities', icon: 'description' },
-      { key: 'history', label: 'History', icon: 'calendar_month' },
+      { key: 'reports', label: t('sidebarLive'), icon: 'description' },
+      { key: 'history', label: t('sidebarHistory'), icon: 'calendar_month' },
     ],
   },
   {
-    label: 'Settings',
+    label: t('sidebarSettings'),
     items: [
-      { key: 'roles',   label: 'Roles & access', icon: 'shield_person', ownerOnly: true },
-      { key: 'account', label: 'Account',        icon: 'account_circle', always: true },
+      { key: 'roles',   label: t('sidebarRoles'),   icon: 'shield_person', ownerOnly: true },
+      { key: 'account', label: t('sidebarAccount'), icon: 'account_circle', always: true },
     ],
   },
 ];
@@ -96,6 +96,7 @@ export default function Sidebar({
   onToggleCollapse,
 }) {
   const { t, i18n } = useTranslation();
+  const NAV_SECTIONS = React.useMemo(() => buildNavSections(t), [t]);
   const [showLangModal, setShowLangModal] = useState(false);
   const [logoHover, setLogoHover] = useState(false);
   const [toggleHover, setToggleHover] = useState(false);
@@ -145,12 +146,12 @@ export default function Sidebar({
       <View style={[styles.logoRow, collapsed && styles.logoRowCollapsed]}>
         <Pressable
           onPress={() => { hideTip(); if (collapsed) onToggleCollapse?.(); }}
-          onHoverIn={(e) => { setLogoHover(true); if (collapsed) showTip(e, 'Expand sidebar'); }}
+          onHoverIn={(e) => { setLogoHover(true); if (collapsed) showTip(e, t('expandSidebar')); }}
           onHoverOut={() => { setLogoHover(false); hideTip(); }}
           disabled={!collapsed}
           style={styles.logoMarkWrap}
           accessibilityRole={collapsed ? 'button' : undefined}
-          accessibilityLabel={collapsed ? 'Expand sidebar' : undefined}
+          accessibilityLabel={collapsed ? t('expandSidebar') : undefined}
         >
           {collapsed && logoHover ? (
             <View style={styles.logoMarkHover}>
@@ -168,7 +169,7 @@ export default function Sidebar({
                 <Text style={{ color: ON_NAVY }}>Hostel</Text>
                 <Text style={{ color: BRAND.yellow }}>Keep</Text>
               </Text>
-              <Text style={styles.wordmarkSub} numberOfLines={1}>Pro · desktop</Text>
+              <Text style={styles.wordmarkSub} numberOfLines={1}>{t('sidebarProSubtitle')}</Text>
             </View>
 
             {!!onToggleCollapse && (
@@ -178,7 +179,7 @@ export default function Sidebar({
                 onHoverOut={() => setToggleHover(false)}
                 style={[styles.collapseBtn, toggleHover && styles.collapseBtnHover]}
                 accessibilityRole="button"
-                accessibilityLabel="Collapse sidebar"
+                accessibilityLabel={t('collapseSidebar')}
               >
                 <Icon
                   name="left_panel_close"
@@ -262,7 +263,7 @@ export default function Sidebar({
       {/* ── Footer: language + account ── */}
       <View style={styles.footer}>
         <Pressable
-          {...tipProps('lang', `Language · ${currentLang.label}`)}
+          {...tipProps('lang', `${t('manager.language')} · ${currentLang.label}`)}
           style={({ pressed }) => [styles.langSelector, pressed && { opacity: 0.7 }]}
           onPress={() => { hideTip(); setShowLangModal(true); }}
         >
@@ -286,10 +287,10 @@ export default function Sidebar({
             </View>
           )}
           <Pressable
-            {...tipProps('signout', 'Sign out')}
+            {...tipProps('signout', t('signOut'))}
             onPress={onSignOut}
             style={({ pressed }) => [styles.signOutBtn, pressed && { opacity: 0.7 }]}
-            accessibilityLabel="Sign out"
+            accessibilityLabel={t('signOut')}
           >
             <Icon name="logout" size={19} color={ON_NAVY_MUTED} />
           </Pressable>

@@ -4,6 +4,7 @@ import { useApp } from '../../contexts/AppContext';
 import Icon from '../../components/Icon';
 import { FONTS } from '../../theme/typography';
 import { BRAND, NEUTRAL, STATUS } from '../../theme/tokens';
+import { useTranslation } from 'react-i18next';
 
 /* The prototype maps pending → dirty, not waiting. Slightly warmer amber than
    STATUS.waiting; matching it keeps this pill identical to the bed chips. */
@@ -14,6 +15,7 @@ const STATUS_LOOK = {
 };
 
 export default function ExtraRequestsScreen() {
+  const { t } = useTranslation();
   const { extraRequests, rooms, cleaners, approveExtraRoom, rejectExtraRoom, cleanupOldExtraRequests, can, } = useApp();
   const [filter, setFilter] = useState('pending');
   const [imageViewer, setImageViewer] = useState(null);
@@ -38,28 +40,32 @@ export default function ExtraRequestsScreen() {
     link.click();
   };
 
-  const tabs = ['pending', 'approved', 'rejected'];
+  const tabs = [
+    { key: 'pending', label: t('pending') },
+    { key: 'approved', label: t('approved') },
+    { key: 'rejected', label: t('rejected') },
+  ];
 
   return (
     <View style={styles.container}>
       <ScrollView style={styles.page} contentContainerStyle={styles.pageContent}>
         <View style={styles.tabRow}>
           {tabs.map(tab => {
-            const on = filter === tab;
+            const on = filter === tab.key;
             const count = extraRequests.filter(
-              r => (r.status || 'pending') === tab
+              r => (r.status || 'pending') === tab.key
             ).length;
             return (
               <TouchableOpacity
-                key={tab}
-                onPress={() => setFilter(tab)}
+                key={tab.key}
+                onPress={() => setFilter(tab.key)}
                 style={[styles.tab, on && styles.tabOn]}
                 activeOpacity={0.8}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: on }}
               >
                 <Text style={[styles.tabText, on && styles.tabTextOn]}>
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                  {tab.label}
                 </Text>
                 <Text style={[styles.tabCount, on && { color: BRAND.navy }]}>{count}</Text>
               </TouchableOpacity>
@@ -70,7 +76,7 @@ export default function ExtraRequestsScreen() {
         {filteredRequests.length === 0 ? (
           <View style={styles.empty}>
             <Icon name="inbox" size={32} color={NEUTRAL.text3} />
-            <Text style={styles.emptyText}>No {filter} requests.</Text>
+            <Text style={styles.emptyText}>{t('noFilteredRequests', { filter })}</Text>
           </View>
         ) : (
           <View style={styles.grid}>
@@ -87,18 +93,18 @@ export default function ExtraRequestsScreen() {
                 <View key={req.id} style={styles.card}>
                   <View style={styles.cardHead}>
                     <Text style={styles.roomName} numberOfLines={1}>
-                      {room?.name || 'Unknown room'}
+                      {room?.name || t('unknownRoomFull')}
                     </Text>
                     <View style={[styles.statusPill, { backgroundColor: look.bg }]}>
                       <Text style={[styles.statusPillText, { color: look.fg }]}>
-                        {status.toUpperCase()}
+                        {t(status).toUpperCase()}
                       </Text>
                     </View>
                   </View>
 
                   <View>
                     <Text style={styles.byLine}>
-                      Requested by {cleaner?.username || 'Unknown housekeeper'}
+                      {t('requestedByLabel', { name: cleaner?.username || t('unknownHousekeeper') })}
                     </Text>
                     {!!timestamp && <Text style={styles.timestamp}>{timestamp}</Text>}
                   </View>
@@ -120,7 +126,7 @@ export default function ExtraRequestsScreen() {
                         activeOpacity={0.8}
                       >
                         <Icon name="download" size={17} color={BRAND.navy} />
-                        <Text style={styles.downloadText}>Download</Text>
+                        <Text style={styles.downloadText}>{t('downloadAction')}</Text>
                       </TouchableOpacity>
                     </View>
                   ) : null}
@@ -132,14 +138,14 @@ export default function ExtraRequestsScreen() {
                         onPress={() => handleApprove(req.id, req.cleanerId)}
                         activeOpacity={0.9}
                       >
-                        <Text style={styles.approveText}>Approve</Text>
+                        <Text style={styles.approveText}>{t('approve')}</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.rejectBtn}
                         onPress={() => handleReject(req.id)}
                         activeOpacity={0.8}
                       >
-                        <Text style={styles.rejectText}>Reject</Text>
+                        <Text style={styles.rejectText}>{t('reject')}</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -161,7 +167,7 @@ export default function ExtraRequestsScreen() {
             />
             <View style={styles.lightboxActions}>
               <TouchableOpacity onPress={() => setImageViewer(null)} style={styles.lightboxBtn}>
-                <Text style={styles.lightboxBtnText}>Close</Text>
+                <Text style={styles.lightboxBtnText}>{t('closeActionFull')}</Text>
               </TouchableOpacity>
             </View>
           </View>

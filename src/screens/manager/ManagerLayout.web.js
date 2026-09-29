@@ -45,53 +45,53 @@ import { isOwner as ownerOf } from '../../utils/permissions';
 import { SubscriptionGate, SubscriptionBanner } from './PaywallScreen.web';
 
 /* Section metadata. Titles and subtitles are the prototype's, unchanged. */
-const SECTIONS = {
+const buildSections = (t) => ({
   dashboard: {
-    title: 'Dashboard',
-    subtitle: 'Where the shift stands right now.',
-    ownsHeader: false,     // still renders <Header> with Save day / Daily report
+    title: t('secDashboardTitle'),
+    subtitle: t('secDashboardSub'),
+    ownsHeader: false,
   },
   rooms: {
-    title: 'Rooms',
-    subtitle: 'The property structure — floors, rooms and beds.',
+    title: t('secRoomsTitle'),
+    subtitle: t('secRoomsSub'),
     ownsHeader: false,
   },
   assign: {
-    title: 'Assign',
-    subtitle: 'Set the bed states, then hand the rooms to a housekeeper.',
+    title: t('secAssignTitle'),
+    subtitle: t('secAssignSub'),
     ownsHeader: false,
   },
   team: {
-    title: 'Team',
-    subtitle: 'Who is on shift and how their day is going.',
+    title: t('secTeamTitle'),
+    subtitle: t('secTeamSub'),
     ownsHeader: false,
   },
   extraRequests: {
-    title: 'Extra room requests',
-    subtitle: 'Review and manage housekeeper requests.',
+    title: t('secExtraTitle'),
+    subtitle: t('secExtraSub'),
     ownsHeader: false,
   },
   history: {
-    title: 'Daily history',
-    subtitle: 'Review completed cleaning work and room activity.',
+    title: t('secHistoryTitle'),
+    subtitle: t('secHistorySub'),
     ownsHeader: false,
   },
   reports: {
-    title: 'Live activities',
-    subtitle: 'Overview of cleaning performance right now.',
+    title: t('secReportsTitle'),
+    subtitle: t('secReportsSub'),
     ownsHeader: false,
   },
   roles: {
-    title: 'Roles & access',
-    subtitle: 'Create roles and decide what each one can see and do.',
+    title: t('secRolesTitle'),
+    subtitle: t('secRolesSub'),
     ownsHeader: false,
   },
   account: {
-    title: 'Account',
-    subtitle: 'Your details, your hostel code, and account deletion.',
+    title: t('secAccountTitle'),
+    subtitle: t('secAccountSub'),
     ownsHeader: false,
   },
-};
+});
 
 /* Notification type → icon + chip colours, matching the prototype's panel. */
 function notifLook(type) {
@@ -122,6 +122,7 @@ export default function ManagerLayout() {
     return next;
   }), []);
   const { t } = useTranslation();
+  const SECTIONS = useMemo(() => buildSections(t), [t]);
   const { user, logout, updateProfile } = useAuth();
   const {
     notifications,
@@ -252,40 +253,40 @@ export default function ManagerLayout() {
             onOpenNotifications={() => setShowNotifications(true)}
             actions={ (tab === 'rooms' && roomsAction) ? [
               roomsAction.openFloors &&
-              { key: 'floors', label: 'Manage floors', icon: 'layers', onPress: roomsAction.openFloors },
+              { key: 'floors', label: t('actionManageFloors'), icon: 'layers', onPress: roomsAction.openFloors },
               roomsAction.openAttrs &&
-              { key: 'attrs',  label: 'Attributes',    icon: 'tune',   onPress: roomsAction.openAttrs },
+              { key: 'attrs',  label: t('actionAttributes'),   icon: 'tune',   onPress: roomsAction.openAttrs },
               roomsAction.addRoom &&
-              { key: 'add',    label: 'Add room',      icon: 'add', variant: 'primary', onPress: roomsAction.addRoom },
+              { key: 'add',    label: t('actionAddRoom'),      icon: 'add', variant: 'primary', onPress: roomsAction.addRoom },
             ].filter(Boolean) :
             (tab === 'team' && teamAction) ? [
               teamAction.print &&
-              { key: 'print', label: 'Print sheets',   icon: 'print',      onPress: teamAction.print },
+              { key: 'print', label: t('actionPrintSheets'),   icon: 'print',      onPress: teamAction.print },
               teamAction.addCleaner &&
-              { key: 'add',   label: 'Add housekeeper', icon: 'person_add', variant: 'primary', onPress: teamAction.addCleaner },
+              { key: 'add',   label: t('actionAddHousekeeper'), icon: 'person_add', variant: 'primary', onPress: teamAction.addCleaner },
             ].filter(Boolean) : 
             tab === 'history' && historyAction ? [
-              { key: 'export', label: 'Download report', icon: 'download',
+              { key: 'export', label: t('actionDownloadReport'), icon: 'download',
                 variant: 'primary', disabled: !historyAction.canExport,
                 onPress: historyAction.exportReport },
             ] : 
             tab === 'dashboard' && dashAction ? [
               dashAction.saveDay && 
-              { key: 'save', label: dashAction.saveDaySuccess ? 'Saved' : 'Save day',
+              { key: 'save', label: dashAction.saveDaySuccess ? t('actionSaved') : t('actionSaveDay'),
                 icon: dashAction.saveDaySuccess ? 'check' : 'save', onPress: dashAction.saveDay },
               dashAction.dailyReport &&
-              { key: 'report', label: 'Daily report', icon: 'download',
+              { key: 'report', label: t('actionDailyReport'), icon: 'download',
                 variant: 'primary', onPress: dashAction.dailyReport },
             ].filter(Boolean) : 
             tab === 'assign' && assignAction ? [
               assignAction.print &&
-              { key: 'print', label: 'Print sheets', icon: 'print', variant: 'primary', onPress: assignAction.print },
+              { key: 'print', label: t('actionPrintSheets'), icon: 'print', variant: 'primary', onPress: assignAction.print },
               assignAction.clearAll &&
-              { key: 'clear', label: 'Clear all', icon: 'cancel', variant: 'danger', onPress: assignAction.clearAll },
+              { key: 'clear', label: t('actionClearAll'), icon: 'cancel', variant: 'danger', onPress: assignAction.clearAll },
             ].filter(Boolean) :
             (tab === 'roles' && rolesAction) ? [
               { key: 'saveRoles',
-                label: rolesAction.saving ? 'Saving…' : 'Save changes',
+                label: rolesAction.saving ? t('savingShort') : t('saveChanges'),
                 icon: 'save',
                 variant: 'primary',
                 disabled: !rolesAction.dirty || rolesAction.saving,
@@ -309,21 +310,21 @@ export default function ManagerLayout() {
           <Pressable
             style={StyleSheet.absoluteFill}
             onPress={() => setShowNotifications(false)}
-            accessibilityLabel="Close notifications"
+            accessibilityLabel={t('notifCloseA11y')}
           />
 
           <View style={styles.notifPanel}>
             <View style={styles.notifHeader}>
-              <Text style={styles.notifTitle}>Notifications</Text>
+              <Text style={styles.notifTitle}>{t('notifPanelTitle')}</Text>
               <View style={styles.notifHeaderActions}>
                 {panelUnread > 0 && (
                   <TouchableOpacity onPress={clearAll} activeOpacity={0.7}>
-                    <Text style={styles.notifLink}>Mark all read</Text>
+                    <Text style={styles.notifLink}>{t('notifMarkAllRead')}</Text>
                   </TouchableOpacity>
                 )}
                 {panelNotifications.length > 0 && (
                   <TouchableOpacity onPress={clearPanel} activeOpacity={0.7}>
-                    <Text style={[styles.notifLink, { color: NEUTRAL.text3 }]}>Clear all</Text>
+                    <Text style={[styles.notifLink, { color: NEUTRAL.text3 }]}>{t('notifClearAll')}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -333,7 +334,7 @@ export default function ManagerLayout() {
               {panelNotifications.length === 0 ? (
                 <View style={styles.notifEmpty}>
                   <Icon name="notifications_off" size={28} color={NEUTRAL.text4} />
-                  <Text style={styles.notifEmptyText}>No notifications yet.</Text>
+                  <Text style={styles.notifEmptyText}>{t('notifEmpty')}</Text>
                 </View>
               ) : (
                 panelNotifications.map((item) => {

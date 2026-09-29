@@ -3,14 +3,18 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { FONTS } from '../../theme/typography';
 import { BRAND, NEUTRAL } from '../../theme/tokens';
+import { CONTACT_EMAIL } from '../../utils/subscription';
+import { useTranslation } from 'react-i18next';
 
-const LINKS = [
-  { label: 'Privacy policy', url: 'https://keepclean-hostel.web.app/privacy.html' },
-  { label: 'Terms', url: 'https://…' },
-  { label: 'Contact', url: 'mailto:hello@kohciao.com' },
+const buildLinks = (t) => [
+  { label: t('privacyPolicyLink'), url: 'https://hostelkeep.com/privacy' },
+  { label: t('termsLink'), url: 'https://hostelkeep.com/terms' },
+  { label: t('contactLink'), url: `mailto:${CONTACT_EMAIL}` },
 ];
 
 export default function Footer({ compact }) {
+  const { t } = useTranslation();
+  const LINKS = React.useMemo(() => buildLinks(t), [t]);
   return (
     <View style={[styles.footer, compact && styles.footerCompact]}>
       <Text style={styles.copy}>

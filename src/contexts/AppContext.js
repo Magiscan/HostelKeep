@@ -11,6 +11,7 @@ import {
 import { buildDailyLog, localDateStr } from '../utils/dailyLog';
 import { useDailyLogAutosave } from '../hooks/useDailyLogAutosave';
 import { describeSubscription } from '../utils/subscription';
+import i18n from '../i18n';
 
 const AppContext = createContext();
 
@@ -46,16 +47,37 @@ async function getCleanerToken(cleanerUid) {
 
 async function sendPush(tokens, title, body, data) {
   if (!tokens || tokens.length === 0) return;
-  await fetch('https://exp.host/--/api/v2/push/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      to: tokens,
-      title,
-      body,
-      data,
-    }),
-  });
+  try {
+    const res = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(tokens.map((to) => ({
+        to,
+        title,
+        body,
+        data,
+        sound: 'default',
+        channelId: 'default',
+      }))),
+    });
+    const json = await res.json().catch(() => null);
+    (json?.data || []).forEach((ticket) => {
+      if (ticket?.status === 'error') {
+        // DeviceNotRegistered = app uninstalled. On the Spark plan the sender
+        // can't clean up someone else's user document; sign-out cleanup and
+        // token overwrite on next sign-in keep this rare.
+        console.warn(
+          'Push not delivered:',
+          ticket.details?.error || ticket.message,
+        );
+      }
+    });
+  } catch (e) {
+    console.warn('Push send failed:', e.message);
+  }
 }
 
 async function sendPushToManagers(hostelCode, title, body, data) {
@@ -352,7 +374,7 @@ export function AppProvider({ children }) {
     try {
       await addDoc(collection(db, 'hostels', hostelCode, 'floors'), { name });
     } catch (error) {
-      throw new Error('Failed to add floor: ' + error.message);
+      throw new Error(i18n.t('appAddFloorFailed', { message: error.message }));
     }
   }, [hostelCode]);
 
@@ -416,12 +438,12 @@ export function AppProvider({ children }) {
       notifyHostel(hostelCode, {
         type: 'room_cleaned',
         roomId,
-        message: `Room ${roomName} cleaned by ${me.username}`,
+        message: i18n.t('notifRoomCleaned', { room: roomName, cleaner: me.username }),
       });
       sendPushToManagers(
         hostelCode,
-        'Room cleaned',
-        `Room ${roomName} was marked clean by ${me.username}.`,
+        i18n.t('notifRoomCleanedTitle'),
+        i18n.t('notifRoomCleanedBody', { room: roomName, cleaner: me.username }),   
         { type: 'room_cleaned', roomId },
       ).catch(e => console.warn('Push failed:', e.message));
     }
@@ -431,7 +453,10 @@ export function AppProvider({ children }) {
         type: 'note_added',
         roomId,
         bucket: bucketOf(newStatus.notes),
-        message: `Note on room ${roomName}: "${newStatus.notes.slice(0, 50)}${newStatus.notes.length > 50 ? '…' : ''}"`,
+        message: i18n.t('notifNoteAdded', {
+        room: roomName,
+        text: `${newStatus.notes.slice(0, 50)}${newStatus.notes.length > 50 ? '…' : ''}`,
+      }),
       });
     }
 
@@ -440,7 +465,7 @@ export function AppProvider({ children }) {
         type: 'extra_time',
         roomId,
         bucket: String(newStatus.extraTime),
-        message: `Extra time on room ${roomName}: +${newStatus.extraTime} min`,
+        message: i18n.t('notifExtraTime', { room: roomName, minutes: newStatus.extraTime }),
       });
     }
 
@@ -504,8 +529,8 @@ export function AppProvider({ children }) {
     const roomName = room?.name || roomId;
     sendPushToCleaner(
       cleanerUid,
-      'New Room Assigned',
-      `You have been assigned to room ${roomName}.`,
+      i18n.t('notifNewAssignmentTitle'),
+      i18n.t('notifNewAssignmentBody', { room: roomName }),
       { type: 'new_assignment', roomId }
     ).catch(e => console.warn('Push failed:', e));
   }, [hostelCode, rooms]);
@@ -611,7 +636,7 @@ export function AppProvider({ children }) {
     if (!hostelCode) return;
     // Firestore caps a document at 1 MiB; the rules reject over 700 KB.
     if (imageBase64 && imageBase64.length > 700000) {
-      throw new Error('That photo is too large. Please retake it.');
+      throw new Error(i18n.t('appPhotoTooLarge'));
     }
     const requestRef = doc(db, 'hostels', hostelCode, 'extraRequests', roomId);
     await setDoc(requestRef, {
@@ -635,14 +660,16 @@ export function AppProvider({ children }) {
       // Now that a rejected request can be re-raised, that has to change.
       bucket: bucketOf(`${cleanerUid}_${Math.floor(Date.now() / 60000)}`),
       message: who
-        ? `Extra room ${roomName} requested by ${who}`
-        : `Extra room ${roomName} requested`,
+        ? i18n.t('notifExtraRequestWithName', { room: roomName, cleaner: who })
+        : i18n.t('notifExtraRequestAnonymous', { room: roomName }),
     });
 
     sendPushToManagers(
       hostelCode,
-      'Extra Room Request',
-      who ? `${who} asked for room ${roomName}.` : `Room ${roomName} was requested.`,
+      i18n.t('notifExtraRequestTitle'),
+      who
+        ? i18n.t('notifExtraRequestBodyWithName', { room: roomName, cleaner: who })
+        : i18n.t('notifExtraRequestBodyAnonymous', { room: roomName }),
       { type: 'extra_request', roomId },
     ).catch(e => console.warn('Push failed:', e));
   }, [hostelCode, rooms, cleaners]);
@@ -677,8 +704,8 @@ export function AppProvider({ children }) {
       const room = rooms.find(r => r.id === roomId);
       sendPushToCleaner(
         cleanerUid,
-        'Extra room declined',
-        `Your request for room ${room?.name || roomId} was not approved.`,
+        i18n.t('notifExtraRejectedTitle'),
+        i18n.t('notifExtraRejectedBody', { room: room?.name || roomId }),
         { type: 'extra_rejected', roomId },
       ).catch(e => console.warn('Push failed:', e.message));
     }
@@ -731,7 +758,7 @@ export function AppProvider({ children }) {
     if (!hostelCode) return;
 
     if (rooms.some(r => r.assignedTo) && cleaners.length === 0) {
-      throw new Error('Still loading team data — please try again in a moment.');
+      throw new Error(i18n.t('appStillLoadingTeam'));
     }
 
     const log = buildDailyLog({

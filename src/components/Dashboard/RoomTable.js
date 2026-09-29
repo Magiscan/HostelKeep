@@ -4,18 +4,20 @@ import RoomRow from './RoomRow';
 import { COLORS } from '../../theme/colors';
 import { FONTS, FONT_SIZE } from '../../theme/typography';
 import { SPACING } from '../../theme/spacing';
+import { useTranslation } from 'react-i18next';
 
 export default function RoomTable({ rooms, roomStatus, cleaners, floors = [], onRoomPress }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.table}>
       <View style={styles.headerRow}>
         <View style={{ width: 3 + SPACING.sm }} />
-        <Text style={[styles.headerCell, { flex: 1.2 }]}>ROOM</Text>
-        <Text style={styles.headerCell}>TYPE</Text>
-        <Text style={styles.headerCell}>CLEANER</Text>
-        <Text style={styles.headerCell}>STATUS</Text>
-        <Text style={styles.headerCell}>NOTES</Text>
-        <Text style={styles.headerCell}>EXTRA</Text>
+          <Text style={[styles.headerCell, { flex: 1.2 }]}>{t('colRoom')}</Text>
+          <Text style={styles.headerCell}>{t('colType')}</Text>
+          <Text style={styles.headerCell}>{t('colCleaner')}</Text>
+          <Text style={styles.headerCell}>{t('colStatus')}</Text>
+          <Text style={styles.headerCell}>{t('colNotes')}</Text>
+          <Text style={styles.headerCell}>{t('colExtra')}</Text>
         <Text style={[styles.headerCell, { flex: 0.4 }]} />
       </View>
       <ScrollView style={{ maxHeight: 460 }}>
@@ -37,7 +39,7 @@ export default function RoomTable({ rooms, roomStatus, cleaners, floors = [], on
           );
         })}
         {rooms.length === 0 && (
-          <Text style={styles.empty}>No rooms match your search.</Text>
+          <Text style={styles.empty}>{t('noRoomsMatchSearch')}</Text>
         )}
       </ScrollView>
     </View>

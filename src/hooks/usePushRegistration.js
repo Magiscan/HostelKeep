@@ -4,22 +4,27 @@
  * Registers the signed-in user's Expo push token and stores it on their user
  * document.
  *
- * Fixes two problems in the previous code:
+ * What changed from the previous version:
  *
- *  1. getExpoPushTokenAsync() was called with NO projectId. That works in Expo
- *     Go, which can infer one, but THROWS in production EAS builds — so push
- *     registration failed on exactly the builds you ship.
+ *  1. It runs again every time the app comes back to the foreground, but
+ *     WITHOUT prompting. So someone who turns notifications on in Android
+ *     settings (via the "Notifications are off · Open settings" row in Account)
+ *     starts receiving push as soon as they return, with no restart.
  *
- *  2. Cleaners never registered a token at all (CleanerScreen had no
- *     registration code), so approve/reject notifications had no recipient.
+ *  2. It only prompts when Android says it still can (`canAskAgain`). After a
+ *     "Don't allow" on Android 13+, the system never shows the prompt again, so
+ *     asking would do nothing.
  *
- * Android 13+ (API 33) also requires the POST_NOTIFICATIONS runtime
- * permission, which requestPermissionsAsync handles — but the channel must be
- * created first or the prompt looks bare.
+ *  3. It only writes to Firestore when the token actually changed for this
+ *     user, so foregrounding the app doesn't cost a write every time.
+ *
+ * The token is removed from the user document on sign-out (see logout in
+ * AuthContext), so a shared hostel phone doesn't keep receiving the previous
+ * person's notifications.
  */
 
-import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { AppState, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
@@ -27,14 +32,17 @@ import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export function usePushRegistration(user) {
+  // `${uid}:${token}` of the last successful write in this session.
+  const writtenRef = useRef(null);
+
   useEffect(() => {
-    if (!user?.uid) return;
+    if (!user?.uid) return undefined;
     // Web push needs a VAPID key and a service worker; out of scope here.
-    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'web') return undefined;
 
     let cancelled = false;
 
-    (async () => {
+    const register = async (mayPrompt) => {
       try {
         // Simulators and emulators cannot receive push notifications.
         if (!Device.isDevice) return;
@@ -50,16 +58,16 @@ export function usePushRegistration(user) {
           });
         }
 
-        const { status: existing } = await Notifications.getPermissionsAsync();
-        let status = existing;
+        const current = await Notifications.getPermissionsAsync();
+        let status = current.status;
 
-        if (existing !== 'granted') {
+        if (status !== 'granted' && mayPrompt && current.canAskAgain !== false) {
           // On Android 13+ this triggers the POST_NOTIFICATIONS prompt.
           const res = await Notifications.requestPermissionsAsync();
           status = res.status;
         }
 
-        // Declining is a normal choice — never nag or block the UI.
+        // Declining is a normal choice: never nag or block the UI.
         if (status !== 'granted') return;
 
         const projectId =
@@ -72,19 +80,32 @@ export function usePushRegistration(user) {
         }
 
         const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-        if (cancelled || !tokenData?.data) return;
+        const token = tokenData?.data;
+        if (cancelled || !token) return;
 
-        await setDoc(
-          doc(db, 'users', user.uid),
-          { pushToken: tokenData.data },
-          { merge: true },
-        );
+        const key = `${user.uid}:${token}`;
+        if (writtenRef.current === key) return;
+
+        await setDoc(doc(db, 'users', user.uid), { pushToken: token }, { merge: true });
+        writtenRef.current = key;
       } catch (e) {
         // Push is a nice-to-have; never let it break the app.
         console.warn('Push registration failed:', e.message);
       }
-    })();
+    };
 
-    return () => { cancelled = true; };
+    register(true);
+
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') register(false);
+    });
+
+    return () => {
+      cancelled = true;
+      sub.remove();
+      // Sign-out clears the token on the server, so the next sign-in (even by
+      // the same person) must write it again.
+      writtenRef.current = null;
+    };
   }, [user?.uid]);
 }

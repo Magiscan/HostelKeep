@@ -20,7 +20,7 @@
       "bundleIdentifier": "com.hostelkeep.app",
       "buildNumber": "10",
       "infoPlist": {
-        "NSCameraUsageDescription": "HostelKeep uses your camera so you can attach a photo of a room when requesting an extra cleaning.",
+        "NSCameraUsageDescription": "HostelKeep uses your camera to take a profile photo or a photo for an extra-room request.",
         "NSPhotoLibraryUsageDescription": "HostelKeep lets you choose a profile photo or hostel logo from your photos.",
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -42,11 +42,11 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
       ],
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "monochromeImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0B1F3A"
-      },
+    "adaptiveIcon": {
+      "foregroundImage": "./assets/adaptive-icon.png",
+      "monochromeImage": "./assets/adaptive-icon-monochrome.png",
+      "backgroundColor": "#02123D"
+    },
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "pan"
     },
@@ -61,14 +61,14 @@
         "expo-image-picker",
         {
           "photosPermission": "HostelKeep lets you choose a profile photo or hostel logo from your photos.",
-          "cameraPermission": "HostelKeep uses your camera so you can attach a photo of a room when requesting an extra cleaning.",
+          "cameraPermission": "HostelKeep uses your camera to take a profile photo or a photo for an extra-room request.",
           "microphonePermission": false
         }
       ],
       [
-        "expo-notifications",
-        {
-          "color": "#0B1F3A",
+        "expo-notifications", {
+          "icon": "./assets/notification-icon.png",
+          "color": "#02123D",
           "defaultChannel": "default"
         }
       ],

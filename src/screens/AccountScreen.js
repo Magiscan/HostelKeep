@@ -10,11 +10,12 @@
 //
 // Reviewers look for account deletion to be easy to find; from the avatar menu
 // it's two taps, which is what they expect.
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput,
-  Alert, ActivityIndicator, Linking,
+  Alert, ActivityIndicator, Linking, AppState, Platform,
 } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { useTranslation } from 'react-i18next';
 import Icon from '../components/Icon';
 import BottomSheet from '../components/BottomSheet';
@@ -123,6 +124,26 @@ export default function AccountScreen({ bottomPad = 0 }) {
   const [deleting, setDeleting] = useState(false);
   const [progress, setProgress] = useState('');
 
+  // Permission state for the "Notifications are off" row. Null means we
+  // haven't checked yet (or we're on web, where the row never renders).
+  const [notifStatus, setNotifStatus] = useState(null);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
+    const check = () => Notifications.getPermissionsAsync()
+      .then((p) => setNotifStatus(p.status))
+      .catch(() => {});
+    check();
+    // Re-check when they come back from Android settings. iOS re-prompts
+    // are impossible after the first dismissal, so this matters most on
+    // Android — but the listener is harmless on iOS and keeps the two
+    // platforms symmetrical.
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') check();
+    });
+    return () => sub.remove();
+  }, []);
+
   const handleChangePassword = async () => {
     if (!currentPassword || newPassword.length < MIN_PASSWORD) {
       Alert.alert(t('passwordTooShort') || `Password must be at least ${MIN_PASSWORD} characters.`);
@@ -220,6 +241,14 @@ export default function AccountScreen({ bottomPad = 0 }) {
             label={t('changePassword') || 'Change password'}
             onPress={() => setShowPassword(true )}
           />
+          {notifStatus && notifStatus !== 'granted' && (
+            <ActionRow
+              icon="notifications_off"
+              label={t('notificationsOff', 'Notifications are off')}
+              value={t('openSettings', 'Open settings')}
+              onPress={() => Linking.openSettings()}
+            />
+          )}
           <ActionRow
             icon="shield_person"
             label={t('privacyPolicy') || 'Privacy Policy'}

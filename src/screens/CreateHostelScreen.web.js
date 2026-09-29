@@ -171,7 +171,7 @@ export default function CreateHostelScreen() {
       </View>
 
       <View style={styles.fieldGroup}>
-        <Label>{t('email') || 'Your email'}</Label>
+        <Label>{t('yourEmail')}</Label>
         <Input
           value={recoveryEmail}
           onChangeText={setRecoveryEmail}

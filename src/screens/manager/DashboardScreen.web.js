@@ -41,21 +41,21 @@ const HAIRLINE = '#EEF2F7';
 /* Room status → chip + accent. `worst` in the prototype walks the bed states;
    here the app's simpler model is: cleaned → done, assigned → in progress,
    otherwise waiting. */
-function roomLook(cleaned, assigned) {
+function roomLook(cleaned, assigned, t) {
   if (cleaned) {
     return {
-      label: 'Done', icon: 'verified', accent: ACCENT.complete,
+      label: t('roomLookDone'), icon: 'verified', accent: ACCENT.complete,
       bg: STATUS.inspected.bg, border: STATUS.inspected.border, fg: STATUS.inspected.text,
     };
   }
   if (assigned) {
     return {
-      label: 'In progress', icon: 'cleaning_services', accent: BRAND.yellow,
+      label: t('roomLookInProgress'), icon: 'cleaning_services', accent: BRAND.yellow,
       bg: STATUS.dirty.bg, border: STATUS.dirty.border, fg: STATUS.dirty.text,
     };
   }
   return {
-    label: 'Waiting', icon: 'schedule', accent: NEUTRAL.border,
+    label: t('roomLookWaiting'), icon: 'schedule', accent: NEUTRAL.border,
     bg: NEUTRAL.slateChip, border: NEUTRAL.border, fg: NEUTRAL.text3,
   };
 }
@@ -78,30 +78,30 @@ const ATTENTION_LOOK = {
 /* ── Room detail ───────────────────────────────────────────────────
    Reuses the shared Drawer so a row click on the dashboard and a room click on
    Assign open the same kind of surface. Read-only — editing lives on Assign. */
-function RoomDetailDrawer({ room, roomStatus, cleaners, floors, onClose }) {
+function RoomDetailDrawer({ room, roomStatus, cleaners, floors, onClose, t }) {
   if (!room) return null;
   const status = roomStatus[room.id] || {};
   const cleaner = cleaners.find(c => c.id === room.assignedTo);
   const floor = floors.find(f => f.id === room.floorId);
-  const look = roomLook(!!status.cleaned, !!room.assignedTo);
+  const look = roomLook(!!status.cleaned, !!room.assignedTo, t);
 
   const rows = [
-    ['Type', room.type === 'private' ? 'Private' : 'Dormitory'],
-    floor && ['Floor', floor.name],
-    ['Housekeeper', cleaner ? cleaner.username : 'Unassigned'],
-    ['Status', look.label],
-    status.extraTime > 0 && ['Extra time', `+${status.extraTime} min`],
-    status.managerNotes && ['Manager note', status.managerNotes],
-    status.notes && ['Housekeeper note', status.notes],
+    [t('detailType'), room.type === 'private' ? t('privateFull') : t('dormitoryFull')],
+    floor && [t('detailFloor'), floor.name],
+    [t('detailHousekeeper'), cleaner ? cleaner.username : t('unassignedLower')],
+    [t('detailStatus'), look.label],
+    status.extraTime > 0 && [t('detailExtraTime'), `+${status.extraTime} min`],
+    status.managerNotes && [t('detailManagerNote'), status.managerNotes],
+    status.notes && [t('detailHousekeeperNote'), status.notes],
   ].filter(Boolean);
 
   const flags = [];
-  if (status.earlyCheckIn) flags.push('Early check-in');
-  if (status.lateCheckOut) flags.push('Late check-out');
-  if (status.commonOnly) flags.push('Common areas only');
+  if (status.earlyCheckIn) flags.push(t('earlyCheckInLabel'));
+  if (status.lateCheckOut) flags.push(t('lateCheckOutLabel'));
+  if (status.commonOnly) flags.push(t('cleanCommonOnlyShort'));
 
   return (
-    <Drawer visible onClose={onClose} width={460} title={room.name} subtitle="Today's state">
+    <Drawer visible onClose={onClose} width={460} title={room.name} subtitle={t('roomDetailSubtitle')}>
       <View style={{ gap: 12 }}>
         {rows.map(([label, value]) => (
           <View key={label} style={styles.detailRow}>
@@ -113,7 +113,7 @@ function RoomDetailDrawer({ room, roomStatus, cleaners, floors, onClose }) {
 
       {flags.length > 0 && (
         <View>
-          <Text style={d.overline}>Flags</Text>
+          <Text style={d.overline}>{t('flagsHeading')}</Text>
           <View style={styles.chipWrap}>
             {flags.map(f => (
               <View key={f} style={[styles.chip, { backgroundColor: STATUS.late.bg, borderColor: STATUS.late.border }]}>
@@ -126,7 +126,7 @@ function RoomDetailDrawer({ room, roomStatus, cleaners, floors, onClose }) {
 
       {room.type === 'dorm' && room.beds?.length > 0 && !status.commonOnly && (
         <View>
-          <Text style={d.overline}>Beds</Text>
+          <Text style={d.overline}>{t('bedsHeading')}</Text>
           <View style={styles.chipWrap}>
             {room.beds.map(bed => {
               const assignment = (status.assignmentBedStatus || {})[bed.id] || { status: 'clean' };
@@ -136,7 +136,7 @@ function RoomDetailDrawer({ room, roomStatus, cleaners, floors, onClose }) {
               return (
                 <View key={bed.id} style={[styles.chip, { backgroundColor: s.bg, borderColor: s.border }]}>
                   <Text style={[styles.chipText, { color: s.text }]}>
-                    {bed.name} · {bedClean ? 'Cleaned' : skipped ? 'Skipped' : 'To do'}
+                    {bed.name} · {bedClean ? t('bedCleaned') : skipped ? t('bedSkipped') : t('bedToDo')}
                   </Text>
                 </View>
               );
@@ -229,32 +229,32 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
 
   const kpis = [
     {
-      key: 'rooms', icon: 'meeting_room', value: rooms.length, label: 'Rooms today',
+      key: 'rooms', icon: 'meeting_room', value: rooms.length, label: t('kpiRoomsToday'),
       chipBg: NEUTRAL.slateChip, chipFg: BRAND.navy,
-      subs: [{ label: `${unassignedCount} unassigned`, bg: STATUS.dirty.bg, fg: STATUS.dirty.text }],
+      subs: [{ label: t('kpiUnassignedSuffix', { count: unassignedCount }), bg: STATUS.dirty.bg, fg: STATUS.dirty.text }],
       onPress: () => onNavigate('rooms'),
     },
     {
-      key: 'progress', icon: 'donut_large', value: `${assignedPct}%`, label: 'Shift progress',
+      key: 'progress', icon: 'donut_large', value: `${assignedPct}%`, label: t('kpiShiftProgress'),
       chipBg: STATUS.early.bg, chipFg: STATUS.early.text,
-      subs: [{ label: `${assignedCleaned} of ${assignedRooms.length} done`, bg: STATUS.inspected.bg, fg: STATUS.inspected.text }],
+      subs: [{ label: t('kpiDoneOf', { done: assignedCleaned, total: assignedRooms.length }), bg: STATUS.inspected.bg, fg: STATUS.inspected.text }],
       onPress: () => onNavigate('assign'),
     },
     {
-      key: 'team', icon: 'group', value: cleaners.length, label: 'Housekeepers on shift',
+      key: 'team', icon: 'group', value: cleaners.length, label: t('kpiHousekeepersOnShift'),
       chipBg: STATUS.inspected.bg, chipFg: STATUS.inspected.text,
       subs: [
-        { label: `${workingCleaners} working`, bg: NEUTRAL.slateChip, fg: NEUTRAL.text2 },
-        { label: `${cleaners.length - workingCleaners} free`, bg: STATUS.inspected.bg, fg: STATUS.inspected.text },
+        { label: t('kpiWorkingSuffix', { count: workingCleaners }), bg: NEUTRAL.slateChip, fg: NEUTRAL.text2 },
+        { label: t('kpiFreeSuffix', { count: cleaners.length - workingCleaners }), bg: STATUS.inspected.bg, fg: STATUS.inspected.text },
       ],
       onPress: () => onNavigate('team'),
     },
     {
-      key: 'requests', icon: 'flag', value: pendingExtraRequests.length, label: 'Extra requests',
+      key: 'requests', icon: 'flag', value: pendingExtraRequests.length, label: t('kpiExtraRequests'),
       chipBg: STATUS.dirty.bg, chipFg: STATUS.dirty.text,
       subs: [
-        { label: `${pendingExtraRequests.length} pending`, bg: STATUS.dirty.bg, fg: STATUS.dirty.text },
-        { label: `${approvedCount} approved`, bg: STATUS.inspected.bg, fg: STATUS.inspected.text },
+        { label: t('kpiPendingSuffix', { count: pendingExtraRequests.length }), bg: STATUS.dirty.bg, fg: STATUS.dirty.text },
+        { label: t('kpiApprovedSuffix', { count: approvedCount }), bg: STATUS.inspected.bg, fg: STATUS.inspected.text },
       ],
       onPress: () => onNavigate('extraRequests'),
     },
@@ -285,14 +285,14 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
     attentionItems.push({
       type: 'request', id: req.id, roomId: req.id,
       title: room?.name || 'Unknown room',
-      message: `Extra room requested by ${cleaner?.username || 'Unknown housekeeper'}`,
+      message: t('extraRoomRequestedBy', { name: cleaner?.username || t('unknownHousekeeper') }),
       request: req,
     });
   });
   rooms.forEach(room => {
     const status = roomStatus[room.id] || {};
-    if (status.earlyCheckIn) attentionItems.push({ type: 'flag', id: `early-${room.id}`, roomId: room.id, title: room.name, message: 'Early check-in' });
-    if (status.lateCheckOut) attentionItems.push({ type: 'flag', id: `late-${room.id}`, roomId: room.id, title: room.name, message: 'Late check-out' });
+    if (status.earlyCheckIn) attentionItems.push({ type: 'flag', id: `early-${room.id}`, roomId: room.id, title: room.name, message: t('earlyCheckInLabel') });
+    if (status.lateCheckOut) attentionItems.push({ type: 'flag', id: `late-${room.id}`, roomId: room.id, title: room.name, message: t('lateCheckOutLabel') });
     if (status.notes && status.notes.trim()) {
       attentionItems.push({
         type: 'note', id: `note-${room.id}`, roomId: room.id, title: room.name,
@@ -302,7 +302,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
     if (status.extraTime > 0) {
       attentionItems.push({
         type: 'extraTime', id: `extratime-${room.id}`, roomId: room.id, title: room.name,
-        message: `Extra time requested: +${status.extraTime} min`,
+        message: t('extraTimeRequested', { minutes: status.extraTime }),
       });
     }
   });
@@ -346,7 +346,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
           <View style={styles.colMain}>
 
             <Panel
-              title="Rooms today"
+              title={t('panelRoomsToday')}
               flush
               action={
                 <View style={styles.tableSearch}>
@@ -354,7 +354,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
                   <TextInput
                     value={search}
                     onChangeText={setSearch}
-                    placeholder="Search a room…"
+                    placeholder={t('searchRoomPlaceholder')}
                     placeholderTextColor={NEUTRAL.text4}
                     style={styles.tableSearchInput}
                   />
@@ -363,11 +363,11 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
             >
 
               <View style={styles.thead}>
-                <Text style={[styles.th, styles.cRoom]}>Room</Text>
-                <Text style={[styles.th, styles.cFloor]}>Floor</Text>
-                <Text style={[styles.th, styles.cType]}>Type</Text>
-                <Text style={[styles.th, styles.cHk]}>Housekeeper</Text>
-                <Text style={[styles.th, styles.cStatus]}>Status</Text>
+                <Text style={[styles.th, styles.cRoom]}>{t('thRoom')}</Text>
+                <Text style={[styles.th, styles.cFloor]}>{t('thFloor')}</Text>
+                <Text style={[styles.th, styles.cType]}>{t('thType')}</Text>
+                <Text style={[styles.th, styles.cHk]}>{t('thHousekeeper')}</Text>
+                <Text style={[styles.th, styles.cStatus]}>{t('thStatus')}</Text>
                 <View style={styles.cEnd} />
               </View>
               {/* Horizontal scroll keeps the six columns readable rather than
@@ -388,7 +388,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
                     const status = roomStatus[room.id] || {};
                     const cleaner = cleaners.find(c => c.id === room.assignedTo);
                     const floor = floors.find(f => f.id === room.floorId);
-                    const look = roomLook(!!status.cleaned, !!room.assignedTo);
+                    const look = roomLook(!!status.cleaned, !!room.assignedTo, t);
                     const hasNote = !!(status.notes && status.notes.trim());
 
                     return (
@@ -412,7 +412,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
                             <Text style={[styles.typePillText, {
                               color: room.type === 'dorm' ? '#7C4A15' : NEUTRAL.text2,
                             }]}>
-                              {room.type === 'dorm' ? 'Dorm' : 'Private'}
+                              {room.type === 'dorm' ? t('typeDormShort') : t('typePrivateShort')}
                             </Text>
                           </View>
                         </View>
@@ -424,7 +424,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
                             style={[styles.hkName, !cleaner && { color: NEUTRAL.text4 }]}
                             numberOfLines={1}
                           >
-                            {cleaner ? cleaner.username : 'Unassigned'}
+                            {cleaner ? cleaner.username : t('unassignedLower')}
                           </Text>
                         </View>
                         <View style={styles.cStatus}>
@@ -450,17 +450,17 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
             </Panel>
 
             <Panel
-              title="Recent activity"
+              title={t('panelRecentActivity')}
               flush
               action={
                 <TouchableOpacity onPress={() => onNavigate('reports')} activeOpacity={0.7}>
-                  <Text style={styles.viewAll}>View all</Text>
+                  <Text style={styles.viewAll}>{t('viewAll')}</Text>
                 </TouchableOpacity>
               }
             >
               <View style={styles.activityList}>
                 {activity.length === 0 ? (
-                  <Text style={styles.emptyLine}>Nothing yet today.</Text>
+                  <Text style={styles.emptyLine}>{t('nothingYetToday')}</Text>
                 ) : activity.map(a => (
                   <View key={a.id} style={styles.activityRow}>
                     <View style={[styles.activityIcon, { backgroundColor: a.bg }]}>
@@ -478,9 +478,9 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
           <View style={styles.colSide}>
 
             <View style={[styles.panel, styles.panelPadded]}>
-              <Text style={styles.panelTitle}>Housekeepers</Text>
+              <Text style={styles.panelTitle}>{t('panelHousekeepers')}</Text>
               <Text style={styles.panelSub}>
-                {workingCleaners} of {cleaners.length} working
+                {t('housekeepersWorkingOf', { working: workingCleaners, total: cleaners.length })}
               </Text>
               <View style={{ gap: 14 }}>
                 {cleaners.map(c => {
@@ -513,7 +513,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
             </View>
 
             <View style={[styles.panel, styles.panelPadded]}>
-              <Text style={[styles.panelTitle, { marginBottom: 16 }]}>Floor progress</Text>
+              <Text style={[styles.panelTitle, { marginBottom: 16 }]}>{t('panelFloorProgress')}</Text>
               <View style={{ gap: 16 }}>
                 {sortedFloors.map(f => {
                   const floorRooms = rooms.filter(r => r.floorId === f.id);
@@ -538,9 +538,9 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
             </View>
 
             <View style={[styles.panel, styles.panelPadded]}>
-              <Text style={[styles.panelTitle, { marginBottom: 12 }]}>Needs attention</Text>
+              <Text style={[styles.panelTitle, { marginBottom: 12 }]}>{t('panelNeedsAttention')}</Text>
               {attentionItems.length === 0 ? (
-                <Text style={styles.emptyLine}>Nothing needs attention right now.</Text>
+                <Text style={styles.emptyLine}>{t('nothingNeedsAttention')}</Text>
               ) : (
                 <View>
                   {attentionItems.map(item => {
@@ -573,7 +573,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
                                 activeOpacity={0.8}
                               >
                                 <Text style={[styles.miniBtnText, { color: STATUS.inspected.text }]}>
-                                  Approve
+                                  {t('approve')}
                                 </Text>
                               </TouchableOpacity>
                               <TouchableOpacity
@@ -581,7 +581,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
                                 style={[styles.miniBtn, { borderColor: '#FECACA' }]}
                                 activeOpacity={0.8}
                               >
-                                <Text style={[styles.miniBtnText, { color: '#B91C1C' }]}>Reject</Text>
+                                <Text style={[styles.miniBtnText, { color: '#B91C1C' }]}>{t('reject')}</Text>
                               </TouchableOpacity>
                             </View>
                           )}
@@ -602,6 +602,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
         cleaners={cleaners}
         floors={floors}
         onClose={() => setSelectedRoom(null)}
+        t={t}
       />
 
       <Footer compact={isMobile} />

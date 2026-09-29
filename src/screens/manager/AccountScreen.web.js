@@ -92,10 +92,10 @@ export default function AccountScreen() {
   const [hostelDeleting, setHostelDeleting] = useState(false);
 
   const roleLabel = useMemo(() => {
-    if (owner) return 'Owner';
-    if (user?.role === 'staff') return roles?.[user.roleId]?.name || 'No role';
-    return 'Housekeeper';
-  }, [owner, user, roles]);
+    if (owner) return t('roleOwner');
+    if (user?.role === 'staff') return roles?.[user.roleId]?.name || t('roleNoRole');
+    return t('roleHousekeeper');
+  }, [owner, user, roles, t]);
 
   const copyCode = async () => {
     try {
@@ -194,10 +194,10 @@ export default function AccountScreen() {
         <View style={styles.split}>
           {/* ── Details ── */}
           <View style={styles.panel}>
-            <Text style={d.overline}>Account</Text>
+           <Text style={d.overline}>{t('account')}</Text>
             <View style={styles.card}>
               <InfoRow label={t('username') || 'Name'} value={user?.username} />
-              <InfoRow label="Email" value={user?.email} />
+              <InfoRow label={t('email')} value={user?.email} />
               <InfoRow
                 label={t('hostelCode') || 'Hostel code'}
                 value={user?.hostelCode}
@@ -207,27 +207,24 @@ export default function AccountScreen() {
                     onPress={copyCode}
                     style={styles.copyBtn}
                     activeOpacity={0.7}
-                    accessibilityLabel="Copy hostel code"
+                    accessibilityLabel={t('copyHostelCode')}
                   >
                     <Icon
                       name={copied ? 'check' : 'content_copy'}
                       size={17}
                       color={copied ? BRAND.navy : NEUTRAL.text3}
                     />
-                    <Text style={styles.copyBtnText}>{copied ? 'Copied' : 'Copy'}</Text>
+                    <Text style={styles.copyBtnText}>{copied ? t('copied') : t('copy')}</Text>
                   </TouchableOpacity>
                 )}
               />
             </View>
-            <Text style={styles.hint}>
-              Housekeepers need this code to sign in. It is not recoverable from
-              the sign-in screen, so keep it somewhere you can find it.
-            </Text>
+            <Text style={styles.hint}>{t('hostelCodeSignInHint')}</Text>
           </View>
 
           {/* ── Settings ── */}
           <View style={styles.panel}>
-            <Text style={d.overline}>Settings</Text>
+            <Text style={d.overline}>{t('settings')}</Text>
             <View style={{ gap: 8 }}>
               {canRename && (
                 <TouchableOpacity
@@ -242,7 +239,7 @@ export default function AccountScreen() {
                   <View style={d.listRowIcon}>
                     <Icon name="edit" size={18} color={NEUTRAL.text2} />
                   </View>
-                  <Text style={d.listRowLabel}>Hostel name</Text>
+                  <Text style={d.listRowLabel}>{t('hostelNameLabel')}</Text>
                   <Text style={styles.rowValue} numberOfLines={1}>{hostel?.name}</Text>
                   <Icon name="chevron_right" size={19} color={NEUTRAL.text4} />
                 </TouchableOpacity>
@@ -278,7 +275,7 @@ export default function AccountScreen() {
         {/* ── Danger zone ──
             Last, visually separated, and the only red on the screen — so it
             can't be mistaken for a routine setting. */}
-        <Text style={[d.overline, { color: DANGER, marginTop: 8 }]}>Danger zone</Text>
+        <Text style={[d.overline, { color: DANGER, marginTop: 8 }]}>{t('dangerZone')}</Text>
 
         {!!deleteError && (
           <View style={styles.errorBanner}>
@@ -290,15 +287,12 @@ export default function AccountScreen() {
         <View style={styles.dangerStack}>
           {canDeleteHostelOnly && (
             <View style={styles.dangerCard}>
-              <Text style={styles.dangerTitle}>Delete this hostel</Text>
+              <Text style={styles.dangerTitle}>{t('deleteThisHostel')}</Text>
               <Text style={styles.dangerBody}>
-                Permanently deletes {hostel?.name || 'this property'} — every room,
-                all of its cleaning history, and every housekeeper and manager
-                account belonging to it. Your other{' '}
-                {hostelCodes.length - 1 === 1
-                  ? 'hostel is'
-                  : `${hostelCodes.length - 1} hostels are`}{' '}
-                not affected, and you stay signed in.
+                {t('deleteThisHostelBody', {
+                  name: hostel?.name || t('noProperty'),
+                  count: hostelCodes.length - 1,
+                })}
               </Text>
               <TouchableOpacity
                 onPress={() => setConfirmHostelDelete(true)}
@@ -309,12 +303,12 @@ export default function AccountScreen() {
                 {hostelDeleting ? (
                   <>
                     <ActivityIndicator color={DANGER} />
-                    <Text style={styles.dangerBtnText}>{progress || 'Deleting…'}</Text>
+                    <Text style={styles.dangerBtnText}>{progress || t('deletingShort')}</Text>
                   </>
                 ) : (
                   <>
                     <Icon name="delete" size={19} color={DANGER} />
-                    <Text style={styles.dangerBtnText}>Delete this hostel</Text>
+                    <Text style={styles.dangerBtnText}>{t('deleteThisHostel')}</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -322,18 +316,12 @@ export default function AccountScreen() {
           )}
 
           <View style={styles.dangerCard}>
-            <Text style={styles.dangerTitle}>Delete account</Text>
+            <Text style={styles.dangerTitle}>{t('deleteAccountTitle')}</Text>
             <Text style={styles.dangerBody}>
               {owner
-                ? `Permanently deletes your account and ${
-                  hostelCodes.length > 1
-                    ? `all ${hostelCodes.length} of your hostels`
-                    : 'your hostel'
-                }, including every room, all cleaning history, and every other account in ${
-                  hostelCodes.length > 1 ? 'them' : 'it'
-                }.`
-                : 'Permanently deletes your account and all of your personal data. The hostel itself is not affected.'}
-              {' This cannot be undone.'}
+                ? t('deleteAccountOwnerBody', { hostelCount: hostelCodes.length })
+                : t('deleteAccountStaffBody')}
+              {' ' + t('cannotBeUndone')}
             </Text>
             <TouchableOpacity
               onPress={() => {
@@ -356,8 +344,8 @@ export default function AccountScreen() {
         visible={showRename}
         onClose={() => setShowRename(false)}
         width={460}
-        title="Hostel name"
-        subtitle="This is what your housekeepers see when they sign in."
+        title={t('hostelNameLabel')}
+        subtitle={t('manager.renameHint')}
         footer={(
           <>
             <TouchableOpacity onPress={() => setShowRename(false)} style={d.btnGhost} activeOpacity={0.8}>
@@ -371,13 +359,13 @@ export default function AccountScreen() {
               activeOpacity={0.9}
             >
               <Icon name="save" size={20} color={BRAND.yellow} />
-              <Text style={d.btnPrimaryText}>{savingName ? 'Saving…' : 'Save'}</Text>
+              <Text style={d.btnPrimaryText}>{savingName ? t('savingShort') : t('save')}</Text>
             </TouchableOpacity>
           </>
         )}
       >
         <View>
-          <FieldLabel>Name</FieldLabel>
+          <FieldLabel>{t('name')}</FieldLabel>
           <TextInput
             value={hostelName}
             onChangeText={setHostelName}
@@ -412,13 +400,13 @@ export default function AccountScreen() {
               activeOpacity={0.9}
             >
               <Icon name="save" size={20} color={BRAND.yellow} />
-              <Text style={d.btnPrimaryText}>{savingPassword ? 'Saving…' : 'Save'}</Text>
+              <Text style={d.btnPrimaryText}>{savingPassword ? t('savingShort') : t('save')}</Text>
             </TouchableOpacity>
           </>
         )}
       >
         <View>
-          <FieldLabel>Current password</FieldLabel>
+          <FieldLabel>{t('currentPassword')}</FieldLabel>
           <TextInput
             value={currentPassword}
             onChangeText={setCurrentPassword}
@@ -429,7 +417,7 @@ export default function AccountScreen() {
           />
         </View>
         <View>
-          <FieldLabel>New password</FieldLabel>
+          <FieldLabel>{t('newPassword')}</FieldLabel>
           <TextInput
             value={newPassword}
             onChangeText={setNewPassword}
@@ -438,7 +426,7 @@ export default function AccountScreen() {
             secureTextEntry
             style={d.textInput}
           />
-          <Text style={styles.hint}>At least {MIN_PASSWORD} characters.</Text>
+          <Text style={styles.hint}>{t('passwordMinChars', { min: MIN_PASSWORD })}</Text>
           {!!passwordMsg && <Text style={styles.errorText}>{passwordMsg}</Text>}
         </View>
       </Drawer>
@@ -448,12 +436,8 @@ export default function AccountScreen() {
         visible={showDeleteAccount}
         onClose={() => !deleting && setShowDeleteAccount(false)}
         width={460}
-        title={owner ? 'Delete hostel and account' : 'Delete account'}
-        subtitle={
-          owner
-            ? 'Everything listed in the danger zone will be removed. This is permanent.'
-            : 'Your account and all of your personal data will be removed. This is permanent.'
-        }
+        title={owner ? t('deleteHostelAndAccountTitle') : t('deleteAccountTitle')}
+        subtitle={owner ? t('deleteEverythingWarning') : t('deletePersonalDataWarning')}
         footer={deleting ? null : (
           <>
             <TouchableOpacity
@@ -482,12 +466,12 @@ export default function AccountScreen() {
         {deleting ? (
           <View style={styles.deletingBox}>
             <ActivityIndicator size="large" color={BRAND.navy} />
-            <Text style={styles.hint}>{progress || 'Deleting…'}</Text>
-            <Text style={styles.hint}>Please keep this tab open.</Text>
+            <Text style={styles.hint}>{progress || t('deletingShort')}</Text>
+            <Text style={styles.hint}>{t('keepThisTabOpen')}</Text>
           </View>
         ) : (
           <View>
-            <FieldLabel>Confirm with your password</FieldLabel>
+            <FieldLabel>{t('confirmWithPassword')}</FieldLabel>
             <TextInput
               value={deletePassword}
               onChangeText={setDeletePassword}
@@ -503,13 +487,9 @@ export default function AccountScreen() {
 
       <ConfirmDialog
         visible={confirmHostelDelete}
-        title={`Delete ${hostel?.name || 'this hostel'}?`}
-        message={
-          'Every room, all cleaning history, and every account belonging to this '
-          + 'hostel will be removed. Your other hostels and your own account stay '
-          + 'as they are. This cannot be undone.'
-        }
-        confirmLabel="Delete hostel"
+        title={t('confirmHostelDeleteTitle', { name: hostel?.name || t('noProperty') })}
+        message={t('confirmHostelDeleteBody')}
+        confirmLabel={t('deleteHostelAction')}
         onConfirm={handleDeleteHostel}
         onCancel={() => setConfirmHostelDelete(false)}
       />

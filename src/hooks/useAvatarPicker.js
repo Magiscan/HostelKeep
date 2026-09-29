@@ -23,6 +23,7 @@ import { useCallback, useState } from 'react';
 import { Platform, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import i18n from '../i18n';
 
 /** Final avatar edge length. 512 is plenty for a 64px circle at 3x. */
 const SIZE = 512;
@@ -95,13 +96,13 @@ export function useAvatarPicker() {
 
       const uri = await squareCrop(result.assets[0]);
       if (!uri) {
-        Alert.alert('Could not read that image', 'Try another photo.');
+        Alert.alert(i18n.t('couldNotReadImage'), i18n.t('tryAnotherPhoto'));
         return;
       }
       await config?.onPicked?.(uri);
       close();
     } catch (e) {
-      Alert.alert('Something went wrong', e.message);
+      Alert.alert(i18n.t('somethingWentWrong'), e.message);
     } finally {
       setBusy(false);
     }
@@ -117,7 +118,7 @@ export function useAvatarPicker() {
     if (Platform.OS === 'ios') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Photos unavailable', 'Allow photo access in your device settings to choose an image.');
+        Alert.alert(i18n.t('photosUnavailable'), i18n.t('photosUnavailableBody'));
         return;
       }
     }
@@ -130,7 +131,7 @@ export function useAvatarPicker() {
 
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Camera unavailable', 'Allow camera access in your device settings to take a photo.');
+      Alert.alert(i18n.t('cameraUnavailable'), i18n.t('cameraUnavailableBody'));
       return undefined;
     }
     await handle(() => ImagePicker.launchCameraAsync(OPTIONS));

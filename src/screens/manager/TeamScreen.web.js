@@ -114,7 +114,7 @@ export default function TeamScreen({ onReady }) {
   // ── Excel export (memoized) ──────────────────────────────────
   const handleExportSheets = useCallback(() => {
     if (!cleaners.length) {
-      Alert.alert('No cleaners', 'Add cleaners before exporting.');
+      Alert.alert(t('exportNoCleanersTitle'), t('exportNoCleanersBody'));
       return;
     }
 
@@ -144,7 +144,7 @@ export default function TeamScreen({ onReady }) {
       });
 
       for (let i = 0; i < EXTRA_BLANK_ROWS; i++) aoa.push(['', '', '']);
-      aoa.push(['Signature', '', 'End Time:']);
+      aoa.push([t('signatureLabel'), '', t('endTimeLabel')]);
 
       const ws = XLSX.utils.aoa_to_sheet(aoa);
       ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }];
@@ -234,7 +234,7 @@ export default function TeamScreen({ onReady }) {
                     activeOpacity={0.7}
                   >
                     <Text style={styles.expandToggleText}>
-                      {isExpanded ? (t('hideRooms') || 'Hide rooms') : (t('showRooms') || 'Show rooms')}
+                      {isExpanded ? t('hideRooms') : t('showRooms')}
                     </Text>
                     <Icon name={isExpanded ? 'expand_less' : 'expand_more'} size={17} color={NEUTRAL.text3} />
                   </TouchableOpacity>
@@ -281,7 +281,7 @@ export default function TeamScreen({ onReady }) {
         onClose={closeForm}
         width={460}
         title={t('addCleaner')}
-        subtitle="They'll sign in with this name and password."
+        subtitle={t('addCleanerDrawerSub')}
         footer={
           <>
             <TouchableOpacity onPress={closeForm} style={d.btnGhost} activeOpacity={0.8}>
@@ -331,7 +331,7 @@ export default function TeamScreen({ onReady }) {
         onClose={() => setResetModal(null)}
         width={460}
         title={t('resetPassword') || 'Reset password'}
-        subtitle={(t('resetPasswordFor') || 'Set a new password for {{name}}.').replace('{{name}}', resetModal?.username || '')}
+        subtitle={t('resetPasswordFor', { name: resetModal?.username || '' })}
         footer={
           <>
             <TouchableOpacity onPress={() => setResetModal(null)} style={d.btnGhost} activeOpacity={0.8}>
@@ -368,8 +368,7 @@ export default function TeamScreen({ onReady }) {
       <ConfirmDialog
         visible={!!deleteModal}
         title={t('deleteCleaner') || 'Delete cleaner'}
-        message={(t('deleteCleanerConfirmation') || 'Remove {{name}} from your team? This cannot be undone.')
-          .replace('{{name}}', deleteModal?.username || '')}
+        message={t('deleteCleanerConfirmation', { name: deleteModal?.username || '' })}
         confirmLabel={t('delete')}
         onConfirm={confirmDelete}
         onCancel={() => setDeleteModal(null)}

@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import Icon from '../components/Icon';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
@@ -53,6 +54,12 @@ const LANGS = [
 ];
 
 const EXTRA_STEP = 5;   // minutes per stepper tap
+
+// The extraRequests create rule in firestore.rules rejects anything at or
+// over 700,000 characters. The camera can produce 1 MB of base64 on a modern
+// phone at full quality, so every attached photo is resized and re-compressed
+// before it's sent. 650,000 leaves margin for JSON framing.
+const MAX_PHOTO_CHARS = 650000;
 
 /* Internal bed state → design token + translation key.
    The token set is fixed by the handoff; the t() keys are the ones already in
@@ -533,16 +540,48 @@ function RequestExtraModal({ visible, rooms, floors, roomStatus, extraRequests, 
       Alert.alert(t('error'), 'Camera permission is required.');
       return;
     }
+
+    // The picker hands back a URI only — base64 comes out of the manipulator
+    // instead. That keeps the picker's memory footprint at one image file
+    // rather than one image file plus a 1 MB encoded string.
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
-      quality: 0.3,
-      base64: true,
-      allowsEditing: false,
+      quality: 1,
+      exif: false,
     });
-    if (!result.canceled && result.assets[0].base64) {
-      setImageBase64(result.assets[0].base64);
-      setImageUri(`data:image/jpeg;base64,${result.assets[0].base64}`);
+    if (result.canceled || !result.assets?.length) return;
+
+    // 1280px on the long side is plenty to show a broken lock or a stain, and
+    // lands around 150–300 KB after compression — well under the limit.
+    const { width = 0, height = 0 } = result.assets[0];
+    const resize = width >= height ? { width: 1280 } : { height: 1280 };
+
+    let out;
+    try {
+      out = await ImageManipulator.manipulateAsync(
+        result.assets[0].uri,
+        [{ resize }],
+        {
+          compress: 0.6,
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: true,
+        },
+      );
+    } catch (e) {
+      Alert.alert(t('error'), e.message);
+      return;
     }
+
+    if (!out?.base64 || out.base64.length >= MAX_PHOTO_CHARS) {
+      Alert.alert(
+        t('error'),
+        t('photoTooLarge', 'That photo is too large. Try again a little further away.'),
+      );
+      return;
+    }
+
+    setImageBase64(out.base64);
+    setImageUri(`data:image/jpeg;base64,${out.base64}`);
   };
 
   return (

@@ -4,18 +4,20 @@ import AppCard from '../Card/AppCard';
 import { COLORS } from '../../theme/colors';
 import { FONTS, FONT_SIZE } from '../../theme/typography';
 import { SPACING } from '../../theme/spacing';
+import { useTranslation } from 'react-i18next';
 
 export default function ProgressCard({ pct, cleaned, total }) {
+  const { t } = useTranslation();
   const message =
-    pct >= 100 ? 'All done for today! 🎉' :
-    pct >= 66 ? "Keep going! You're doing great." :
-    pct >= 33 ? 'Making solid progress.' :
-    'Just getting started today.';
+    pct >= 100 ? t('progressAllDone') :
+    pct >= 66 ? t('progressGreat') :
+    pct >= 33 ? t('progressSolid') :
+    t('progressJustStarting');
 
   return (
     <AppCard style={styles.card}>
       <View style={styles.topRow}>
-        <Text style={styles.label}>TODAY'S PROGRESS</Text>
+        <Text style={styles.label}>{t('todayProgress')}</Text>
         <Text style={styles.link}>↗</Text>
       </View>
 
@@ -25,7 +27,7 @@ export default function ProgressCard({ pct, cleaned, total }) {
         </View>
         <View style={{ marginLeft: SPACING.md }}>
           <Text style={styles.count}>{cleaned} / {total}</Text>
-          <Text style={styles.doneLabel}>Rooms Cleaned</Text>
+          <Text style={styles.doneLabel}>{t('roomsCleaned')}</Text>
         </View>
       </View>
 

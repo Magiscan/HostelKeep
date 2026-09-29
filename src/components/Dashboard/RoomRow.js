@@ -3,18 +3,20 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { COLORS } from '../../theme/colors';
 import { FONTS, FONT_SIZE } from '../../theme/typography';
 import { SPACING } from '../../theme/spacing';
+import { useTranslation } from 'react-i18next';
 
 function initials(name = '') {
   return name.trim().split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
 }
 
 export default function RoomRow({ room, floorName, cleanerName, cleaned, notes, extraTime, onPress }) {
+  const { t } = useTranslation();
   const isAssigned = cleanerName !== '—';
-  let statusText = 'Unassigned';
+  let statusText = t('statusUnassigned');
   let statusColor = COLORS.textSecondary;
 
   if (isAssigned) {
-    statusText = cleaned ? 'Cleaned' : 'Pending';
+    statusText = cleaned ? t('statusCleaned') : t('statusPending');
     statusColor = cleaned ? COLORS.success : COLORS.warning;
   }
 
@@ -30,7 +32,7 @@ export default function RoomRow({ room, floorName, cleanerName, cleaned, notes, 
       <View style={styles.cell}>
         <View style={[styles.typeBadge, room.type === 'private' ? styles.typePrivate : styles.typeDorm]}>
           <Text style={[styles.typeText, room.type === 'private' ? styles.typePrivateText : styles.typeDormText]}>
-            {room.type === 'private' ? 'Private' : 'Dorm'}
+            {room.type === 'private' ? t('private') : t('dorm')}
           </Text>
         </View>
       </View>

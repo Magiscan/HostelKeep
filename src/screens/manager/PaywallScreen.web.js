@@ -31,6 +31,7 @@ import { BRAND, NEUTRAL, STATUS } from '../../theme/tokens';
 import { isOwner as ownerOf } from '../../utils/permissions';
 import { CONTACT_EMAIL, contactMailto } from '../../utils/subscription';
 import AccountScreen from './AccountScreen.web';
+import { useTranslation } from 'react-i18next';
 
 const formatDate = (ms) => (ms
   ? new Date(ms).toLocaleDateString([], { day: 'numeric', month: 'long', year: 'numeric' })
@@ -38,6 +39,7 @@ const formatDate = (ms) => (ms
 
 /* ── Gate ──────────────────────────────────────────────────────────── */
 export function SubscriptionGate({ children }) {
+  const { t } = useTranslation();
   const { subscription } = useApp();
 
   if (!subscription.loaded) {
@@ -85,6 +87,7 @@ function CopyField({ label, value, big }) {
 }
 
 export function ContactDialog({ visible, intent = 'subscribe', onClose }) {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { hostel, hostelCode } = useApp();
 
@@ -106,26 +109,22 @@ export function ContactDialog({ visible, intent = 'subscribe', onClose }) {
           </View>
 
           <Text style={styles.dialogTitle}>
-            {trial ? 'Request your free trial' : 'Subscribe to HostelKeep Pro'}
+            {trial ? t('contactRequestTrialTitle') : t('contactSubscribeTitle')}
           </Text>
           <Text style={styles.body}>
-            {trial
-              ? 'Send us an email and we\'ll switch on your free trial, usually within one working day.'
-              : 'HostelKeep Pro is €38 per month per property, plus VAT. Email us and we\u2019ll send the invoice details and activate it as soon as payment is confirmed.'}
+            {trial ? t('contactTrialBody') : t('contactSubscribeBody')}
           </Text>
 
           <View style={{ gap: 10 }}>
-            <CopyField label="Email us at" value={CONTACT_EMAIL} />
-            <CopyField label="Include your hostel code" value={hostelCode} big />
+            <CopyField label={t('contactEmailUs')} value={CONTACT_EMAIL} />
+            <CopyField label={t('contactIncludeCode')} value={hostelCode} big />
           </View>
 
-          <Text style={styles.small}>
-            Once it's active, the dashboard unlocks on its own — no need to sign out.
-          </Text>
+          <Text style={styles.small}>{t('contactUnlocksNote')}</Text>
 
           <View style={styles.dialogFoot}>
             <TouchableOpacity onPress={onClose} style={styles.ghostBtn} activeOpacity={0.8}>
-              <Text style={styles.ghostBtnText}>Close</Text>
+              <Text style={styles.ghostBtnText}>{t('closeActionFull')}</Text>
             </TouchableOpacity>
             <View style={{ flex: 1 }} />
             <TouchableOpacity
@@ -136,7 +135,7 @@ export function ContactDialog({ visible, intent = 'subscribe', onClose }) {
               activeOpacity={0.9}
             >
               <Icon name="mail" size={19} color={BRAND.yellow} />
-              <Text style={styles.primaryBtnText}>Write email</Text>
+              <Text style={styles.primaryBtnText}>{t('writeEmail')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -147,6 +146,7 @@ export function ContactDialog({ visible, intent = 'subscribe', onClose }) {
 
 /* ── Paywall ───────────────────────────────────────────────────────── */
 export default function PaywallScreen() {
+  const { t } = useTranslation();
   const { user, logout, switchHostel } = useAuth();
   const { hostel, hostelCode, subscription } = useApp();
   const owner = ownerOf(user);
@@ -163,7 +163,7 @@ export default function PaywallScreen() {
         <View style={styles.accountBar}>
           <TouchableOpacity onPress={() => setShowAccount(false)} style={styles.ghostBtn} activeOpacity={0.8}>
             <Icon name="arrow_back" size={18} color={BRAND.navy} />
-            <Text style={styles.ghostBtnText}>Back</Text>
+            <Text style={styles.ghostBtnText}>{t('backAction')}</Text>
           </TouchableOpacity>
         </View>
         <View style={{ flex: 1 }}><AccountScreen /></View>
@@ -175,35 +175,33 @@ export default function PaywallScreen() {
   let icon = 'lock';
   let title;
   let body;
-  let primary = { label: 'Subscribe to Pro', intent: 'subscribe', icon: 'workspace_premium' };
+  let primary = { label: t('paywallSubscribePro'), intent: 'subscribe', icon: 'workspace_premium' };
   let secondary = null;
 
   if (!owner) {
-    title = `${hostel?.name || 'This hostel'} needs an active subscription`;
-    body = 'The dashboard is paused until the hostel owner activates a subscription. Your account and settings are kept.';
+    title = t('paywallNonOwnerTitle', { name: hostel?.name || t('noProperty') });
+    body = t('paywallNonOwnerBody');
     primary = null;
   } else if (subscription.exists && subscription.incomplete) {
     icon = 'build';
-    title = 'We\'re finishing setting up your subscription';
-    body = 'Something in your subscription details needs a quick fix on our side. Get in touch and we\'ll sort it out.';
-    primary = { label: 'Contact us', intent: 'subscribe', icon: 'mail' };
+    title = t('paywallIncompleteTitle');
+    body = t('paywallIncompleteBody');
+    primary = { label: t('paywallContactUs'), intent: 'subscribe', icon: 'mail' };
   } else if (!subscription.exists && firstHostel) {
     icon = 'waving_hand';
-    title = 'Welcome to HostelKeep';
-    body = 'Your hostel is ready, and it works free in the HostelKeep mobile app for you and your team. '
-         + 'This desktop dashboard is part of HostelKeep Pro (€38 per month per property, plus VAT). '
-         + 'Ask us for a free trial and we\u2019ll switch it on.';
-    primary = { label: 'Request a free trial', intent: 'trial', icon: 'rocket_launch' };
-    secondary = { label: 'Subscribe to Pro', intent: 'subscribe' };
+    title = t('paywallWelcomeTitle');
+    body = t('paywallWelcomeBody');
+    primary = { label: t('paywallRequestTrial'), intent: 'trial', icon: 'rocket_launch' };
+    secondary = { label: t('paywallSubscribePro'), intent: 'subscribe' };
   } else if (!subscription.exists) {
-    title = `Activate ${hostel?.name || 'this hostel'}`;
-    body = 'Each property has its own subscription. Get in touch to activate this one.';
+    title = t('paywallActivateTitle', { name: hostel?.name || t('noProperty') });
+    body = t('paywallActivateBody');
   } else if (subscription.status === 'trialing') {
-    title = 'Your free trial has ended';
-    body = 'The desktop dashboard is paused. Everything keeps working in the mobile app. Subscribe to get the dashboard back.';
+    title = t('paywallTrialEndedTitle');
+    body = t('paywallTrialEndedBody');
   } else {
-    title = 'Your subscription has ended';
-    body = 'The desktop dashboard is paused. Everything keeps working in the mobile app. Renew to get the dashboard back.';
+    title = t('paywallSubEndedTitle');
+    body = t('paywallSubEndedBody');
   }
 
   const showEnded = subscription.exists && !subscription.incomplete && subscription.endsAt;
@@ -224,20 +222,20 @@ export default function PaywallScreen() {
 
         {showEnded && (
           <Text style={styles.meta}>
-            {subscription.status === 'trialing' ? 'Trial ended' : 'Period ended'} on {formatDate(subscription.endsAt)}
+            {subscription.status === 'trialing'
+              ? t('paywallTrialEndedOn', { date: formatDate(subscription.endsAt) })
+              : t('paywallPeriodEndedOn', { date: formatDate(subscription.endsAt) })}
           </Text>
         )}
 
         <View style={styles.reassure}>
           <Icon name="verified_user" size={19} color={STATUS.inspected.text} />
-          <Text style={styles.reassureText}>
-            Housekeepers can keep working on their phones, and none of your data is deleted.
-          </Text>
+          <Text style={styles.reassureText}>{t('paywallReassure')}</Text>
         </View>
 
         {owner && (
           <View style={styles.codeBox}>
-            <Text style={styles.copyLabel}>Your hostel code</Text>
+            <Text style={styles.copyLabel}>{t('paywallYourCode')}</Text>
             <Text style={styles.codeValue} selectable>{hostelCode}</Text>
           </View>
         )}
@@ -266,7 +264,7 @@ export default function PaywallScreen() {
 
         {otherHostels.length > 0 && (
           <View style={styles.switchBlock}>
-            <Text style={styles.copyLabel}>Your other hostels</Text>
+            <Text style={styles.copyLabel}>{t('paywallOtherHostels')}</Text>
             <View style={styles.chipRow}>
               {otherHostels.map(code => (
                 <TouchableOpacity
@@ -286,11 +284,11 @@ export default function PaywallScreen() {
         <View style={styles.footerRow}>
           <TouchableOpacity onPress={() => setShowAccount(true)} style={styles.ghostBtn} activeOpacity={0.8}>
             <Icon name="manage_accounts" size={18} color={BRAND.navy} />
-            <Text style={styles.ghostBtnText}>Account</Text>
+            <Text style={styles.ghostBtnText}>{t('paywallAccount')}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={logout} style={styles.ghostBtn} activeOpacity={0.8}>
             <Icon name="logout" size={18} color={BRAND.navy} />
-            <Text style={styles.ghostBtnText}>Sign out</Text>
+            <Text style={styles.ghostBtnText}>{t('signOut')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -302,6 +300,7 @@ export default function PaywallScreen() {
 
 /* ── Banner ────────────────────────────────────────────────────────── */
 export function SubscriptionBanner() {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { subscription } = useApp();
   const owner = ownerOf(user);
@@ -311,13 +310,13 @@ export function SubscriptionBanner() {
 
   let text = null;
   if (subscription.inGrace || subscription.status === 'past_due') {
-    text = `We haven't received this period's payment yet. Access continues until ${formatDate(subscription.accessUntil)}.`;
+    text = t('bannerGrace', { date: formatDate(subscription.accessUntil) });
   } else if (subscription.isTrial && subscription.daysLeft <= 7) {
     text = subscription.daysLeft <= 1
-      ? 'Your free trial ends today.'
-      : `Free trial · ${subscription.daysLeft} days left`;
+      ? t('bannerTrialEndsToday')
+      : t('bannerTrialDaysLeft', { days: subscription.daysLeft });
   } else if (subscription.isTrial) {
-    text = `Free trial · ends ${formatDate(subscription.endsAt)}`;
+    text = t('bannerTrialEndsOn', { date: formatDate(subscription.endsAt) });
   }
   if (!text) return null;
 
@@ -329,7 +328,7 @@ export function SubscriptionBanner() {
       <Text style={[styles.bannerText, urgent && { color: STATUS.late.text }]}>{text}</Text>
       {owner && (
         <TouchableOpacity onPress={() => setContactOpen(true)} activeOpacity={0.8}>
-          <Text style={styles.bannerLink}>Subscribe</Text>
+          <Text style={styles.bannerLink}>{t('bannerSubscribe')}</Text>
         </TouchableOpacity>
       )}
       <ContactDialog visible={contactOpen} intent="subscribe" onClose={() => setContactOpen(false)} />

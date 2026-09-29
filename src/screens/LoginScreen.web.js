@@ -1,5 +1,5 @@
 // src/screens/LoginScreen.web.js
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View, Text, StyleSheet, KeyboardAvoidingView, Platform,
@@ -23,14 +23,15 @@ const LANGS = [
   { code: 'es', label: 'Español' },
 ];
 
-const FEATURES = [
-  { icon: 'flash-outline', text: 'Assign rooms in seconds' },
-  { icon: 'bar-chart-outline', text: 'Track progress across every floor, live' },
-  { icon: 'document-text-outline', text: 'Export daily reports with one click' },
+const buildFeatures = (t) => [
+  { icon: 'flash-outline', text: t('loginFeature1') },
+  { icon: 'bar-chart-outline', text: t('loginFeature2') },
+  { icon: 'document-text-outline', text: t('loginFeature3') },
 ];
 
 export default function LoginScreenWeb() {
   const { t, i18n } = useTranslation();
+  const FEATURES = useMemo(() => buildFeatures(t), [t]);
   const { login, requestPasswordReset } = useAuth();
   const navigation = useNavigation();
   const { width } = useWindowDimensions();
@@ -120,10 +121,8 @@ export default function LoginScreenWeb() {
                 </View>
               </View>
 
-              <Text style={styles.panelHeadline}>Hostel operations,{'\n'}beautifully simple.</Text>
-              <Text style={styles.panelSub}>
-                Everything your housekeeping team needs, in one calm dashboard.
-              </Text>
+              <Text style={styles.panelHeadline}>{t('loginPanelHeadline')}</Text>
+              <Text style={styles.panelSub}>{t('loginPanelSub')}</Text>
 
               <View style={styles.featureList}>
                 {FEATURES.map(f => (
@@ -160,8 +159,8 @@ export default function LoginScreenWeb() {
                   </View>
                 </View>
               )}
-              <Text style={styles.welcomeTitle}>Hello there!</Text>
-              <Text style={styles.welcomeSub}>Sign in to manage today's cleaning.</Text>
+              <Text style={styles.welcomeTitle}>{t('loginTitle')}</Text>
+              <Text style={styles.welcomeSub}>{t('loginSub')}</Text>
             </View>
 
             <Card style={styles.card}>
@@ -211,7 +210,7 @@ export default function LoginScreenWeb() {
                     onPress={() => setShowPass(!showPass)}
                     style={styles.eyeButton}
                     activeOpacity={0.7}
-                    accessibilityLabel={showPass ? 'Hide password' : 'Show password'}
+                    accessibilityLabel={showPass ? t('hidePassword') : t('showPassword')}
                   >
                     <Icon
                       name={showPass ? 'eye-outline' : 'eye-off-outline'}
@@ -227,7 +226,7 @@ export default function LoginScreenWeb() {
                 style={styles.forgotBtn}
                 activeOpacity={0.6}
               >
-                <Text style={styles.forgotText}>Forgot password?</Text>
+                <Text style={styles.forgotText}>{t('forgotPassword')}</Text>
               </TouchableOpacity>
 
               {err ? (

@@ -35,6 +35,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import {
   SECTION_LIST, PERM_LIST, OWNER_ROLE_ID, genRoleId, rolesToList, isOwner,
 } from '../../utils/permissions';
+import { useTranslation } from 'react-i18next';
 
 const SUNKEN = '#F8FAFC';
 const HAIRLINE = '#EEF2F7';
@@ -49,6 +50,7 @@ function Toggle({ on }) {
 }
 
 export default function RolesScreen({ onReady }) {
+  const { t } = useTranslation();
   const { roles: savedRoles, saveRoles, staff, rolesLoaded } = useApp();
   const { user, registerStaff, setStaffRole, deleteStaffAccount } = useAuth();
 
@@ -207,11 +209,8 @@ export default function RolesScreen({ onReady }) {
     return (
       <View style={[styles.container, styles.centered]}>
         <Icon name="shield_person" size={30} color={NEUTRAL.text4} />
-        <Text style={styles.blockedTitle}>Only the hostel owner can manage roles</Text>
-        <Text style={styles.blockedBody}>
-          Editing a role can grant any other permission, so this stays with the
-          account that created the hostel.
-        </Text>
+        <Text style={styles.blockedTitle}>{t('ownerOnlyBlockTitle')}</Text>
+        <Text style={styles.blockedBody}>{t('ownerOnlyBlockBody')}</Text>
       </View>
     );
   }
@@ -240,16 +239,14 @@ export default function RolesScreen({ onReady }) {
         {dirty && (
           <View style={styles.notice}>
             <Icon name="edit" size={19} color={NEUTRAL.text2} />
-            <Text style={styles.noticeText}>
-              You have unsaved changes. Nothing takes effect until you save.
-            </Text>
+            <Text style={styles.noticeText}>{t('unsavedChangesNotice')}</Text>
             <TouchableOpacity
               onPress={handleSave}
               disabled={saving}
               style={[styles.saveInline, saving && { opacity: 0.5 }]}
               activeOpacity={0.85}
             >
-              <Text style={styles.saveInlineText}>{saving ? 'Saving…' : 'Save changes'}</Text>
+              <Text style={styles.saveInlineText}>{saving ? t('savingShort') : t('saveChanges')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -258,7 +255,7 @@ export default function RolesScreen({ onReady }) {
           {/* ── Role list ── */}
           <View style={styles.listPanel}>
             <View style={styles.listHead}>
-              <Text style={styles.panelTitle}>Roles</Text>
+              <Text style={styles.panelTitle}>{t('rolesHeading')}</Text>
               <TouchableOpacity onPress={addRole} style={styles.addBtn} activeOpacity={0.7}>
                 <Icon name="add" size={19} color={NEUTRAL.text2} />
               </TouchableOpacity>
@@ -284,8 +281,12 @@ export default function RolesScreen({ onReady }) {
                       </Text>
                       <Text style={[styles.roleMeta, on && { color: '#FFFFFF', opacity: 0.7 }]}>
                         {role.locked
-                          ? 'You'
-                          : `${count} ${count === 1 ? 'person' : 'people'} · ${role.perms.length} actions`}
+                          ? t('roleYouLabel')
+                          : t('roleMetaCount', {
+                              count,
+                              person: count === 1 ? t('personSingular') : t('personPlural'),
+                              perms: role.perms.length,
+                            })}
                       </Text>
                     </View>
                     <Icon
@@ -302,7 +303,7 @@ export default function RolesScreen({ onReady }) {
           {/* ── Editor ── */}
           <View style={styles.editorPanel}>
             <View>
-              <Text style={d.overline}>Role name</Text>
+              <Text style={d.overline}>{t('roleNameOverline')}</Text>
               <TextInput
                 value={selected.name}
                 onChangeText={v => patch({ name: v })}
@@ -311,20 +312,13 @@ export default function RolesScreen({ onReady }) {
                 style={[styles.nameInput, selected.locked && styles.inputLocked]}
               />
               {selected.locked && (
-                <Text style={styles.lockedHint}>
-                  The owner role always keeps full access, so it can't be edited,
-                  removed, or given to anyone else.
-                </Text>
+                <Text style={styles.lockedHint}>{t('roleLockedHint')}</Text>
               )}
             </View>
 
             <View>
-              <Text style={[d.overline, { marginBottom: 4 }]}>Sections this role can see</Text>
-              <Text style={styles.sectionHint}>
-                Unchecked sections are hidden from the sidebar. Extra requests and
-                History are also blocked at the database; the rest is a sidebar
-                filter, not a lock.
-              </Text>
+              <Text style={[d.overline, { marginBottom: 4 }]}>{t('sectionsOverline')}</Text>
+              <Text style={styles.sectionHint}>{t('sectionsHint')}</Text>
               <View style={styles.sectionGrid}>
                 {SECTION_LIST.map((sec) => {
                   const on = selected.sections.includes(sec.key);
@@ -357,10 +351,8 @@ export default function RolesScreen({ onReady }) {
             </View>
 
             <View>
-              <Text style={[d.overline, { marginBottom: 4 }]}>Actions this role can perform</Text>
-              <Text style={styles.sectionHint}>
-                Enforced by the database. Everything left off is read-only.
-              </Text>
+              <Text style={[d.overline, { marginBottom: 4 }]}>{t('permsOverline')}</Text>
+              <Text style={styles.sectionHint}>{t('permsHint')}</Text>
               <View style={styles.permTable}>
                 {PERM_LIST.map((perm, i) => {
                   const on = selected.perms.includes(perm.key);
@@ -397,7 +389,7 @@ export default function RolesScreen({ onReady }) {
                   style={styles.deleteBtn}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.deleteText}>Delete role</Text>
+                  <Text style={styles.deleteText}>{t('deleteRoleAction')}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -408,11 +400,8 @@ export default function RolesScreen({ onReady }) {
         <View style={styles.peoplePanel}>
           <View style={styles.listHead}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.panelTitle}>People with manager access</Text>
-              <Text style={styles.sectionHint}>
-                They sign in with their email address, so they can reset their own
-                password. Housekeepers are managed on the Team screen.
-              </Text>
+              <Text style={styles.panelTitle}>{t('peopleHeading')}</Text>
+              <Text style={styles.sectionHint}>{t('peopleHint')}</Text>
             </View>
             <TouchableOpacity
               onPress={openAddStaff}
@@ -424,21 +413,16 @@ export default function RolesScreen({ onReady }) {
               activeOpacity={0.9}
             >
               <Icon name="person_add" size={20} color={BRAND.yellow} />
-              <Text style={d.btnPrimaryText}>Add person</Text>
+              <Text style={d.btnPrimaryText}>{t('addPersonBtn')}</Text>
             </TouchableOpacity>
           </View>
 
           {dirty && (
-            <Text style={styles.sectionHint}>
-              Save your role changes before adding anyone — a new account has to
-              point at a role that already exists on the server.
-            </Text>
+            <Text style={styles.sectionHint}>{t('saveBeforeAdding')}</Text>
           )}
 
           {staff.length === 0 ? (
-            <Text style={d.emptyHint}>
-              Nobody yet. You are the only account with manager access.
-            </Text>
+            <Text style={d.emptyHint}>{t('noStaffYet')}</Text>
           ) : (
             <View style={{ gap: 8 }}>
               {staff.map((member) => (
@@ -475,7 +459,7 @@ export default function RolesScreen({ onReady }) {
                     onPress={() => setConfirmRemoveStaff(member)}
                     style={styles.iconBtn}
                     activeOpacity={0.7}
-                    accessibilityLabel={`Remove ${member.username}`}
+                    accessibilityLabel={t('removeStaffLabel', { name: member.username })}
                   >
                     <Icon name="delete" size={19} color={DANGER} />
                   </TouchableOpacity>
@@ -491,8 +475,8 @@ export default function RolesScreen({ onReady }) {
         visible={showAddStaff}
         onClose={() => !staffSaving && setShowAddStaff(false)}
         width={460}
-        title="Add manager access"
-        subtitle="They'll sign in with this email address and password."
+        title={t('addManagerAccessTitle')}
+        subtitle={t('addManagerAccessSub')}
         footer={(
           <>
             <TouchableOpacity
@@ -500,7 +484,7 @@ export default function RolesScreen({ onReady }) {
               style={d.btnGhost}
               activeOpacity={0.8}
             >
-              <Text style={d.btnGhostText}>Cancel</Text>
+              <Text style={d.btnGhostText}>{t('cancelAction')}</Text>
             </TouchableOpacity>
             <View style={{ flex: 1 }} />
             <TouchableOpacity
@@ -514,13 +498,13 @@ export default function RolesScreen({ onReady }) {
               activeOpacity={0.9}
             >
               <Icon name="save" size={20} color={BRAND.yellow} />
-              <Text style={d.btnPrimaryText}>{staffSaving ? 'Saving…' : 'Create account'}</Text>
+              <Text style={d.btnPrimaryText}>{staffSaving ? t('savingShort') : t('createAccountBtn')}</Text>
             </TouchableOpacity>
           </>
         )}
       >
         <View>
-          <FieldLabel>Name</FieldLabel>
+          <FieldLabel>{t('name')}</FieldLabel>
           <TextInput
             value={staffName}
             onChangeText={setStaffName}
@@ -530,7 +514,7 @@ export default function RolesScreen({ onReady }) {
           />
         </View>
         <View>
-          <FieldLabel>Email</FieldLabel>
+          <FieldLabel>{t('fieldEmail')}</FieldLabel>
           <TextInput
             value={staffEmail}
             onChangeText={setStaffEmail}
@@ -541,7 +525,7 @@ export default function RolesScreen({ onReady }) {
           />
         </View>
         <View>
-          <FieldLabel>Temporary password</FieldLabel>
+          <FieldLabel>{t('fieldTemporaryPassword')}</FieldLabel>
           <TextInput
             value={staffPassword}
             onChangeText={setStaffPassword}
@@ -550,13 +534,10 @@ export default function RolesScreen({ onReady }) {
             secureTextEntry
             style={d.textInput}
           />
-          <Text style={styles.sectionHint}>
-            At least 8 characters. They can change it once they're in, or reset it
-            themselves from the sign-in screen.
-          </Text>
+          <Text style={styles.sectionHint}>{t('tempPasswordHint')}</Text>
         </View>
         <View>
-          <FieldLabel>Role</FieldLabel>
+          <FieldLabel>{t('fieldRole')}</FieldLabel>
           <View style={styles.rolePickerWide}>
             {assignableRoles.map((role) => {
               const on = staffRoleId === role.id;
@@ -580,25 +561,18 @@ export default function RolesScreen({ onReady }) {
 
       <ConfirmDialog
         visible={!!confirmDelete}
-        title="Delete this role?"
-        message={
-          `"${confirmDelete?.name}" will be removed. Anyone currently on it loses `
-          + 'all access until you give them another role — they will not be able to '
-          + 'read or write anything.'
-        }
-        confirmLabel="Delete"
+        title={t('deleteRoleConfirmTitle')}
+        message={t('deleteRoleConfirmBody', { name: confirmDelete?.name })}
+        confirmLabel={t('deleteAction')}
         onConfirm={deleteRole}
         onCancel={() => setConfirmDelete(null)}
       />
 
       <ConfirmDialog
         visible={!!confirmRemoveStaff}
-        title="Remove manager access?"
-        message={
-          `${confirmRemoveStaff?.username} will lose access immediately. Their `
-          + 'sign-in details stop working, and nothing they set up is affected.'
-        }
-        confirmLabel="Remove"
+        title={t('removeStaffConfirmTitle')}
+        message={t('removeStaffConfirmBody', { name: confirmRemoveStaff?.username })}
+        confirmLabel={t('remove')}
         onConfirm={handleRemoveStaff}
         onCancel={() => setConfirmRemoveStaff(null)}
       />

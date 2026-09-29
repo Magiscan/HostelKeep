@@ -441,7 +441,7 @@ export default function ManagerApp() {
               >
                 <Icon name="visibility_off" size={22} color={COLORS.primary} />
                 <Text style={styles.outlineBtnText}>
-                  {t('clearAll') || 'Clear all'}
+                  {t('notifClearAll')}
                 </Text>
               </TouchableOpacity>
             )}
