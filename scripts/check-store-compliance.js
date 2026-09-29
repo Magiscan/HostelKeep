@@ -47,7 +47,7 @@ const SALES_PATTERNS = [
   /contactMailto\s*\(/,
   /['"]pro\.subscribe['"]/,
   /early-access/,
-  /app\.hostelkeep\.com/,
+  /app\.hostelkeep\.com(?!\/(?:privacy|delete-account)\b)/,
   /#pricing/,
   /intent:\s*['"](trial|subscribe)['"]/,
 ];
@@ -78,6 +78,7 @@ const BANNED = [
   // One contact address everywhere: CONTACT_EMAIL in src/utils/subscription.js.
   // Delete this line if hello@kohciao.com is a real, monitored inbox.
   [/hello@kohciao\.com/, 'uses hello@kohciao.com instead of CONTACT_EMAIL'],
+  [/api\.emailjs\.com/, 'still calls EmailJS; the welcome email goes through api.hostelkeep.com'],
 ];
 for (const f of files) {
   const src = readCode(f);
@@ -130,7 +131,7 @@ if (gi.includes('\u0000')) fail('.gitignore still contains the UTF-16 line (NUL 
 /* 6. Live pages (optional) */
 async function checkOnline() {
   const pages = [
-    'https://hostelkeep.com/privacy',
+    'https://app.hostelkeep.com/privacy',
     'https://hostelkeep.com/it/privacy',
     'https://hostelkeep.com/es/privacy',
     'https://hostelkeep.com/delete-account',

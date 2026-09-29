@@ -1,5 +1,8 @@
+import 'intl-pluralrules';
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import * as Localization from 'expo-localization';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const resources = {
   en: {
@@ -73,6 +76,7 @@ const resources = {
       clearAllConfirmMsg: 'Are you sure you want to clear all assignments? This will unassign all rooms from cleaners.',
       extraRequests: 'Extra Requests',
       reviewCleanerRequests: 'Review and manage cleaner requests',
+      cleanerResetHint: 'Ask your manager to reset your password from the Team screen. If you are a manager, enter your email address above.',
       extraRequestsFooter:'Requests',
       account: 'Account',
       role: 'Role',
@@ -90,7 +94,7 @@ const resources = {
       infoAskManager: 'Ask your manager \u2014 they create your account and give you '
                  + 'the code, your username and your password.',
       loginTitle: 'Hello there!',
-      loginSub: 'Sign in with your hostel code and username.',
+      loginSub: 'Sign in to manage today\'s cleaning.',
       forgotPassword: 'Forgot password?',
       enterCodeAndUserFirst: 'Please enter your username and hostel code first.',
       pickCleaner: 'Choose who cleans this room.',
@@ -117,11 +121,11 @@ const resources = {
 
       moreInfo: 'More',
       workingToday: 'Working Today',
-      assignSelected: 'Assign {{count}} room',
-      assignSelected_plural: 'Assign {{count}} rooms',
+      assignSelected_one: 'Assign {{count}} room',
+      assignSelected_other: 'Assign {{count}} rooms',
       clearSelection: 'Clear',
-      selectedRooms: '{{count}} room selected',
-      selectedRooms_plural: '{{count}} rooms selected',
+      selectedRooms_one: '{{count}} room selected',
+      selectedRooms_other: '{{count}} rooms selected',
       assignTo: 'Assign to',
       change: 'Change',
       noAssignments: 'No assignments',
@@ -196,7 +200,6 @@ const resources = {
       hostelCode: 'Hostel Code',
       createHostel: 'Create a new hostel',
       loginError: 'Invalid credentials. Please try again.',
-      defaultLoginHint: 'Default: Manager / manager123',
 
       // ---- Create Hostel ----
       createHostelTitle: 'Create Your Hostel',
@@ -245,7 +248,7 @@ const resources = {
 
       markAllRead: 'Mark All as Read',
       clearHistory: 'Clear requests',
-      clearHistroyMsg: 'This removes the requests from the list, but does not undo any room assignments already made.',
+      clearHistoryMsg: 'This removes the requests from the list, but does not undo any room assignments already made.',
 
       contact: {
         title: 'Write to KohCiao',
@@ -303,6 +306,7 @@ const resources = {
       collapseSidebar: 'Collapse sidebar',
       notificationsUnread: 'Notifications, {{count}} unread',
       privacyPolicyLink: 'Privacy policy',
+      deleteYourAccountLink: 'Delete Account',
       termsLink: 'Terms',
       contactLink: 'Contact',
       searchRoomsPlaceholder: 'Search rooms…',
@@ -333,7 +337,7 @@ const resources = {
       deleteThisHostelBody: 'Permanently deletes {{name}} — every room, all of its cleaning history, and every housekeeper and manager account belonging to it. Your other {{count}} hostels are not affected, and you stay signed in.',
       deletingShort: 'Deleting…',
       deleteAccountTitle: 'Delete account',
-      deleteAccountOwnerBody: 'Permanently deletes your account and {{hostelCount}}, including every room, all cleaning history, and every other account in {{pronoun}}.',
+      deleteAccountOwnerBody: 'Permanently deletes your account and all your hostels ({{hostelCount}} in total), including every room, all cleaning history, and every other account in them.',
       deleteAccountStaffBody: 'Permanently deletes your account and all of your personal data. The hostel itself is not affected.',
       deleteHostelAndAccountTitle: 'Delete hostel and account',
       deleteEverythingWarning: 'Everything listed in the danger zone will be removed. This is permanent.',
@@ -958,6 +962,7 @@ const resources = {
       clearAllConfirmMsg: 'Sei sicuro di voler rimuovere tutte le assegnazioni? Tutte le stanze verranno tolte dagli addetti.',
       extraRequests: 'Richieste Extra',
       reviewCleanerRequests: 'Rivedi e gestisci le richieste degli addetti',
+      cleanerResetHint: 'Chiedi al tuo manager di resettare la password se l\'hai dimenticata. Se sei un manager, inserisci la tua mail qui e ti invieremo un link per resettarla.',
       extraRequestsFooter: 'Richieste',
       account: 'Account',
       role: 'Ruolo',
@@ -975,7 +980,7 @@ const resources = {
       infoAskManager: 'Chiedi al tuo manager — crea il tuo account e ti fornisce '
                  + 'il codice, il nome utente e la password.',
       loginTitle: 'Ciao!',
-      loginSub: 'Accedi con il codice ostello e il tuo nome utente.',
+      loginSub: 'Accedi per gestire le pulizie di oggi.',
       forgotPassword: 'Password dimenticata?',
       enterCodeAndUserFirst: 'Inserisci prima il nome utente e il codice ostello.',
       pickCleaner: 'Scegli chi pulisce questa stanza.',
@@ -1001,11 +1006,11 @@ const resources = {
       addCleanerHint: 'Accedono con il codice ostello, questo nome utente e questa password.',
       moreInfo: 'Dettagli',
       workingToday: 'Al lavoro oggi',
-      assignSelected: 'Assegna {{count}} stanza',
-      assignSelected_plural: 'Assegna {{count}} stanze',
+      assignSelected_one: 'Assegna {{count}} stanza',
+      assignSelected_other: 'Assegna {{count}} stanze',
       clearSelection: 'Deseleziona',
-      selectedRooms: '{{count}} stanza selezionata',
-      selectedRooms_plural: '{{count}} stanze selezionate',
+      selectedRooms_one: '{{count}} stanza selezionata',
+      selectedRooms_other: '{{count}} stanze selezionate',
       assignTo: 'Assegna a',
       change: 'Cambia',
       noAssignments: 'Nessuna assegnazione',
@@ -1162,6 +1167,7 @@ const resources = {
       collapseSidebar: 'Comprimi barra laterale',
       notificationsUnread: 'Notifiche, {{count}} non lette',
       privacyPolicyLink: 'Informativa sulla privacy',
+      deleteYourAccountLink: 'Elimina il tuo account',
       termsLink: 'Termini',
       contactLink: 'Contatti',
       searchRoomsPlaceholder: 'Cerca stanze…',
@@ -1506,7 +1512,6 @@ const resources = {
       hostelCode: 'Codice Ostello',
       createHostel: 'Crea un nuovo ostello',
       loginError: 'Credenziali non valide. Riprova.',
-      defaultLoginHint: 'Predefinito: Manager / manager123',
 
       // ---- Create Hostel ----
       createHostelTitle: 'Crea il tuo Ostello',
@@ -1600,7 +1605,7 @@ const resources = {
       // ---- Assign ----
       assignments: 'Assegnazioni',
       tapToAssign: 'Tocca un addetto per configurare',
-      clearAll: 'Cancella tutto',
+      clearAll: 'Rimuovi tutte le assegnazioni',
       unassigned: 'Non assegnato',
       noCleaner: 'Nessun addetto',
       assign: 'Assegna',
@@ -1610,7 +1615,7 @@ const resources = {
       stayOver: 'Soggiorno',
       lateCheckOut: 'Late c/out',
       earlyCheckIn: 'Early c/in',
-      noOne: 'Nessuno',
+      noOne: 'Ispezionato',
       commonOnly: 'Solo aree comuni',
       notesPlaceholder1: 'Note per gli addetti',
       notesPlaceholder2: 'es. Cambia lenzuola, salta letto C',
@@ -1849,6 +1854,7 @@ const resources = {
       clearAllConfirmMsg: '¿Seguro que quieres borrar todas las asignaciones? Se quitarán todas las habitaciones de los limpiadores.',
       extraRequests: 'Solicitudes Extra',
       reviewCleanerRequests: 'Revisa y gestiona las solicitudes de los limpiadores',
+      cleanerResetHint: 'Solicita a tu gerente que restablezca tu contraseña si la has olvidado. Si eres gerente, introduce tu correo electrónico aquí y te enviaremos un enlace para restablecerla.',
       extraRequestsFooter: 'Solicitudes',
       account: 'Cuenta',
       role: 'Rol',
@@ -1866,7 +1872,7 @@ const resources = {
       infoAskManager: 'Pregunta a tu manager — él crea tu cuenta y te da '
                  + 'el código, tu nombre de usuario y tu contraseña.',
       loginTitle: '¡Hola!',
-      loginSub: 'Inicia sesión con tu código de hostel y tu nombre de usuario.',
+      loginSub: 'Inicia sesión para gestionar la limpieza de hoy.',
       forgotPassword: '¿Olvidaste tu contraseña?',
       enterCodeAndUserFirst: 'Por favor, ingresa primero tu nombre de usuario y el código del hostel.',
       pickCleaner: 'Elige quién limpia esta habitación.',
@@ -1892,11 +1898,11 @@ const resources = {
       addCleanerHint: 'Inician sesión con tu código de hostel, este nombre de usuario y esta contraseña.',
       moreInfo: 'Más info',
       workingToday: 'Trabajando Hoy',
-      assignSelected: 'Asignar {{count}} habitación',
-      assignSelected_plural: 'Asignar {{count}} habitaciones',
+      assignSelected_one: 'Asignar {{count}} habitación',
+      assignSelected_other: 'Asignar {{count}} habitaciones',
       clearSelection: 'Limpiar',
-      selectedRooms: '{{count}} habitación seleccionada',
-      selectedRooms_plural: '{{count}} habitaciones seleccionadas',
+      selectedRooms_one: '{{count}} habitación seleccionada',
+      selectedRooms_other: '{{count}} habitaciones seleccionadas',
       assignTo: 'Asignar a',
       change: 'Cambiar',
       noAssignments: 'Sin asignaciones',
@@ -2053,6 +2059,7 @@ const resources = {
       collapseSidebar: 'Contraer barra lateral',
       notificationsUnread: 'Notificaciones, {{count}} sin leer',
       privacyPolicyLink: 'Política de privacidad',
+      deleteYourAccountLink: 'Eliminar tu cuenta',
       termsLink: 'Términos',
       contactLink: 'Contacto',
       searchRoomsPlaceholder: 'Buscar habitaciones…',
@@ -2397,7 +2404,6 @@ const resources = {
       hostelCode: 'Código del Hostel',
       createHostel: 'Crear un nuevo hostel',
       loginError: 'Credenciales inválidas. Inténtalo de nuevo.',
-      defaultLoginHint: 'Por defecto: Manager / manager123',
 
       // ---- Create Hostel ----
       createHostelTitle: 'Crea tu Hostel',
@@ -2456,7 +2462,7 @@ const resources = {
         failedToSaveRoom: 'Error al guardar habitación: {{message}}',
         roomNamePlaceholder: 'ej. 101 o Ático',
         customAttributes: 'Atributos Personalizados de Habitación',
-        attributesDescription: 'Define casillas para habitaciones privadas (ej. Individual, Doble, Singola)',
+        attributesDescription: 'Define casillas para habitaciones privadas (ej. Individual, Doble, Triple)',
         newAttribute: 'Nuevo atributo',
         attributePlaceholder: 'ej. Doble',
         addAttribute: 'Añadir',
@@ -2491,7 +2497,7 @@ const resources = {
       // ---- Assign ----
       assignments: 'Asignaciones',
       tapToAssign: 'Toca un limpiador para configurar',
-      clearAll: 'Limpiar todo',
+      clearAll: 'Desasignar todo',
       unassigned: 'Sin asignar',
       noCleaner: 'Sin limpiador',
       assign: 'Asignar',
@@ -2501,7 +2507,7 @@ const resources = {
       stayOver: 'Estancia',
       lateCheckOut: 'Late c/out',
       earlyCheckIn: 'Early c/in',
-      noOne: 'Nadie',
+      noOne: 'Inspeccionado',
       commonOnly: 'Solo áreas comunes',
       notesPlaceholder1: 'Notas para los limpiadores',
       notesPlaceholder2: 'ej. Cambiar sábanas, omitir cama C',
@@ -2544,7 +2550,7 @@ const resources = {
       commonNotCleaned: 'Áreas comunes aún no limpiadas',
 
       // ---- Cleaner ----
-      greeting: '¡Hola, {{name}} 👋',
+      greeting: '¡Hola, {{name}}! 👋',
       noRoomsAssigned: 'No hay habitaciones asignadas',
       myRooms: 'Mis Habitaciones',
       pendingRequests: 'Solicitudes Pendientes',
@@ -2680,13 +2686,28 @@ const resources = {
   },
 };
 
+const SUPPORTED = ['en', 'it', 'es'];
+const deviceLang = Localization.getLocales()[0]?.languageCode;
+
 i18n.use(initReactI18next).init({
   resources,
-  lng: 'en',
+  lng: SUPPORTED.includes(deviceLang) ? deviceLang : 'en',
   fallbackLng: 'en',
   interpolation: {
     escapeValue: false,
   },
+});
+
+// Restore the language the person picked last time. Runs after init so it
+// doesn't block first render; changeLanguage re-renders everything that
+// subscribes via useTranslation.
+AsyncStorage.getItem('lang')
+  .then((l) => { if (SUPPORTED.includes(l)) i18n.changeLanguage(l); })
+  .catch(() => {});
+
+// Remember every subsequent change.
+i18n.on('languageChanged', (l) => {
+  AsyncStorage.setItem('lang', l).catch(() => {});
 });
 
 export default i18n;

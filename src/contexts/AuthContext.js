@@ -339,6 +339,7 @@ export function AuthProvider({ children }) {
             managerName: cleanName,
             hostelName: cleanHostel,
             code,
+            user: cred.user,
           });
         } catch (e) {
           console.warn('Welcome email could not be sent:', e.message);

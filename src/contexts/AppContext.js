@@ -12,6 +12,7 @@ import { buildDailyLog, localDateStr } from '../utils/dailyLog';
 import { useDailyLogAutosave } from '../hooks/useDailyLogAutosave';
 import { describeSubscription } from '../utils/subscription';
 import i18n from '../i18n';
+import { pushToManagers, pushToUser } from '../services/push';
 
 const AppContext = createContext();
 
@@ -21,73 +22,17 @@ const AppContext = createContext();
 // plain number the moment the write is made, not a pending serverTimestamp.
 const stamp = (data) => ({ ...data, updatedAt: Date.now() });
 
-/* ─── Push notification helpers (free Expo push) ──────────────── */
+/* ─── Push notification helpers (via api.hostelkeep.com/push) ─── */
 
-async function getManagerTokens(hostelCode) {
-  const managersQuery = query(
-    collection(db, 'users'),
-    where('hostelCode', '==', hostelCode),
-    where('role', 'in', ['manager', 'staff']),
-  );
-  const snapshot = await getDocs(managersQuery);
-  const tokenSet = new Set();
-  snapshot.forEach(doc => {
-    const manager = doc.data();
-    if (manager.pushToken) tokenSet.add(manager.pushToken);
-  });
-  return Array.from(tokenSet);
-}
-
-async function getCleanerToken(cleanerUid) {
-  const cleanerDoc = await getDoc(doc(db, 'users', cleanerUid));
-  if (!cleanerDoc.exists()) return null;
-  const data = cleanerDoc.data();
-  return data.pushToken || null;
-}
-
-async function sendPush(tokens, title, body, data) {
-  if (!tokens || tokens.length === 0) return;
-  try {
-    const res = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify(tokens.map((to) => ({
-        to,
-        title,
-        body,
-        data,
-        sound: 'default',
-        channelId: 'default',
-      }))),
-    });
-    const json = await res.json().catch(() => null);
-    (json?.data || []).forEach((ticket) => {
-      if (ticket?.status === 'error') {
-        // DeviceNotRegistered = app uninstalled. On the Spark plan the sender
-        // can't clean up someone else's user document; sign-out cleanup and
-        // token overwrite on next sign-in keep this rare.
-        console.warn(
-          'Push not delivered:',
-          ticket.details?.error || ticket.message,
-        );
-      }
-    });
-  } catch (e) {
-    console.warn('Push send failed:', e.message);
-  }
-}
-
+// The Worker reads the caller's hostel from Firestore itself, so `hostelCode`
+// is accepted for signature compatibility and ignored.
+// eslint-disable-next-line no-unused-vars
 async function sendPushToManagers(hostelCode, title, body, data) {
-  const tokens = await getManagerTokens(hostelCode);
-  await sendPush(tokens, title, body, data);
+  await pushToManagers(title, body, data);
 }
 
 async function sendPushToCleaner(cleanerUid, title, body, data) {
-  const token = await getCleanerToken(cleanerUid);
-  if (token) await sendPush([token], title, body, data);
+  await pushToUser(cleanerUid, title, body, data);
 }
 
 /* ─── Context provider ─────────────────────────────────────────── */

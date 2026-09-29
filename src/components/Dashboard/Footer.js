@@ -7,7 +7,8 @@ import { CONTACT_EMAIL } from '../../utils/subscription';
 import { useTranslation } from 'react-i18next';
 
 const buildLinks = (t) => [
-  { label: t('privacyPolicyLink'), url: 'https://hostelkeep.com/privacy' },
+  { label: t('privacyPolicyLink'), url: 'https://app.hostelkeep.com/privacy' },
+  { label: t('deleteYourAccountLink'), url: 'https://app.hostelkeep.com/delete-account' },
   { label: t('termsLink'), url: 'https://hostelkeep.com/terms' },
   { label: t('contactLink'), url: `mailto:${CONTACT_EMAIL}` },
 ];

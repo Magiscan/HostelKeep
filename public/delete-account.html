@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delete your HostelKeep account</title>
+<meta name="description" content="How to delete your HostelKeep account and data, in the app or by email.">
+<meta name="robots" content="index, follow">
+<link rel="icon" href="favicon-32.png" sizes="32x32">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600&family=Rubik:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #0B1F3A;
+    --navy-2: #16305A;
+    --gold: #F5B32B;
+    --paper: #F6F7F9;
+    --ink: #0B1F3A;
+    --ink-2: #4A5A72;
+    --line: #DCE2EA;
+    --danger: #C43D3D;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 400 16px/1.6 Rubik, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--navy-2); text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; border-radius: 6px; }
+
+  header { background: var(--navy); color: #fff; }
+  .bar {
+    max-width: 760px; margin: 0 auto; padding: 18px 22px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none;
+    font: 600 20px/1 Fredoka, Rubik, sans-serif; }
+  .brand img { width: 30px; height: 30px; border-radius: 8px; }
+  .brand span { color: var(--gold); }
+  .langs { display: flex; gap: 4px; }
+  .langs button {
+    font: 500 14px/1 Rubik, sans-serif; color: #C9D3E3; background: transparent;
+    border: 1px solid transparent; border-radius: 999px; padding: 8px 12px; cursor: pointer;
+  }
+  .langs button[aria-pressed="true"] { color: var(--navy); background: var(--gold); }
+
+  .hero { max-width: 760px; margin: 0 auto; padding: 36px 22px 44px; }
+  .hero h1 { font: 600 clamp(30px, 6vw, 42px)/1.1 Fredoka, Rubik, sans-serif; margin: 0 0 12px; }
+  .hero p { margin: 0; color: #C9D3E3; max-width: 60ch; }
+
+  main { max-width: 760px; margin: 0 auto; padding: 8px 22px 64px; }
+  section { padding: 28px 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: 0; }
+  h2 { font: 600 24px/1.2 Fredoka, Rubik, sans-serif; margin: 0 0 12px; }
+  h3 { font: 600 16px/1.3 Rubik, sans-serif; margin: 18px 0 6px; }
+  p, li { max-width: 68ch; }
+  p { margin: 0 0 10px; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin: 4px 0; }
+
+  ol.steps { list-style: none; counter-reset: s; margin: 8px 0 0; padding: 0; }
+  ol.steps li { counter-increment: s; position: relative; padding: 0 0 14px 46px; min-height: 32px; }
+  ol.steps li::before {
+    content: counter(s); position: absolute; left: 0; top: -2px;
+    width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--navy); color: var(--gold); font: 600 16px/1 Fredoka, Rubik, sans-serif;
+  }
+  .ui { font-weight: 600; white-space: nowrap; }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 620px) { .split { grid-template-columns: 1fr; } }
+  .who { border-left: 4px solid var(--gold); padding-left: 14px; }
+  .who.owner { border-left-color: var(--danger); }
+
+  .mail {
+    display: inline-block; margin-top: 6px; padding: 12px 18px; border-radius: 26px;
+    background: var(--navy); color: #fff; text-decoration: none; font-weight: 500;
+  }
+  .mail:hover { background: var(--navy-2); }
+  .note { color: var(--ink-2); font-size: 14px; }
+  footer { max-width: 760px; margin: 0 auto; padding: 0 22px 40px; color: var(--ink-2); font-size: 14px; }
+
+  [data-l] { display: none; }
+  html[lang="en"] [data-l="en"], html[lang="it"] [data-l="it"], html[lang="es"] [data-l="es"] { display: revert; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <a class="brand" href="https://hostelkeep.com/"><img src="logo.png" alt="" onerror="this.remove()">Hostel<span>Keep</span></a>
+    <div class="langs" role="group" aria-label="Language">
+      <button type="button" data-set="en" aria-pressed="true">EN</button>
+      <button type="button" data-set="it" aria-pressed="false">IT</button>
+      <button type="button" data-set="es" aria-pressed="false">ES</button>
+    </div>
+  </div>
+  <div class="hero">
+    <h1 data-l="en">Delete your HostelKeep account</h1>
+    <h1 data-l="it">Elimina il tuo account HostelKeep</h1>
+    <h1 data-l="es">Elimina tu cuenta de HostelKeep</h1>
+    <p data-l="en">You can delete your account yourself in the HostelKeep app, or ask us by email if you no longer have access to it.</p>
+    <p data-l="it">Puoi eliminare il tuo account direttamente dall'app HostelKeep, oppure chiedercelo via email se non hai più accesso all'app.</p>
+    <p data-l="es">Puedes eliminar tu cuenta tú mismo en la app HostelKeep, o pedírnoslo por correo si ya no tienes acceso a ella.</p>
+  </div>
+</header>
+
+<main>
+  <!-- ── In the app ── -->
+  <section>
+    <h2 data-l="en">In the app</h2>
+    <h2 data-l="it">Dall'app</h2>
+    <h2 data-l="es">En la app</h2>
+
+    <ol class="steps" data-l="en">
+      <li>Open HostelKeep and sign in.</li>
+      <li>Tap your avatar, then <span class="ui">Account</span>.</li>
+      <li>Tap <span class="ui">Delete account</span> (owners see <span class="ui">Delete hostel and account</span>).</li>
+      <li>Enter your password to confirm. Deletion starts straight away and cannot be undone.</li>
+    </ol>
+    <ol class="steps" data-l="it">
+      <li>Apri HostelKeep e accedi.</li>
+      <li>Tocca il tuo avatar, poi <span class="ui">Account</span>.</li>
+      <li>Tocca <span class="ui">Elimina account</span> (i titolari vedono <span class="ui">Elimina hostel e account</span>).</li>
+      <li>Inserisci la password per confermare. L'eliminazione parte subito e non si può annullare.</li>
+    </ol>
+    <ol class="steps" data-l="es">
+      <li>Abre HostelKeep e inicia sesión.</li>
+      <li>Toca tu avatar y luego <span class="ui">Cuenta</span>.</li>
+      <li>Toca <span class="ui">Eliminar cuenta</span> (los propietarios ven <span class="ui">Eliminar hostal y cuenta</span>).</li>
+      <li>Introduce tu contraseña para confirmar. La eliminación empieza al momento y no se puede deshacer.</li>
+    </ol>
+    <p class="note" data-l="en">The same option is in Account on the desktop dashboard at app.hostelkeep.com.</p>
+    <p class="note" data-l="it">La stessa opzione si trova in Account nella dashboard desktop su app.hostelkeep.com.</p>
+    <p class="note" data-l="es">La misma opción está en Cuenta en el panel de escritorio de app.hostelkeep.com.</p>
+  </section>
+
+  <!-- ── What is deleted ── -->
+  <section>
+    <h2 data-l="en">What gets deleted</h2>
+    <h2 data-l="it">Cosa viene eliminato</h2>
+    <h2 data-l="es">Qué se elimina</h2>
+
+    <div class="split">
+      <div class="who">
+        <h3 data-l="en">Housekeepers and staff</h3>
+        <h3 data-l="it">Addetti alle pulizie e staff</h3>
+        <h3 data-l="es">Personal de limpieza y staff</h3>
+        <p data-l="en">Your login, your profile (name and photo) and the notification token of your phone. The hostel and its rooms stay, because they belong to the hostel owner.</p>
+        <p data-l="it">Le tue credenziali, il tuo profilo (nome e foto) e il token di notifica del tuo telefono. L'hostel e le sue camere restano, perché appartengono al titolare.</p>
+        <p data-l="es">Tus datos de acceso, tu perfil (nombre y foto) y el token de notificaciones de tu teléfono. El hostal y sus habitaciones se mantienen, porque pertenecen al propietario.</p>
+      </div>
+      <div class="who owner">
+        <h3 data-l="en">Hostel owners</h3>
+        <h3 data-l="it">Titolari dell'hostel</h3>
+        <h3 data-l="es">Propietarios del hostal</h3>
+        <p data-l="en">Everything: your account, every hostel you own, its rooms, cleaning history, requests and photos, and every housekeeper and staff account in those hostels.</p>
+        <p data-l="it">Tutto: il tuo account, ogni hostel di cui sei titolare, le camere, lo storico delle pulizie, le richieste e le foto, e tutti gli account di addetti e staff di quegli hostel.</p>
+        <p data-l="es">Todo: tu cuenta, cada hostal que te pertenece, sus habitaciones, historial de limpieza, solicitudes y fotos, y todas las cuentas de personal de esos hostales.</p>
+      </div>
+    </div>
+
+    <h3 data-l="en">What we keep</h3>
+    <h3 data-l="it">Cosa conserviamo</h3>
+    <h3 data-l="es">Qué conservamos</h3>
+    <ul data-l="en">
+      <li>Invoices for paid subscriptions, for as long as Italian tax law requires (up to 10 years).</li>
+      <li>A record that a hostel code has been used, so it is never given to someone else. It contains no personal data.</li>
+    </ul>
+    <ul data-l="it">
+      <li>Le fatture degli abbonamenti pagati, per il tempo richiesto dalla normativa fiscale italiana (fino a 10 anni).</li>
+      <li>La traccia che un codice hostel è già stato usato, così non viene assegnato a nessun altro. Non contiene dati personali.</li>
+    </ul>
+    <ul data-l="es">
+      <li>Las facturas de suscripciones pagadas, durante el tiempo que exige la ley fiscal italiana (hasta 10 años).</li>
+      <li>Un registro de que un código de hostal ya se ha usado, para que nunca se asigne a otra persona. No contiene datos personales.</li>
+    </ul>
+  </section>
+
+  <!-- ── By email ── -->
+  <section>
+    <h2 data-l="en">Without the app</h2>
+    <h2 data-l="it">Senza l'app</h2>
+    <h2 data-l="es">Sin la app</h2>
+    <p data-l="en">Email us from the address linked to your account, or include your hostel code and username. We confirm and complete the deletion within 30 days.</p>
+    <p data-l="it">Scrivici dall'indirizzo collegato al tuo account, oppure indica il codice hostel e il tuo nome utente. Confermiamo e completiamo l'eliminazione entro 30 giorni.</p>
+    <p data-l="es">Escríbenos desde la dirección vinculada a tu cuenta, o indica el código del hostal y tu nombre de usuario. Confirmamos y completamos la eliminación en un plazo de 30 días.</p>
+    <a class="mail" href="mailto:kohciaostudio@gmail.com?subject=HostelKeep%20account%20deletion">kohciaostudio@gmail.com</a>
+    <p class="note" data-l="en" style="margin-top:12px">Housekeepers without an email address can also ask the hostel owner, who can remove their account from the Team screen.</p>
+    <p class="note" data-l="it" style="margin-top:12px">Gli addetti senza indirizzo email possono anche chiedere al titolare dell'hostel, che può rimuovere il loro account dalla schermata Team.</p>
+    <p class="note" data-l="es" style="margin-top:12px">El personal sin correo electrónico también puede pedírselo al propietario del hostal, que puede eliminar su cuenta desde la pantalla Equipo.</p>
+  </section>
+</main>
+
+<footer>
+  <p data-l="en"><a href="/privacy">App privacy policy</a> · HostelKeep by KohCiao</p>
+  <p data-l="it"><a href="/privacy">Informativa privacy dell'app</a> · HostelKeep by KohCiao</p>
+  <p data-l="es"><a href="/privacy">Política de privacidad de la app</a> · HostelKeep by KohCiao</p>
+</footer>
+
+<script>
+  (function () {
+    var ok = ['en', 'it', 'es'];
+    var q = new URLSearchParams(location.search).get('lang');
+    var nav = (navigator.language || 'en').slice(0, 2).toLowerCase();
+    function set(l) {
+      if (ok.indexOf(l) < 0) l = 'en';
+      document.documentElement.lang = l;
+      document.querySelectorAll('.langs button').forEach(function (b) {
+        b.setAttribute('aria-pressed', String(b.dataset.set === l));
+      });
+    }
+    document.querySelectorAll('.langs button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        set(b.dataset.set);
+        history.replaceState(null, '', '?lang=' + b.dataset.set);
+      });
+    });
+    set(q || nav);
+  })();
+</script>
+</body>
+</html>

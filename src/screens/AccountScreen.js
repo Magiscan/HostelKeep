@@ -28,9 +28,9 @@ import { deleteOwnAccount } from '../utils/accountDeletion';
 // Must point at your live policy — App Review checks that the in-app link and
 // the App Store Connect metadata field resolve to the same page.
 const PRIVACY_URLS = {
-  en: 'https://hostelkeep.com/privacy',
-  it: 'https://hostelkeep.com/it/privacy',
-  es: 'https://hostelkeep.com/es/privacy',
+  en: 'https://app.hostelkeep.com/privacy',
+  it: 'https://app.hostelkeep.com/privacy',
+  es: 'https://app.hostelkeep.com/privacy',
 };
 
 const MIN_PASSWORD = 8;

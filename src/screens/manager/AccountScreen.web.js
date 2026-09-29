@@ -35,9 +35,9 @@ import { deleteOwnAccount, deleteHostel } from '../../utils/accountDeletion';
 import { canDo, isOwner } from '../../utils/permissions';
 
 const PRIVACY_URLS = {
-  en: 'https://hostelkeep.com/privacy',
-  it: 'https://hostelkeep.com/it/privacy',
-  es: 'https://hostelkeep.com/es/privacy',
+  en: 'https://app.hostelkeep.com/privacy',
+  it: 'https://app.hostelkeep.com/privacy',
+  es: 'https://app.hostelkeep.com/privacy',
 };
 const MIN_PASSWORD = 8;
 const DANGER = '#B91C1C';

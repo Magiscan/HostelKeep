@@ -42,11 +42,11 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
       ],
-    "adaptiveIcon": {
-      "foregroundImage": "./assets/adaptive-icon.png",
-      "monochromeImage": "./assets/adaptive-icon-monochrome.png",
-      "backgroundColor": "#02123D"
-    },
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "monochromeImage": "./assets/adaptive-icon-monochrome.png",
+        "backgroundColor": "#02123D"
+      },
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "pan"
     },
@@ -66,7 +66,8 @@
         }
       ],
       [
-        "expo-notifications", {
+        "expo-notifications",
+        {
           "icon": "./assets/notification-icon.png",
           "color": "#02123D",
           "defaultChannel": "default"
@@ -92,7 +93,8 @@
             "deploymentTarget": "15.1"
           }
         }
-      ]
+      ],
+      "expo-localization"
     ],
     "extra": {
       "eas": {

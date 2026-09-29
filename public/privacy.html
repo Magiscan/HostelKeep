@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HostelKeep app privacy policy</title>
+<meta name="description" content="What personal data the HostelKeep app handles, why, and your rights over it.">
+<meta name="robots" content="index, follow">
+<link rel="icon" href="favicon-32.png" sizes="32x32">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600&family=Rubik:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #0B1F3A;
+    --navy-2: #16305A;
+    --gold: #F5B32B;
+    --paper: #F6F7F9;
+    --ink: #0B1F3A;
+    --ink-2: #4A5A72;
+    --line: #DCE2EA;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 16px; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 400 16px/1.6 Rubik, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--navy-2); text-underline-offset: 3px; }
+  a:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; border-radius: 6px; }
+
+  header { background: var(--navy); color: #fff; }
+  .bar { max-width: 760px; margin: 0 auto; padding: 18px 22px; display: flex; align-items: center; }
+  .brand { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none;
+    font: 600 20px/1 Fredoka, Rubik, sans-serif; }
+  .brand img { width: 30px; height: 30px; border-radius: 8px; }
+  .brand span { color: var(--gold); }
+
+  .hero { max-width: 760px; margin: 0 auto; padding: 36px 22px 44px; }
+  .hero h1 { font: 600 clamp(30px, 6vw, 42px)/1.1 Fredoka, Rubik, sans-serif; margin: 0 0 12px; }
+  .hero p { margin: 0 0 8px; color: #C9D3E3; max-width: 62ch; }
+  .hero .updated { color: var(--gold); font-weight: 500; margin-top: 14px; }
+
+  nav.toc { max-width: 760px; margin: 0 auto; padding: 22px 22px 0; }
+  nav.toc ol { margin: 0; padding-left: 22px; columns: 2; column-gap: 32px; color: var(--ink-2); }
+  nav.toc li { break-inside: avoid; margin: 2px 0; }
+  @media (max-width: 620px) { nav.toc ol { columns: 1; } }
+
+  main { max-width: 760px; margin: 0 auto; padding: 8px 22px 64px; counter-reset: sec; }
+  section { padding: 28px 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: 0; }
+  h2 { font: 600 24px/1.2 Fredoka, Rubik, sans-serif; margin: 0 0 12px; display: flex; gap: 12px; align-items: baseline; }
+  h2::before {
+    counter-increment: sec; content: counter(sec);
+    flex: none; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--navy); color: var(--gold); font-size: 16px; transform: translateY(4px);
+  }
+  p, li { max-width: 68ch; }
+  p { margin: 0 0 10px; }
+  ul { margin: 0 0 10px; padding-left: 20px; }
+  li { margin: 6px 0; }
+  strong { font-weight: 600; }
+
+  .tbl { overflow-x: auto; margin: 8px 0 12px; }
+  table { border-collapse: collapse; width: 100%; min-width: 480px; background: #fff; border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 15px; }
+  tr:last-child td { border-bottom: 0; }
+  th { background: var(--navy); color: #fff; font-weight: 500; }
+
+  .who { border-left: 4px solid var(--gold); padding-left: 14px; margin: 12px 0; }
+  .note { color: var(--ink-2); font-size: 14px; }
+  .mail { font-weight: 600; }
+  footer { max-width: 760px; margin: 0 auto; padding: 0 22px 40px; color: var(--ink-2); font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <a class="brand" href="https://hostelkeep.com/"><img src="logo.png" alt="" onerror="this.remove()">Hostel<span>Keep</span></a>
+  </div>
+  <div class="hero">
+    <h1>App privacy policy</h1>
+    <p>HostelKeep is a housekeeping app for hostels. Managers set up rooms and assign them to housekeepers; housekeepers see their rooms and mark them as they clean.</p>
+    <p>This policy explains what personal data the app handles, why, and what rights you have over it.</p>
+    <p class="updated">Last updated: 29 September 2026</p>
+  </div>
+</header>
+
+<nav class="toc" aria-label="Contents">
+  <ol>
+    <li><a href="#controller">Who is responsible</a></li>
+    <li><a href="#collect">Information we collect</a></li>
+    <li><a href="#basis">Why we use it</a></li>
+    <li><a href="#providers">Who processes it for us</a></li>
+    <li><a href="#security">How it is protected</a></li>
+    <li><a href="#retention">How long we keep it</a></li>
+    <li><a href="#delete">Deleting your account</a></li>
+    <li><a href="#rights">Your rights</a></li>
+    <li><a href="#children">Children</a></li>
+    <li><a href="#changes">Changes</a></li>
+  </ol>
+</nav>
+
+<main>
+  <section id="controller">
+    <h2>Who is responsible for your data</h2>
+    <p>The data controller is <strong>KohCiao Studio S.r.l.s</strong>, [REGISTERED ADDRESS], Firenze, Italy (P.IVA [NUMBER]). You can reach us at <a class="mail" href="mailto:kohciaostudio@gmail.com">kohciaostudio@gmail.com</a>.</p>
+    <p>This policy covers the HostelKeep app on Android, iOS and the web at app.hostelkeep.com. For the hostelkeep.com website, including cookies and analytics, see our <a href="https://www.iubenda.com/privacy-policy/95470577">website privacy and cookie policy</a>.</p>
+    <p>When a hostel uses HostelKeep to manage its own staff, the hostel decides who has an account and what is recorded about their work. For that data the hostel is the controller of its employees' data, and we act as its processor.</p>
+  </section>
+
+  <section id="collect">
+    <h2>Information we collect</h2>
+    <ul>
+      <li><strong>Account information.</strong> Managers and manager-side staff sign in with their own email address, which is also used for password resets. Housekeepers don't need an email address: their manager creates their account with a username, and the app generates an internal, non-working address for them. We also store the display name, the hostel code and the role.</li>
+      <li><strong>Profile and hostel photos.</strong> Optional: a profile photo, and a logo for the hostel.</li>
+      <li><strong>Room and cleaning data.</strong> Rooms, floors and beds, room assignments, cleaning states, notes written by managers and housekeepers, extra time recorded, and extra-room requests.</li>
+      <li><strong>Room photos.</strong> A housekeeper asking for an extra room may attach a photo of it so the manager can decide.</li>
+      <li><strong>Daily history.</strong> For hostels on a paid plan, a daily snapshot of the work done, so managers can review and export it.</li>
+      <li><strong>Push notification tokens.</strong> If you allow notifications, a device token so the app can alert you about cleaning events. For technical reasons this token is visible to other members of your own hostel. It identifies a device, not a person, and cannot be used to read any of your data.</li>
+      <li><strong>Subscription and billing details.</strong> For paying hostels: the contact details you give us when you subscribe, and the invoices we issue. Subscriptions are arranged by email and paid by bank transfer, so we never see or store card details.</li>
+    </ul>
+    <p>HostelKeep does not track your location, does not show advertising, and does not profile you.</p>
+  </section>
+
+  <section id="basis">
+    <h2>Why we use it, and on what legal basis</h2>
+    <div class="tbl">
+      <table>
+        <tr><th>Purpose</th><th>Legal basis (GDPR art. 6)</th></tr>
+        <tr><td>Creating accounts, signing you in, and sending the welcome email with your hostel code</td><td>Performance of a contract</td></tr>
+        <tr><td>Assigning rooms, tracking cleaning, notes and extra requests</td><td>Performance of a contract; legitimate interest of the hostel in organising its work</td></tr>
+        <tr><td>Push notifications about cleaning events</td><td>Consent, which you can withdraw at any time in your device settings</td></tr>
+        <tr><td>Daily history and reports</td><td>Legitimate interest of the hostel in keeping a record of completed work</td></tr>
+        <tr><td>Subscriptions and support</td><td>Performance of a contract</td></tr>
+        <tr><td>Issuing invoices and keeping tax records</td><td>Legal obligation</td></tr>
+        <tr><td>Keeping the service secure and fixing faults</td><td>Legitimate interest</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <section id="providers">
+    <h2>Who processes your data for us</h2>
+    <p>We don't sell your data or share it for advertising. Inside the app, your data is only visible to members of your own hostel. These providers help us run the service:</p>
+    <div class="tbl">
+      <table>
+        <tr><th>Provider</th><th>What it handles</th></tr>
+        <tr><td>Google (Firebase Authentication, Cloud Firestore, Firebase Hosting)</td><td>Accounts, all app data, and hosting of the web app</td></tr>
+        <tr><td>Expo (push notification service)</td><td>Delivering push notifications, together with Apple's and Google's own push services</td></tr>
+        <tr><td>Cloudflare (Workers)</td><td>Checking that a welcome-email request comes from a signed-in manager, then passing it on</td></tr>
+        <tr><td>Resend</td><td>Sending the welcome email: your email address, name, hostel name and hostel code</td></tr>
+      </table>
+    </div>
+    <p>Some of these providers are based outside the European Economic Area, mainly in the United States. Those transfers are covered by the EU-US Data Privacy Framework where the provider is certified under it, and otherwise by the European Commission's Standard Contractual Clauses.</p>
+  </section>
+
+  <section id="security">
+    <h2>How your data is stored and protected</h2>
+    <p>Data is stored in Google Cloud Firestore. Traffic between the app and our services is encrypted with HTTPS. Server-side security rules decide what each account can do: an account can only read and write its own hostel's data, and housekeepers can only change the rooms assigned to them. Passwords are handled by Firebase Authentication and are never visible to us.</p>
+  </section>
+
+  <section id="retention">
+    <h2>How long we keep it</h2>
+    <ul>
+      <li><strong>Account data:</strong> for as long as the account exists.</li>
+      <li><strong>Rooms and cleaning history:</strong> for as long as the hostel exists.</li>
+      <li><strong>Photos attached to extra-room requests:</strong> deleted as soon as the request is approved or rejected, and in any case when the request is removed.</li>
+      <li><strong>Notifications:</strong> until a manager deletes them.</li>
+      <li><strong>Welcome email logs at Resend:</strong> kept by Resend for a limited period to confirm delivery, then deleted.</li>
+      <li><strong>Invoices and payment records:</strong> for as long as Italian tax law requires, currently ten years.</li>
+    </ul>
+  </section>
+
+  <section id="delete">
+    <h2>Deleting your account</h2>
+    <p>You can permanently delete your account in the app: tap your avatar, open <strong>Account</strong> and choose <strong>Delete account</strong>. Step-by-step instructions are on our <a href="/delete-account">account deletion page</a>.</p>
+    <div class="who">
+      <p><strong>Housekeepers and manager-side staff:</strong> your account and personal data are removed immediately. The hostel itself is unaffected.</p>
+    </div>
+    <div class="who">
+      <p><strong>Owners:</strong> deleting your account also deletes your hostels, their rooms, all cleaning history, and every housekeeper and staff account in them. An owner with more than one property can delete a single hostel instead and keep the account.</p>
+    </div>
+    <p>If you can't access the app, email <a class="mail" href="mailto:kohciaostudio@gmail.com?subject=HostelKeep%20account%20deletion">kohciaostudio@gmail.com</a> from the address on your account, or include your hostel code and username. We delete the account within 30 days.</p>
+    <p>Payment records we must keep by law are retained after deletion, as described in section 6.</p>
+  </section>
+
+  <section id="rights">
+    <h2>Your rights</h2>
+    <p>Under the GDPR you can ask us for a copy of your data, and ask us to correct it, delete it, restrict or object to how we use it, or give it to you in a portable format. Where we rely on consent, you can withdraw it at any time. Write to <a class="mail" href="mailto:kohciaostudio@gmail.com">kohciaostudio@gmail.com</a>; we answer within 30 days.</p>
+    <p>If you work for a hostel, requests about your work records may need to be handled by your employer, and we will pass them on.</p>
+    <p>You also have the right to complain to a supervisory authority. In Italy this is the Garante per la protezione dei dati personali (<a href="https://www.garanteprivacy.it">garanteprivacy.it</a>).</p>
+  </section>
+
+  <section id="children">
+    <h2>Children</h2>
+    <p>HostelKeep is a workplace tool for hostel staff. It is not directed at children, and we do not knowingly collect data from anyone under 16.</p>
+  </section>
+
+  <section id="changes">
+    <h2>Changes to this policy</h2>
+    <p>When we update this policy, the new version is published on this page with a new date. Significant changes are also announced in the app.</p>
+    <p class="note">Questions about this policy or your data: kohciaostudio@gmail.com.</p>
+  </section>
+</main>
+
+<footer>
+  <p><a href="/delete-account">Delete your account</a> · <a href="https://hostelkeep.com/">hostelkeep.com</a></p>
+</footer>
+</body>
+</html>
