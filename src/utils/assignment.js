@@ -32,3 +32,17 @@ export function roomNeedsAssignment(room, status) {
   if (room.type === 'private') return effectiveAttributes(room, status).length > 0;
   return false;
 }
+
+/**
+ * Private-room features that are new to this room: the room was just created,
+ * just became private, or just had them ticked in the room form. saveRoom
+ * saves these as OFF, so a feature the manager hasn't planned yet doesn't make
+ * the room look like it needs cleaning. Features the room already had are
+ * left alone.
+ */
+export function newlyAddedAttributes(room, previous) {
+  if (room.type !== 'private') return [];
+  const on = (r) => Object.keys(r?.attributes || {}).filter(k => r.attributes[k]);
+  const before = previous?.type === 'private' ? new Set(on(previous)) : new Set();
+  return on(room).filter(k => !before.has(k));
+}

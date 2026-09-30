@@ -13,6 +13,7 @@ import { useDailyLogAutosave } from '../hooks/useDailyLogAutosave';
 import { describeSubscription } from '../utils/subscription';
 import i18n from '../i18n';
 import { pushToManagers, pushToUser } from '../services/push';
+import { newlyAddedAttributes } from '../utils/assignment';
 
 const AppContext = createContext();
 
@@ -337,9 +338,32 @@ export function AppProvider({ children }) {
   }, [hostelCode]);
 
   const saveRoom = useCallback(async (roomData) => {
-    const docRef = doc(db, 'hostels', hostelCode, 'rooms', roomData.id);
-    await setDoc(docRef, roomData);
-  }, [hostelCode]);
+    const roomRef = doc(db, 'hostels', hostelCode, 'rooms', roomData.id);
+    const previous = rooms.find(r => r.id === roomData.id);
+    const added = newlyAddedAttributes(roomData, previous);
+
+    // Writing roomStatus needs the 'assign' permission (firestore.rules). Owners
+    // always have it. A staff role with only 'editRooms' saves the room alone,
+    // and its new features count as ON, as they always have.
+    const mayPlan = canDo(userData ? { ...userData } : null, roles, 'assign');
+
+    if (!added.length || !mayPlan) {
+      await setDoc(roomRef, roomData);
+      return;
+    }
+
+    // One batch, so the room never exists without its "features off" status.
+    // merge:true only adds the new keys; anything already planned for today's
+    // other features is left as it is.
+    const batch = writeBatch(db);
+    batch.set(roomRef, roomData);
+    batch.set(
+      doc(db, 'hostels', hostelCode, 'roomStatus', roomData.id),
+      stamp({ assignmentAttributes: Object.fromEntries(added.map(k => [k, false])) }),
+      { merge: true },
+    );
+    await batch.commit();
+  }, [hostelCode, rooms, userData, roles]);
 
   const deleteRoom = useCallback((roomId) => deleteDoc(doc(db, 'hostels', hostelCode, 'rooms', roomId)), [hostelCode]);
 
