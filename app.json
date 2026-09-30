@@ -94,7 +94,15 @@
           }
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "organization": "kohciao-studio",
+          "project": "hostelkeep"
+        }
+      ]
     ],
     "extra": {
       "eas": {

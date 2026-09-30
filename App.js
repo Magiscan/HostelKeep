@@ -43,6 +43,9 @@ import { COLORS } from './src/theme';
 // importing the individual font constants by name silently resolved to
 // undefined. This matches what's actually exported now.
 import { useFonts, BRAND_FONTS } from './src/fonts';
+import { initSentry, setSentryContext, Sentry } from './src/services/sentry';
+
+initSentry();
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -140,6 +143,14 @@ function RootNavigator() {
     }
   }, []);
 
+  // Attach the current user to every subsequent Sentry event. Runs on role
+  // and hostel changes so a sign-in, sign-out or hostel switch re-tags the
+  // scope. Deliberately above the early returns — hooks must run on every
+  // render.
+  useEffect(() => {
+    setSentryContext(user);
+  }, [user?.role, user?.hostelCode]);
+
   if (loading || !loaded) {
     return (
       <View style={styles.centered}>
@@ -177,7 +188,7 @@ function RootNavigator() {
   );
 }
 
-export default function App() {
+function App() {
   const [appIsReady, setAppIsReady] = useState(false);
 
   const [fontsLoaded, fontError] = useFonts(BRAND_FONTS);
@@ -227,3 +238,5 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
 });
+
+export default Sentry.wrap(App);

@@ -20,6 +20,7 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import { sendSentryTestEvent } from '../services/sentry';
 
 export const SHOW_DIAGNOSTICS = process.env.EXPO_PUBLIC_DIAGNOSTICS === '1';
 
@@ -123,6 +124,13 @@ export default function PushDiagnostics() {
         <Btn label={busy ? 'Checking…' : 'Run checks'} onPress={runChecks} disabled={busy} />
         <Btn label="Send test push" onPress={sendTest} disabled={!token} />
         <Btn label="Check receipt" onPress={checkReceipt} disabled={!ticketId} />
+        <Btn
+          label="Send Sentry test event"
+          onPress={() => {
+            sendSentryTestEvent();
+            log(true, 'Sentry test event sent: check Issues in Sentry');
+          }}
+        />
       </View>
       {lines.map((l, i) => (
         <Text key={i} selectable style={[s.line, { color: l.ok ? '#1E7B4A' : '#C43D3D' }]}>
