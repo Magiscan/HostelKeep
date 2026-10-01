@@ -68,6 +68,8 @@ function friendlyAuthError(e) {
     return i18n.t('authEmailInUse');
   if (code.includes('weak-password'))
     return i18n.t('authWeakPassword', { min: MIN_PASSWORD_LENGTH });
+  if (code.includes('password-does-not-meet-requirements'))
+    return i18n.t('pwRequirements', { min: MIN_PASSWORD_LENGTH });
   if (code.includes('requires-recent-login'))
     return i18n.t('authRecentLogin');
   if (code.includes('permission-denied'))
