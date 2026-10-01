@@ -25,9 +25,11 @@ import {
   View, Text, TouchableOpacity, StyleSheet, Modal, Pressable, ScrollView, Platform,
 } from 'react-native';
 import DashboardScreen from './DashboardScreen.web';
-import SetupScreen from './SetupScreen';
-import TeamScreen from './TeamScreen';
-import AssignScreen from './AssignScreen';
+import SetupScreen from './SetupScreen.desktop';
+import TeamScreen from './TeamScreen.desktop';
+import AssignScreen from './AssignScreen.desktop';
+import ExtraRequestsScreen from './ExtraRequestsScreen.desktop';
+import ReportsScreen from './ReportsScreen.desktop';
 import Sidebar from '../../components/Dashboard/Sidebar';
 import PageHeader from '../../components/Dashboard/PageHeader.web';
 import { useAuth } from '../../contexts/AuthContext';
@@ -36,8 +38,6 @@ import { useApp } from '../../contexts/AppContext';
 import Icon from '../../components/Icon';
 import { FONTS } from '../../theme/typography';
 import { BRAND, NEUTRAL, STATUS, GLASS } from '../../theme/tokens';
-import ExtraRequestsScreen from './ExtraRequestsScreen.web';
-import ReportsScreen from './ReportsScreen.web';
 import HistoryScreen from './HistoryScreen.web';
 import RolesScreen from './RolesScreen.web';
 import AccountScreen from './AccountScreen.web';

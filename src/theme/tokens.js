@@ -140,11 +140,11 @@ export const AVATAR_COLORS = [
    Rubik 400/500/600 → everything else.                                  */
 export const FONT_FAMILY = Platform.select({
   web: {
-    display:  'Fredoka, "Trebuchet MS", sans-serif',
-    regular:  'Rubik, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    medium:   'Rubik, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    semiBold: 'Rubik, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    bold:     'Rubik, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    display:  '"Fredoka_600SemiBold", "Trebuchet MS", sans-serif',
+    regular:  '"Rubik_400Regular", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    medium:   '"Rubik_500Medium", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    semiBold: '"Rubik_600SemiBold", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    bold:     '"Rubik_600SemiBold", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   },
   default: {
     display:  'Fredoka_600SemiBold',

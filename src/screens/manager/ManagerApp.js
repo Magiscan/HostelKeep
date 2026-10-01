@@ -120,7 +120,11 @@ export default function ManagerApp() {
   // Tapping a push notification jumps to the room it names. Registered once for
   // the life of the app — no dependency on user or tab, since the callbacks
   // only set state via setters that are already stable.
+  //
+  // Web has no push to respond to: expo-notifications' response listener is a
+  // native-only API, and registering it on web returns a broken subscription.
   useEffect(() => {
+    if (Platform.OS === 'web') return undefined;
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data || {};
       if (data.roomId) {

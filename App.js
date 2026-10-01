@@ -2,6 +2,7 @@ import 'react-native-get-random-values';
 import 'react-native-gesture-handler';
 import { Buffer } from 'buffer';
 import './src/i18n';
+import './src/polyfills/alert';
 import { I18nextProvider } from 'react-i18next';
 import i18n from './src/i18n';
 global.Buffer = Buffer;
@@ -13,7 +14,6 @@ import {
   ActivityIndicator,
   StyleSheet,
   Platform,
-  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
@@ -44,6 +44,7 @@ import { COLORS } from './src/theme';
 // undefined. This matches what's actually exported now.
 import { useFonts, BRAND_FONTS } from './src/fonts';
 import { initSentry, setSentryContext, Sentry } from './src/services/sentry';
+import { usePhoneLayout } from './src/hooks/useBreakpoint';
 
 initSentry();
 
@@ -132,10 +133,10 @@ function RootNavigator() {
   const { user, loading } = useAuth();
   const { loaded } = useApp();
 
-  // FIXED: replaces a manual Dimensions.addEventListener effect, which never
-  // fired on the very first render and leaked its subscription on fast
-  // refresh. useWindowDimensions re-renders correctly on resize.
-  const { width } = useWindowDimensions();
+  // True on native always, and on web for phones (any orientation) and small
+  // touch-first devices. A wide desktop returns false; an iPad in portrait or
+  // landscape also returns false, because its short side is ≥ 768.
+  const phoneLayout = usePhoneLayout();
 
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -164,8 +165,10 @@ function RootNavigator() {
   const managerSide = user.role === 'manager' || user.role === 'staff';
 
   if (managerSide) {
-    // Sidebar layout only on wide web screens.
-    if (Platform.OS === 'web' && width >= 768) return <ManagerLayoutWeb />;
+    // Sidebar layout on any non-phone web viewport. `!phoneLayout` already
+    // implies Platform.OS === 'web' (usePhoneLayout returns true on native),
+    // so no extra platform check is needed here.
+    if (!phoneLayout) return <ManagerLayoutWeb />;
 
     // ManagerApp has no section filtering — it would show a staff member every
     // tab. The rules still reject anything they can't do, so this is a UI gap

@@ -67,7 +67,6 @@
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
     "babel-plugin-transform-remove-console": "^6.9.4",
-    "babel-preset-expo": "~54.0.10",
-    "expo-dev-client": "~6.0.21"
+    "babel-preset-expo": "~54.0.10"
   }
 }

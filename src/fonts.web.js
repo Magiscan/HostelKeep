@@ -1,41 +1,45 @@
 // src/fonts.web.js — WEB font loading.
 //
-// REDESIGN: the web build used to fall back to the system stack. It now pulls
-// Fredoka + Rubik from Google Fonts. The <link> is injected here rather than in
-// web/index.html so the two Expo entry points stay in sync; index.html also has
-// a preconnect for a faster first paint.
-import { useEffect, useState } from 'react';
+// Native registers one family per weight (Rubik_500Medium, …) and the mobile
+// screens rely on that: they set only fontFamily, never fontWeight. Google
+// Fonts can only serve one family ("Rubik") with several weights, so when
+// the phone layout ran in a browser everything fell back to weight 400.
+// The web now registers the SAME family names as native, from our own
+// hosting (public/fonts → app.hostelkeep.com/fonts).
+//
+// Each face is declared for the whole 100–900 range. The desktop screens
+// also set fontWeight ('600' on the 600 face); with a single-weight
+// declaration the browser would fake-bold on top of it. With the range,
+// any weight maps to the real face and nothing is synthesised.
+//
+// Injected at import time, before the first render; font-display: swap means
+// text never waits on the download.
 
-const HREF =
-  'https://fonts.googleapis.com/css2' +
-  '?family=Fredoka:wght@400;500;600' +
-  '&family=Rubik:wght@400;500;600' +
-  '&display=swap';
+const FACES = {
+  Fredoka_600SemiBold: '/fonts/Fredoka_600SemiBold.ttf',
+  Rubik_400Regular:    '/fonts/Rubik_400Regular.ttf',
+  Rubik_500Medium:     '/fonts/Rubik_500Medium.ttf',
+  Rubik_600SemiBold:   '/fonts/Rubik_600SemiBold.ttf',
+};
+
+if (typeof document !== 'undefined' && !document.getElementById('hk-brand-fonts')) {
+  const style = document.createElement('style');
+  style.id = 'hk-brand-fonts';
+  style.textContent = Object.entries(FACES).map(([family, url]) => `
+@font-face {
+  font-family: '${family}';
+  src: url('${url}') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}`).join('\n');
+  document.head.appendChild(style);
+}
 
 export const BRAND_FONTS = {};
 export const INTER_FONTS = {};   // alias, see fonts.js
 
+// App.js waits on this; the swap happens in the background.
 export function useFonts() {
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    if (typeof document === 'undefined') { setLoaded(true); return; }
-    if (!document.getElementById('hk-brand-fonts')) {
-      const link = document.createElement('link');
-      link.id   = 'hk-brand-fonts';
-      link.rel  = 'stylesheet';
-      link.href = HREF;
-      document.head.appendChild(link);
-    }
-    // Don't block the first paint on the font CDN — `display=swap` handles it.
-    if (document.fonts?.ready) {
-      document.fonts.ready.then(() => setLoaded(true)).catch(() => setLoaded(true));
-    } else {
-      setLoaded(true);
-    }
-  }, []);
-
-  // Returning `true` unconditionally keeps App.js's 2s fallback timer moot on
-  // web while the swap happens in the background.
   return [true, null];
 }

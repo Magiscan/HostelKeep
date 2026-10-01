@@ -241,7 +241,9 @@ export default function AccountScreen({ bottomPad = 0 }) {
             label={t('changePassword') || 'Change password'}
             onPress={() => setShowPassword(true )}
           />
-          {notifStatus && notifStatus !== 'granted' && (
+          {/* The row opens the OS settings app for notifications — a browser
+              can't do that, so on web the row never renders. */}
+          {Platform.OS !== 'web' && notifStatus && notifStatus !== 'granted' && (
             <ActionRow
               icon="notifications_off"
               label={t('notificationsOff', 'Notifications are off')}
