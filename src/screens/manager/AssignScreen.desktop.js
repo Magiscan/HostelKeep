@@ -52,7 +52,7 @@ function accentFor(room, status) {
 }
 
 // ─── Confirm dialog ──────────────────────────────────────────────
-function ConfirmDialog({ visible, title, message, confirmLabel, onConfirm, onCancel }) {
+function ConfirmDialog({ visible, title, message, confirmLabel, onConfirm, onCancel, t }) {
   if (!visible) return null;
   return (
     <View style={confirmStyles.overlay}>
@@ -1488,18 +1488,19 @@ export default function AssignScreen({ onReady }) {
       </Modal>
 
       <ConfirmDialog
+        t={t}
         visible={!!confirmDialog}
         title={
           confirmDialog === 'clearAll'
-            ? (t('clearAllConfirmTitle') || 'Clear all assignments?')
-            : (t('resetBedsConfirmTitle') || 'Reset all bed states?')
+            ? t('clearAllConfirmTitle')
+            : t('resetBedsConfirmTitle')
         }
         message={
           confirmDialog === 'clearAll'
-            ? (t('clearAllConfirmMsg') || "This will unassign every room from its cleaner and clear any private-room features you'd checked. This can't be undone.")
-            : (t('resetBedsConfirmMsg') || "This will reset every dorm bed back to Inspected for all rooms. This can't be undone.")
+            ? t('clearAllConfirmMsg')
+            : t('resetBedsConfirmMsg')
         }
-        confirmLabel={t('confirm') || 'Confirm'}
+        confirmLabel={t('confirm')}
         onCancel={() => setConfirmDialog(null)}
         onConfirm={async () => {
           if (confirmDialog === 'clearAll') clearAll();
