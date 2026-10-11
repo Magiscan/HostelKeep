@@ -3,18 +3,90 @@ rules_version = '2';
 // ─────────────────────────────────────────────────────────────────────────────
 // HostelKeep — Firestore rules (SPARK / free plan, no Cloud Functions)
 //
-// The pre-auth username→email lookup lives in `loginLookup`, keyed by
-// "HOSTELCODE_username". Reads are allowed only by EXACT document ID
-// (`get`, never `list`), so the collection cannot be enumerated or dumped.
-// That keeps `users` completely private, which is the main thing.
+// Auth model:
+//   • Managers (OWNERS) sign in with their REAL email address. No loginLookup
+//     row, so nothing of theirs is readable pre-auth.
+//   • Staff also sign in with a real email address. Same reason.
+//   • Cleaners sign in with hostel code + username. `loginLookup`, keyed by
+//     "HOSTELCODE_username", maps that to a synthetic address. Reads are by
+//     EXACT document ID (`get`, never `list`).
 //
-// Deploy:  firebase deploy --only firestore:rules
+// Role model — users/{uid}.role is one of:
+//   'manager'  OWNER. Created the hostel, owns the code, has every permission
+//              implicitly and can never be narrowed. Only owners edit roles.
+//   'staff'    Manager-side account. Has users/{uid}.roleId pointing at a key
+//              in hostels/{code}/config/roles. EVERY write they attempt is
+//              checked against that role's `perms` array, right here.
+//   'cleaner'  Housekeeper — or, with users/{uid}.team == 'maintenance', a
+//              maintenance worker (ROUND 5). Same sign-in, same lifecycle;
+//              the team only decides which home screen the app shows.
+//
+// Ownership model:
+//   • users/{uid}.hostelCode  — the ACTIVE hostel. Every query keys off this.
+//   • users/{uid}.hostelCodes — every hostel an owner owns. OWNERS ONLY.
+//   • hostelCodes/{code}.uid  — who reserved the code. This is the proof of
+//     ownership: a code only ever joins someone's hostelCodes, and a hostel
+//     document is only ever created, by the person who reserved it.
+//
+// Subscription model — billing/{hostelCode}:
+//   • FREE (no subscription): the phone app's everyday work — rooms, floors,
+//     assigning, housekeepers, extra requests, renaming the hostel.
+//   • PRO (subscription required, enforced here): saving daily history, staff
+//     accounts and roles, staff reading history.
+//   • PRO (enforced by the client, because it only READS data the free tier
+//     already sees): the web dashboard and the Live board.
+//   • PRO+ (billing.tier == 'proplus', enforced here): Maintenance. Every
+//     maintenance write needs it — reports, tasks, status, photos, comments.
+//     Not gated: reading (data the hostel already owns), deleting, and taking a
+//     finished task off your own list. Same 3-day grace as Pro, via isPaid().
+//   • Housekeepers are NEVER gated. A lapsed payment must not strand someone
+//     halfway through a shift.
+//   • Deleting is never gated for owners. Someone who stops paying must still
+//     be able to remove their data and their account (store rules, GDPR).
+//   • Only you write billing documents (Firebase console or Admin SDK, both of
+//     which bypass these rules).
+//
+// WHAT IS AND IS NOT ENFORCED HERE
+//   Enforced: every manager-side WRITE, checked against role.perms.
+//   Enforced: reads of dailyLogs, extraRequests and maintenance, checked
+//             against role.sections.
+//   NOT enforced: the remaining section visibility (rooms / roomStatus /
+//   users are read by nearly every screen).
+//
+// Cost note: each get() counts toward the 10-document-access limit per rule
+// evaluation. Results are cached per request.
+//
+// ROUND 4 CHANGES (search for "ROUND 4"):
+//   1. users update: switching or adding hostels is OWNER-ONLY, and a code can
+//      only be added by the person who reserved it. Before this, any signed-in
+//      user could append ANY known hostel code to their own hostelCodes and
+//      switch to it — an owner became owner of someone else's hostel, and a
+//      housekeeper became a member of it.
+//   2. users create (new owner) and hostels create: the code must be reserved
+//      by the caller, so an unbuilt or deleted hostel's code can't be claimed.
+//   3. loginLookup: a cleaner may DELETE their own row but no longer UPDATE it.
+//   4. rooms: the cleaner self-assign clause is gone. Extra rooms go through a
+//      request and a manager's approval; nothing in the app self-assigns.
+//
+// ROUND 5 CHANGES (search for "ROUND 5") — maintenance:
+//   1. hostels/{code}/maintenance/{taskId}: one document per problem. A
+//      housekeeper creates it as 'reported' (no assignees, no due date); a
+//      manager with the 'maintenance' perm triages it into a task. Assignees
+//      may only move status / checklist forward — never reassign or retitle.
+//   2. .../photos and .../comments subcollections, so list queries never
+//      download base64 images.
+//   3. users: a cleaner may carry `team` ('housekeeping' | 'maintenance'),
+//      set at creation or changed later by anyone with 'manageTeam'.
+//   4. (5b) maintenance.clearedBy: uids who removed a finished task from
+//      their own list. Hides it for them only; the Done tab keeps it.
+//
+// Deploy:  firebase deploy --only firestore:rules,firestore:indexes
 // ─────────────────────────────────────────────────────────────────────────────
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    // ── Identity helpers ─────────────────────────────────────────────────────
 
     function signedIn() {
       return request.auth != null;
@@ -28,8 +100,68 @@ service cloud.firestore {
       return signedIn() && me().hostelCode == code;
     }
 
-    function isManagerOf(code) {
-      return signedIn() && me().role == 'manager' && me().hostelCode == code;
+    function owns(code) {
+      return signedIn() && (
+        me().hostelCode == code
+        || (('hostelCodes' in me()) && code in me().hostelCodes)
+      );
+    }
+
+    function isOwnerOf(code) {
+      return signedIn() && me().role == 'manager' && owns(code);
+    }
+
+    function isStaffOf(code) {
+      return signedIn() && me().role == 'staff' && me().hostelCode == code;
+    }
+
+    // ROUND 4: proof that the caller reserved this code. hostelCodes/{code} is
+    // create-only and records the reserving uid, and rules' get() is not
+    // subject to that collection's `read: if false`.
+    function reservedByMe(code) {
+      return exists(/databases/$(database)/documents/hostelCodes/$(code))
+        && get(/databases/$(database)/documents/hostelCodes/$(code)).data.uid == request.auth.uid;
+    }
+
+    // ── Subscription helpers ─────────────────────────────────────────────────
+
+    function billingDoc(code) {
+      return get(/databases/$(database)/documents/billing/$(code)).data;
+    }
+
+    function isPaid(code) {
+      return exists(/databases/$(database)/documents/billing/$(code))
+        && billingDoc(code).status in ['trialing', 'active', 'past_due']
+        && request.time < billingDoc(code).currentPeriodEnd + duration.value(3, 'd');
+    }
+
+    // ROUND 5c: Pro+. `tier`, not `plan` — plan is the billing period
+    // (trial / monthly / yearly). A billing document without `tier` is Pro.
+    function isProPlus(code) {
+      return isPaid(code) && billingDoc(code).get('tier', 'pro') == 'proplus';
+    }
+
+    // ── Permission helpers ───────────────────────────────────────────────────
+
+    function myRole(code) {
+      return get(/databases/$(database)/documents/hostels/$(code)/config/roles)
+               .data.roles[me().roleId];
+    }
+
+    function staffCan(code, perm) {
+      return isStaffOf(code) && myRole(code).perms.hasAny([perm]);
+    }
+
+    function staffSees(code, section) {
+      return isStaffOf(code) && myRole(code).sections.hasAny([section]);
+    }
+
+    function can(code, perm) {
+      return isOwnerOf(code) || staffCan(code, perm);
+    }
+
+    function canSee(code, section) {
+      return isMemberOf(code) && (me().role != 'staff' || staffSees(code, section));
     }
 
     function changedKeys() {
@@ -41,40 +173,104 @@ service cloud.firestore {
                .data.get('assignedTo', null) == request.auth.uid;
     }
 
+    // ── ROUND 5: maintenance helpers ─────────────────────────────────────────
+
+    // The whole board: the owner, and staff whose role shows the section.
+    // NOT canSee() — that returns true for cleaners, who must only ever see
+    // tasks they reported or were given.
+    function maintenanceBoard(code) {
+      return isMemberOf(code)
+        && (me().role == 'manager' || staffSees(code, 'maintenance'));
+    }
+
+    // Create, triage, assign, edit anything. To make maintenance a Pro
+    // feature, uncomment the isPaid line. Reporting stays free either way:
+    // housekeepers are never gated.
+    function canMaintain(code) {
+      return isMemberOf(code)
+        && can(code, 'maintenance')
+        && isProPlus(code);
+    }
+
+    function involvedIn(t) {
+      return request.auth.uid in t.assignees
+        || t.reportedBy == request.auth.uid;
+    }
+
+    function mayReadTask(code, t) {
+      return maintenanceBoard(code) || (isMemberOf(code) && involvedIn(t));
+    }
+
+    function taskNow(code, taskId) {
+      return get(/databases/$(database)/documents/hostels/$(code)/maintenance/$(taskId)).data;
+    }
+
+    // Post-write state, so a task and its first photo can go in one batch.
+    function taskAfter(code, taskId) {
+      return getAfter(/databases/$(database)/documents/hostels/$(code)/maintenance/$(taskId)).data;
+    }
+
+    function validTask(d) {
+      return d.keys().hasOnly([
+               'title', 'description', 'roomId', 'area', 'priority', 'status',
+               'assignees', 'reportedBy', 'reportedAt', 'dueAt', 'checklist',
+               'photoCount', 'startedAt', 'doneAt', 'doneBy', 'holdReason',
+               'updatedAt', 'clearedBy'])
+        && d.title is string && d.title.size() > 0 && d.title.size() <= 120
+        && d.get('description', '') is string
+        && d.get('description', '').size() <= 2000
+        && (d.get('area', null) == null
+            || (d.area is string && d.area.size() <= 80))
+        && (d.get('holdReason', null) == null
+            || (d.holdReason is string && d.holdReason.size() <= 200))
+        && d.priority in ['low', 'medium', 'high', 'urgent']
+        && d.status in ['reported', 'open', 'in_progress', 'on_hold', 'done', 'dismissed']
+        && d.assignees is list && d.assignees.size() <= 6
+        && d.get('checklist', []) is list && d.get('checklist', []).size() <= 30
+        && d.get('clearedBy', []) is list && d.get('clearedBy', []).size() <= 30
+        && d.reportedBy is string;
+    }
+
+    // ── billing ──────────────────────────────────────────────────────────────
+
+    match /billing/{code} {
+      allow read: if isMemberOf(code) || owns(code);
+      allow create, update, delete: if false;
+    }
+
     // ── loginLookup ──────────────────────────────────────────────────────────
-    // Document ID: "HOSTELCODE_username". Fields: email, hostelCode,
-    // recoveryEmail (optional).
-    //
-    // `get` is public — that is the whole point, it runs before sign-in. But
-    // `list` is denied, so you can only read a document whose exact ID you
-    // already know. Guessing requires both a valid hostel code AND a valid
-    // username, and yields one synthetic address that is useless without the
-    // password.
 
     match /loginLookup/{key} {
 
       allow get:  if true;
       allow list: if false;      // ← never allow enumeration
 
-      // create() fails if the document already exists, which gives username
-      // uniqueness within a hostel for free — the old code had no such check.
       allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(['email', 'hostelCode', 'recoveryEmail'])
+        && request.resource.data.keys().hasOnly(['email', 'hostelCode'])
         && request.resource.data.email is string
-        // The key must actually belong to the hostel named in the document,
-        // so a manager of hostel A can't squat "HOSTELB_admin".
         && key.matches('^' + request.resource.data.hostelCode + '_.+$')
-        && (
-             isManagerOf(request.resource.data.hostelCode)
-             // Or a brand-new manager claiming a hostel that doesn't exist yet.
-             || !exists(/databases/$(database)/documents/hostels/$(request.resource.data.hostelCode))
-           );
+        && can(request.resource.data.hostelCode, 'manageTeam');
 
-      allow update, delete: if isManagerOf(resource.data.hostelCode);
+      // ROUND 4: split. Only the team manager or owner may change a row; the
+      // row's own user may only remove it (account deletion, email migration).
+      allow update: if can(resource.data.hostelCode, 'manageTeam')
+                    || isOwnerOf(resource.data.hostelCode);
+
+      allow delete: if can(resource.data.hostelCode, 'manageTeam')
+                    || (signedIn() && resource.data.email == request.auth.token.email)
+                    || isOwnerOf(resource.data.hostelCode);
+    }
+
+    // ── hostelCodes ──────────────────────────────────────────────────────────
+
+    match /hostelCodes/{code} {
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt']);
+      allow read, update, delete: if false;
     }
 
     // ── users ────────────────────────────────────────────────────────────────
-    // Fully private. This was world-readable before.
 
     match /users/{userId} {
 
@@ -87,80 +283,219 @@ service cloud.firestore {
 
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly(
-             ['username', 'role', 'hostelCode', 'email', 'recoveryEmail'])
+             ['username', 'role', 'hostelCode', 'hostelCodes', 'email',
+              'recoveryEmail', 'roleId', 'team'])
         && (
-             // A manager adding a cleaner to their own hostel.
              (
                request.resource.data.role == 'cleaner'
-               && isManagerOf(request.resource.data.hostelCode)
+               && !('hostelCodes' in request.resource.data)
+               && !('roleId' in request.resource.data)
+               // ROUND 5: optional team.
+               && (
+                    !('team' in request.resource.data)
+                    || request.resource.data.team in ['housekeeping', 'maintenance']
+                  )
+               && can(request.resource.data.hostelCode, 'manageTeam')
              )
              ||
-             // A new manager claiming a hostel code nobody owns yet. This is
-             // what stops anyone writing {role:'manager', hostelCode:'<yours>'}
-             // and taking over an existing property.
+             (
+               request.resource.data.role == 'staff'
+               && !('hostelCodes' in request.resource.data)
+               && !('team' in request.resource.data)
+               && request.resource.data.roleId is string
+               && request.resource.data.roleId != 'owner'
+               && isOwnerOf(request.resource.data.hostelCode)
+               && isPaid(request.resource.data.hostelCode)
+             )
+             ||
+             // A new owner claiming a code THEY reserved (ROUND 4) and that
+             // has no hostel yet.
              (
                userId == request.auth.uid
                && request.resource.data.role == 'manager'
+               && !('team' in request.resource.data)
                && !exists(/databases/$(database)/documents/hostels/$(request.resource.data.hostelCode))
+               && request.resource.data.hostelCodes == [request.resource.data.hostelCode]
+               && reservedByMe(request.resource.data.hostelCode)
              )
            );
 
-      // The single most important rule here: role and hostelCode are immutable
-      // from the client.
-      allow update: if signedIn() &&
-                    userId == request.auth.uid &&
-                    changedKeys().hasOnly(['pushToken', 'recoveryEmail']);
+      allow update: if signedIn() && (
 
-      // A manager removing a cleaner from their own hostel.
-      allow delete: if isManagerOf(resource.data.hostelCode)
-                    && resource.data.role == 'cleaner'
-                    && userId != request.auth.uid;
+        (userId == request.auth.uid && (
+
+          // 1. Ordinary profile fields. Any role.
+          (
+            changedKeys().hasOnly(
+              ['pushToken', 'recoveryEmail', 'photoUri', 'proInterest', 'proInterestAt',
+               'notificationsClearedAt', 'tutorialSeenAt'])
+            && (
+                 !('photoUri' in request.resource.data)
+                 || request.resource.data.photoUri == null
+                 || request.resource.data.photoUri.size() < 400000
+               )
+          )
+
+          // 2. Switch the active hostel — OWNERS ONLY (ROUND 4), and only to
+          // one already owned.
+          || (
+               resource.data.role == 'manager'
+               && changedKeys().hasOnly(['hostelCode'])
+               && ('hostelCodes' in resource.data)
+               && request.resource.data.hostelCode in resource.data.hostelCodes
+             )
+
+          // 3a. One-time backfill for owners created before multi-hostel.
+          // OWNERS ONLY (ROUND 4): a cleaner or staff member must never get a
+          // hostelCodes array, because it is what 2 and 3b build on.
+          || (
+               resource.data.role == 'manager'
+               && changedKeys().hasOnly(['hostelCodes'])
+               && !('hostelCodes' in resource.data)
+               && request.resource.data.hostelCodes == [resource.data.hostelCode]
+             )
+
+          // 3b. Append exactly one code, at the end, that the caller reserved
+          // (ROUND 4). addHostel writes [...existing, code], so the new code is
+          // always the last element; requiring it to be new and reserved by
+          // the caller is what stops anyone adding a code they merely know.
+          || (
+               resource.data.role == 'manager'
+               && changedKeys().hasOnly(['hostelCodes'])
+               && ('hostelCodes' in resource.data)
+               && request.resource.data.hostelCodes.size() == resource.data.hostelCodes.size() + 1
+               && request.resource.data.hostelCodes.hasAll(resource.data.hostelCodes)
+               && !(request.resource.data.hostelCodes[request.resource.data.hostelCodes.size() - 1]
+                    in resource.data.hostelCodes)
+               && reservedByMe(request.resource.data.hostelCodes[request.resource.data.hostelCodes.size() - 1])
+             )
+
+          // 3c. Drop exactly one code and move the active hostel in the same
+          // write. OWNERS ONLY (ROUND 4).
+          || (
+               resource.data.role == 'manager'
+               && changedKeys().hasOnly(['hostelCode', 'hostelCodes'])
+               && ('hostelCodes' in resource.data)
+               && resource.data.hostelCodes.hasAll(request.resource.data.hostelCodes)
+               && request.resource.data.hostelCodes.size() == resource.data.hostelCodes.size() - 1
+               && request.resource.data.hostelCode in request.resource.data.hostelCodes
+             )
+
+          // 4. Email migration off a synthetic address.
+          || (
+               changedKeys().hasOnly(['email', 'recoveryEmail'])
+               && request.resource.data.email == request.auth.token.email
+             )
+        ))
+
+        || (
+             resource.data.role == 'staff'
+             && isOwnerOf(resource.data.hostelCode)
+             && isPaid(resource.data.hostelCode)
+             && changedKeys().hasOnly(['roleId'])
+             && request.resource.data.roleId is string
+             && request.resource.data.roleId != 'owner'
+           )
+
+        // ROUND 5: move a team member between housekeeping and maintenance.
+        // The member themself can't — 'team' is not in profile fields above.
+        // 5d: moving back to housekeeping DELETES the field (setMemberTeam
+        // uses deleteField()), so an absent `team` must be allowed too.
+        || (
+             resource.data.role == 'cleaner'
+             && isMemberOf(resource.data.hostelCode)
+             && can(resource.data.hostelCode, 'manageTeam')
+             && changedKeys().hasOnly(['team'])
+             && (
+                  !('team' in request.resource.data)
+                  || request.resource.data.team in ['housekeeping', 'maintenance']
+                )
+           )
+      );
+
+      allow delete: if signedIn() && (
+                      userId == request.auth.uid
+                      || (
+                           resource.data.role == 'cleaner'
+                           && (
+                                can(resource.data.hostelCode, 'manageTeam')
+                                || isOwnerOf(resource.data.hostelCode)
+                              )
+                         )
+                      || (
+                           isOwnerOf(resource.data.hostelCode)
+                           && resource.data.role == 'staff'
+                         )
+                    );
     }
 
     // ── hostels ──────────────────────────────────────────────────────────────
 
     match /hostels/{hostelCode} {
 
-      allow get:  if isMemberOf(hostelCode);
+      allow get:  if owns(hostelCode) || isStaffOf(hostelCode);
       allow list: if false;
 
-      // The caller's own user document must already name them manager of this
-      // exact code, and the hostel must not exist yet.
-      allow create: if isManagerOf(hostelCode)
+      // ROUND 4: the code must be reserved by the caller, not merely exist.
+      allow create: if isOwnerOf(hostelCode)
+                    && reservedByMe(hostelCode)
                     && request.resource.data.code == hostelCode;
 
-      allow update: if isManagerOf(hostelCode);
-      allow delete: if false;
+      allow update: if (isOwnerOf(hostelCode) || staffCan(hostelCode, 'editRooms'))
+                    && (
+                         !('logoUri' in request.resource.data)
+                         || request.resource.data.logoUri == null
+                         || request.resource.data.logoUri.size() < 400000
+                       );
+
+      allow delete: if isOwnerOf(hostelCode);
+
+      match /config/{docId} {
+        allow read:  if isMemberOf(hostelCode);
+        allow create, update: if isOwnerOf(hostelCode) && isPaid(hostelCode);
+        allow delete: if isOwnerOf(hostelCode);
+      }
 
       match /floors/{floorId} {
         allow read:  if isMemberOf(hostelCode);
-        allow write: if isManagerOf(hostelCode);
+        allow create, update: if can(hostelCode, 'editRooms') && isMemberOf(hostelCode);
+        allow delete: if (can(hostelCode, 'editRooms') && isMemberOf(hostelCode))
+                      || isOwnerOf(hostelCode);
       }
 
       match /rooms/{roomId} {
         allow read: if isMemberOf(hostelCode);
-        allow create, delete: if isManagerOf(hostelCode);
 
-        allow update: if isManagerOf(hostelCode)
-          // A cleaner may self-assign an unassigned room to themselves, and
-          // change nothing else.
+        allow create: if can(hostelCode, 'editRooms') && isMemberOf(hostelCode);
+        allow delete: if (can(hostelCode, 'editRooms') && isMemberOf(hostelCode))
+                      || isOwnerOf(hostelCode);
+
+        allow update:
+          if (can(hostelCode, 'editRooms') && isMemberOf(hostelCode))
+          || (
+               can(hostelCode, 'assign')
+               && isMemberOf(hostelCode)
+               && changedKeys().hasOnly(['assignedTo'])
+             )
+          // ROUND 4: the cleaner self-assign clause was removed here. Extra
+          // rooms are requested and approved; nothing in the app self-assigns.
+          // A housekeeper may still hand back a room assigned to them, which
+          // their own account deletion needs.
           || (
                isMemberOf(hostelCode) &&
                changedKeys().hasOnly(['assignedTo']) &&
-               request.resource.data.assignedTo == request.auth.uid &&
-               resource.data.get('assignedTo', null) == null
+               resource.data.get('assignedTo', null) == request.auth.uid &&
+               request.resource.data.assignedTo == null
              );
       }
 
-      // Cleaners write status for their own rooms, but cannot touch the
-      // manager's notes or the per-bed assignment instructions.
       match /roomStatus/{roomId} {
         allow read: if isMemberOf(hostelCode);
 
-        allow create: if isManagerOf(hostelCode)
+        allow create: if (can(hostelCode, 'assign') && isMemberOf(hostelCode))
           || (isMemberOf(hostelCode) && roomAssignedToMe(hostelCode, roomId));
 
-        allow update: if isManagerOf(hostelCode)
+        allow update: if (can(hostelCode, 'assign') && isMemberOf(hostelCode))
           || (
                isMemberOf(hostelCode) &&
                roomAssignedToMe(hostelCode, roomId) &&
@@ -170,42 +505,168 @@ service cloud.firestore {
                  == resource.data.get('assignmentBedStatus', {})
              );
 
-        allow delete: if isManagerOf(hostelCode);
+        allow delete: if (can(hostelCode, 'assign') && isMemberOf(hostelCode))
+                      || isOwnerOf(hostelCode);
       }
 
       match /extraRequests/{roomId} {
-        allow read: if isMemberOf(hostelCode);
+        allow read: if canSee(hostelCode, 'extraRequests')
+          || (isMemberOf(hostelCode) && me().role == 'cleaner');
 
         allow create: if isMemberOf(hostelCode)
           && request.resource.data.cleanerId == request.auth.uid
           && request.resource.data.status == 'pending'
-          // Firestore caps a document at 1 MiB; base64 photos are the only
-          // field that can realistically breach it.
           && (
                !('imageBase64' in request.resource.data)
                || request.resource.data.imageBase64 == null
                || request.resource.data.imageBase64.size() < 700000
              );
 
-        // Approve / reject is a manager action — no self-approval.
-        allow update: if isManagerOf(hostelCode);
+        allow update: if can(hostelCode, 'approve') && isMemberOf(hostelCode);
 
-        allow delete: if isManagerOf(hostelCode)
-          || (isMemberOf(hostelCode) && resource.data.cleanerId == request.auth.uid);
+        allow delete: if (can(hostelCode, 'approve') && isMemberOf(hostelCode))
+          || (isMemberOf(hostelCode) && resource.data.cleanerId == request.auth.uid)
+          || isOwnerOf(hostelCode);
       }
 
-      // Without Cloud Functions these are still written by clients. Scoped to
-      // the caller's own hostel, which is the best available on Spark.
+      // ── ROUND 5: maintenance ───────────────────────────────────────────────
+      //
+      // Lifecycle:
+      //   reported ─(triage)→ open → in_progress → done
+      //                         └──→ on_hold ──┘
+      //   reported → dismissed
+      //
+      // Queries the rules can prove (rules are not filters):
+      //   board:    where('status', 'in', [...])            → maintenanceBoard
+      //   worker:   where('assignees', 'array-contains', me) → assignees branch
+      //   reporter: where('reportedBy', '==', me)            → reportedBy branch
+
+      match /maintenance/{taskId} {
+
+        allow read: if mayReadTask(hostelCode, resource.data);
+
+        allow create: if isMemberOf(hostelCode)
+          && isProPlus(hostelCode)
+          && validTask(request.resource.data)
+          && request.resource.data.reportedBy == request.auth.uid
+          && (
+               canMaintain(hostelCode)
+               // Anyone in the hostel may REPORT: untriaged, unassigned.
+               || (
+                    request.resource.data.status == 'reported'
+                    && request.resource.data.assignees.size() == 0
+                    && request.resource.data.get('dueAt', null) == null
+                    && request.resource.data.get('checklist', []).size() == 0
+                  )
+             );
+
+        allow update: if isMemberOf(hostelCode)
+          && validTask(request.resource.data)
+          && request.resource.data.reportedBy == resource.data.reportedBy
+          && request.resource.data.reportedAt == resource.data.reportedAt
+          && (
+               canMaintain(hostelCode)
+               // An assignee works the task: status and checklist only. No
+               // reassigning, no retitling, no reopening a dismissed report,
+               // no self-triage.
+               || (
+                    isProPlus(hostelCode)
+                    && request.auth.uid in resource.data.assignees
+                    && resource.data.status in ['open', 'in_progress', 'on_hold', 'done']
+                    && request.resource.data.status in ['open', 'in_progress', 'on_hold', 'done']
+                    && changedKeys().hasOnly(
+                         ['status', 'checklist', 'startedAt', 'doneAt', 'doneBy',
+                          'holdReason', 'photoCount', 'updatedAt'])
+                    && (
+                         request.resource.data.status != 'done'
+                         || request.resource.data.get('doneBy', null) == request.auth.uid
+                       )
+                  )
+               // ROUND 5b: anyone involved may take a FINISHED task off their
+               // own list. Only their own uid can be added; nothing else moves.
+               || (
+                    involvedIn(resource.data)
+                    && resource.data.status in ['done', 'dismissed']
+                    && changedKeys().hasOnly(['clearedBy'])
+                    && request.resource.data.clearedBy.toSet()
+                         == resource.data.get('clearedBy', []).toSet().union([request.auth.uid].toSet())
+                  )
+             );
+
+        allow delete: if canMaintain(hostelCode)
+          || isOwnerOf(hostelCode)
+          || (
+               isMemberOf(hostelCode)
+               && resource.data.reportedBy == request.auth.uid
+               && resource.data.status == 'reported'
+             );
+
+        // Kept out of the task document so list queries stay light.
+        match /photos/{photoId} {
+          allow read: if mayReadTask(hostelCode, taskNow(hostelCode, taskId));
+
+          allow create: if isMemberOf(hostelCode)
+            && isProPlus(hostelCode)
+            && mayReadTask(hostelCode, taskAfter(hostelCode, taskId))
+            && request.resource.data.keys().hasOnly(['data', 'by', 'at', 'kind'])
+            && request.resource.data.by == request.auth.uid
+            && request.resource.data.kind in ['report', 'progress', 'fix']
+            && request.resource.data.data is string
+            && request.resource.data.data.size() < 700000;
+
+          allow update: if false;
+
+          // Children are deleted BEFORE the task (see deleteTask), so the
+          // owner/maintainer branches never need the parent to exist.
+          allow delete: if canMaintain(hostelCode)
+            || isOwnerOf(hostelCode)
+            || (isMemberOf(hostelCode) && resource.data.by == request.auth.uid);
+        }
+
+        match /comments/{commentId} {
+          allow read: if mayReadTask(hostelCode, taskNow(hostelCode, taskId));
+
+          allow create: if isMemberOf(hostelCode)
+            && isProPlus(hostelCode)
+            && mayReadTask(hostelCode, taskNow(hostelCode, taskId))
+            && request.resource.data.keys().hasOnly(['text', 'by', 'at'])
+            && request.resource.data.by == request.auth.uid
+            && request.resource.data.text is string
+            && request.resource.data.text.size() > 0
+            && request.resource.data.text.size() <= 1000;
+
+          allow update: if false;
+
+          allow delete: if canMaintain(hostelCode)
+            || isOwnerOf(hostelCode)
+            || (isMemberOf(hostelCode) && resource.data.by == request.auth.uid);
+        }
+      }
+
       match /notifications/{notifId} {
-        allow read:   if isMemberOf(hostelCode);
-        allow create: if isMemberOf(hostelCode);
-        allow update: if isMemberOf(hostelCode);
-        allow delete: if isMemberOf(hostelCode);
+        allow read: if isMemberOf(hostelCode);
+
+        allow create: if isMemberOf(hostelCode)
+          && request.resource.data.read == false
+          && request.resource.data.keys().hasOnly(
+               ['type', 'message', 'roomId', 'read', 'timestamp']);
+
+        allow update: if (isOwnerOf(hostelCode) || isStaffOf(hostelCode))
+          && isMemberOf(hostelCode)
+          && changedKeys().hasOnly(['read']);
+
+        allow delete: if (isOwnerOf(hostelCode) || isStaffOf(hostelCode))
+          && isMemberOf(hostelCode);
       }
 
       match /dailyLogs/{logId} {
-        allow read:  if isMemberOf(hostelCode);
-        allow write: if isManagerOf(hostelCode);
+        allow read:  if (canSee(hostelCode, 'history') && isPaid(hostelCode))
+          || isOwnerOf(hostelCode)
+          || (isMemberOf(hostelCode) && me().role == 'cleaner');
+        allow create, update: if (can(hostelCode, 'export') || can(hostelCode, 'assign'))
+           && isMemberOf(hostelCode)
+           && isPaid(hostelCode);
+        allow delete: if isOwnerOf(hostelCode);
       }
     }
 

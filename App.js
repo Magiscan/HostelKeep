@@ -133,7 +133,7 @@ function StaffNotOnMobile() {
 
 function RootNavigator() {
   const { user, loading } = useAuth();
-  const { loaded } = useApp();
+  const { loaded, userData } = useApp();
 
   // True on native always, and on web for phones (any orientation) and small
   // touch-first devices. A wide desktop returns false; an iPad in portrait or
@@ -182,7 +182,13 @@ function RootNavigator() {
   }
 
   if (user.role === 'cleaner') {
-    return user.team === 'maintenance' ? <MaintenanceScreen /> : <CleanerScreen />;
+    // `userData` is the live snapshot from AppContext and reflects a team
+    // change the moment it lands in Firestore. `user.team` comes from the
+    // auth listener's one-shot read of the user document, which only
+    // refreshes on the next sign-in. Prefer the live value; fall back to the
+    // snapshot for the first frame or two before the listener has fired.
+    const team = userData?.team ?? user.team;
+    return team === 'maintenance' ? <MaintenanceScreen /> : <CleanerScreen />;
   }
 
   // A signed-in account with an unrecognised role is not usable. Previously

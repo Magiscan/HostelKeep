@@ -150,6 +150,11 @@ export function AuthProvider({ children }) {
             email: firebaseUser.email,
             username: data.username,
             role: data.role,
+            // `team` is written by setMemberTeam and read by the router in
+            // App.js. Defaults to null (not 'housekeeping') so the router can
+            // distinguish "no team set" from "explicitly housekeeping" if it
+            // ever needs to — the check that matters is `=== 'maintenance'`.
+            team: data.team || null,
             roleId: data.roleId || null,
             hostelCode: data.hostelCode,
             hostelCodes: data.hostelCodes || (data.hostelCode ? [data.hostelCode] : []),
