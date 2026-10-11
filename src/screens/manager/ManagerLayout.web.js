@@ -41,8 +41,10 @@ import { BRAND, NEUTRAL, STATUS, GLASS } from '../../theme/tokens';
 import HistoryScreen from './HistoryScreen.web';
 import RolesScreen from './RolesScreen.web';
 import AccountScreen from './AccountScreen.web';
+import MaintenanceBoardScreen from './MaintenanceBoardScreen.desktop';
 import { isOwner as ownerOf } from '../../utils/permissions';
 import { SubscriptionGate, SubscriptionBanner } from './PaywallScreen.web';
+import { useMaintenance } from '../../hooks/useMaintenance';
 
 /* Section metadata. Titles and subtitles are the prototype's, unchanged. */
 const buildSections = (t) => ({
@@ -81,6 +83,11 @@ const buildSections = (t) => ({
     subtitle: t('secReportsSub'),
     ownsHeader: false,
   },
+  maintenance: {
+    title: t('secMaintenanceTitle'),
+    subtitle: t('secMaintenanceSub'),
+    ownsHeader: false,
+  },
   roles: {
     title: t('secRolesTitle'),
     subtitle: t('secRolesSub'),
@@ -99,6 +106,8 @@ function notifLook(type) {
     case 'room_cleaned':   return { icon: 'verified', ...STATUS.inspected };
     case 'extra_request':  return { icon: 'flag', ...STATUS.dirty };
     case 'issue':          return { icon: 'build', ...STATUS.late };
+    case 'maint_reported': return { icon: 'build', ...STATUS.late };
+    case 'maint_done':     return { icon: 'task_alt', ...STATUS.inspected };
     default:               return { icon: 'schedule', bg: NEUTRAL.slateChip, text: NEUTRAL.text2 };
   }
 }
@@ -133,8 +142,10 @@ export default function ManagerLayout() {
   const { extraRequests, sections, roles, rolesLoaded, hostelCode } = useApp();
   const owner = ownerOf(user);
   const [rolesAction, setRolesAction] = useState(null);
+  const [maintAction, setMaintAction] = useState(null);
   const [highlightRoomId, setHighlightRoomId] = useState(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  const maint = useMaintenance();
 
   // "Clear all" hides notifications from THIS panel only. The documents stay,
   // because Dashboard and Live activities read the same ones.
@@ -217,6 +228,7 @@ export default function ManagerLayout() {
       case 'team':          return <TeamScreen onReady={setTeamAction} />;
       case 'extraRequests': return <ExtraRequestsScreen />;
       case 'reports':       return <ReportsScreen />;
+      case 'maintenance':   return <MaintenanceBoardScreen onReady={setMaintAction} />;
       case 'history':       return <HistoryScreen onReady={setHistoryAction} />;
       case 'roles':         return owner ? <RolesScreen onReady={setRolesAction} /> : <AccountScreen />;
       case 'account':       return <AccountScreen />;
@@ -234,6 +246,7 @@ export default function ManagerLayout() {
             extraRequests: extraRequests.filter(
               (r) => r.status === 'pending' || !r.status
             ).length,
+            maintenance: maint.counts.reported,
           }}
           user={{ name: user.username, role: owner ? 'Owner' : (roles?.[user.roleId]?.name || user.role) }}
           sections={owner ? null : sections}
@@ -284,6 +297,9 @@ export default function ManagerLayout() {
               assignAction.clearAll &&
               { key: 'clear', label: t('actionClearAll'), icon: 'cancel', variant: 'danger', onPress: assignAction.clearAll },
             ].filter(Boolean) :
+            (tab === 'maintenance' && maintAction?.newTask) ? [
+              { key: 'newTask', label: t('actionNewTask'), icon: 'add', variant: 'primary', onPress: maintAction.newTask },
+            ] :
             (tab === 'roles' && rolesAction) ? [
               { key: 'saveRoles',
                 label: rolesAction.saving ? t('savingShort') : t('saveChanges'),
@@ -346,10 +362,19 @@ export default function ManagerLayout() {
                       activeOpacity={0.7}
                       onPress={() => {
                         markAsRead(item.id);
+                        // Maintenance notifications store the task ID in
+                        // `roomId`. Without this branch the tap would try to
+                        // highlight a room that doesn't exist, and the user
+                        // would land on a Dashboard with nothing selected.
+                        if (item.type?.startsWith('maint_')) {
+                          setTab('maintenance');
+                          setShowNotifications(false);
+                          return;
+                        }
                         setShowNotifications(false);
                         setTab('dashboard');
                         setHighlightRoomId(item.roomId);
-                      }}
+                      }}  
                     >
                       <View style={[styles.notifIcon, { backgroundColor: look.bg }]}>
                         <Icon name={look.icon} size={17} color={look.text} />

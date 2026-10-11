@@ -174,7 +174,7 @@ export default function AssignScreen({ onReady }) {
   const { width } = useWindowDimensions();
   const isNarrow = width < 900;
   const {
-    rooms, cleaners, floors, assignRoomWithDetails, unassignRoom, roomStatus,
+    rooms, cleaners, housekeepers, floors, assignRoomWithDetails, unassignRoom, roomStatus,
     updateRoomStatus, roomAttributes, can, closeDayBeforeWipe,
   } = useApp();
   const canAssign = can('assign');
@@ -184,7 +184,7 @@ export default function AssignScreen({ onReady }) {
   const [showMore, setShowMore] = useState(false);
   const [selectedRoomIds, setSelectedRoomIds] = useState(new Set());
   const [roomType, setRoomType] = useState(null);
-  const [activeCleanerIds, setActiveCleanerIds] = useState(new Set(cleaners.map(c => c.id)));
+  const [activeCleanerIds, setActiveCleanerIds] = useState(new Set(housekeepers.map(c => c.id)));
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState(null);
@@ -263,7 +263,7 @@ export default function AssignScreen({ onReady }) {
     });
   }, [floors]);
 
-  const activeCleaners = cleaners.filter(c => activeCleanerIds.has(c.id));
+  const activeCleaners = housekeepers.filter(c => activeCleanerIds.has(c.id));
 
   // ── Handlers ──────────────────────────────────────────────────
   const toggleBedState = useCallback(async (roomId, bedId) => {
@@ -648,7 +648,7 @@ export default function AssignScreen({ onReady }) {
   };
 
   if (!rooms.length) return <EmptyState icon="📋" title={t('noRoomsToAssign')} subtitle={t('addRoomsFirst')} />;
-  if (!cleaners.length) return <EmptyState icon="👤" title={t('noCleaners')} subtitle={t('addCleanersFirst')} />;
+  if (!housekeepers.length) return <EmptyState icon="👤" title={t('noCleaners')} subtitle={t('addCleanersFirst')} />;
 
   return (
     <View style={styles.container}>
@@ -996,14 +996,14 @@ export default function AssignScreen({ onReady }) {
                       <View style={styles.railHint}>
                         <Text style={styles.railHintText}>{t('tapNameToShift')}</Text>
                         <TouchableOpacity
-                          onPress={() => setActiveCleanerIds(new Set(cleaners.map(c => c.id)))}
+                          onPress={() => setActiveCleanerIds(new Set(housekeepers.map(c => c.id)))}
                           activeOpacity={0.7}
                         >
                           <Text style={styles.railAllOn}>{t('allOn')}</Text>
                         </TouchableOpacity>
                       </View>
 
-                      {cleaners.map(c => {
+                      {housekeepers.map(c => {
                         const on = activeCleanerIds.has(c.id);
                         const mine = rooms.filter(r => r.assignedTo === c.id);
                         const done = mine.filter(r => roomStatus[r.id]?.cleaned).length;

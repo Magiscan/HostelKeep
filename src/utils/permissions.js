@@ -32,6 +32,7 @@ export const SECTION_LIST = [
   { key: 'assign',        label: 'Assign',          icon: 'swap_horiz' },
   { key: 'team',          label: 'Team',            icon: 'group' },
   { key: 'extraRequests', label: 'Extra requests',  icon: 'flag' },
+  { key: 'maintenance',   label: 'Maintenance',     icon: 'build' },
   { key: 'reports',       label: 'Live activities', icon: 'description' },
   { key: 'history',       label: 'History',         icon: 'calendar_month' },
 ];
@@ -70,6 +71,12 @@ export const PERM_LIST = [
     hint: 'Save the day and download history logs.',
     enforced: 'Writes to daily logs.',
   },
+  {
+    key: 'maintenance',
+    label: 'Manage maintenance',
+    hint: 'Review reports, create and assign repair tasks.',
+    enforced: 'Writes to maintenance tasks.',
+  },
 ];
 
 export const SECTION_KEYS = SECTION_LIST.map(s => s.key);
@@ -93,6 +100,11 @@ export const DEFAULT_ROLES = {
     name: 'Reception',
     sections: ['dashboard', 'rooms'],
     perms: [],
+  },
+  maint: {
+    name: 'Maintenance manager',
+    sections: ['dashboard', 'rooms', 'maintenance'],
+    perms: ['maintenance'],
   },
 };
 

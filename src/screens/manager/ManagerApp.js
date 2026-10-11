@@ -16,6 +16,7 @@ import AssignScreen from './AssignScreen';
 import ExtraRequestsScreen from './ExtraRequestsScreen';
 import AccountScreen from '../AccountScreen';
 import ReportsScreen from './ReportsScreen';
+import MaintenanceBoardScreen from './MaintenanceBoardScreen';
 import { COLORS } from '../../theme/colors';
 import { FONTS, DISPLAY, FONT_SIZE } from '../../theme/typography';
 import { SPACING } from '../../theme/spacing';
@@ -28,6 +29,7 @@ import { ToastHost, useToast } from '../../components/brand';
 import { useAvatarPicker } from '../../hooks/useAvatarPicker';
 import { AvatarPickerSheet, LanguageSheet } from '../../components/brand/Pickers';
 import WelcomeSheet from '../../components/brand/WelcomeSheet';
+import { useMaintenance } from '../../hooks/useMaintenance';
 
 /**
  * HostelKeep 2.0 manager shell.
@@ -61,6 +63,7 @@ export default function ManagerApp() {
   const { notifications, unreadCount, markAsRead, clearAll } =
     useNotifications();
   const insets = useSafeAreaInsets();
+  const maint = useMaintenance();
 
   const [tab, setTab] = useState('assign');
   const [highlightRoomId, setHighlightRoomId] = useState(null);
@@ -112,6 +115,14 @@ export default function ManagerApp() {
     if (tab === 'live' && !isPro) setTab('assign');
   }, [tab, isPro]);
 
+  // Same guard for maintenance: the tab disappears when the feature is
+  // disabled, so anyone sitting on it must be moved somewhere they can
+  // actually be. Without this, the tab bar would drop the item but the
+  // screen would stay mounted.
+  useEffect(() => {
+    if (tab === 'maintenance' && !maint.enabled) setTab('assign');
+  }, [tab, maint.enabled]);
+
   // Managers only. Cleaners run a different app, and staff are desktop-only.
   useEffect(() => {
     if (user?.role === 'manager' && !user?.tutorialSeenAt) setShowWelcome(true);
@@ -127,6 +138,12 @@ export default function ManagerApp() {
     if (Platform.OS === 'web') return undefined;
     const sub = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data || {};
+      // Maintenance notifications carry a task ID, not a room. Without this
+      // branch they would try to highlight a room that doesn't exist.
+      if (data.taskId) {
+        setTab('maintenance');
+        return;
+      }
       if (data.roomId) {
         setTab('assign');
         setHighlightRoomId(data.roomId);
@@ -169,8 +186,16 @@ export default function ManagerApp() {
       icon: 'flag',
       badge: pendingRequestCount,
     },
+    ...(maint.enabled
+      ? [{
+          key: 'maintenance',
+          label: t('maint.tab', 'Fix'),
+          icon: 'build',
+          badge: maint.counts.reported,
+        }]
+      : []),
     { key: 'live', label: t('manager.tabLive') || 'Live', icon: 'monitoring', pro: !isPro },
-  ], [t, pendingRequestCount, isPro]);
+  ], [t, pendingRequestCount, isPro, maint.counts.reported, maint.enabled]);
 
   const initials = (user.username || '?').trim().charAt(0).toUpperCase();
   const hostelInitials = (hostel.name || 'H')
@@ -185,6 +210,9 @@ export default function ManagerApp() {
     switch (tab) {
       case 'assign':        return <AssignScreen bottomPad={CONTENT_BOTTOM_PAD} scrollTopSignal={scrollTopSignal} />;
       case 'extraRequests': return <ExtraRequestsScreen bottomPad={CONTENT_BOTTOM_PAD} scrollTopSignal={scrollTopSignal} />;
+      case 'maintenance':   return maint.enabled
+        ? <MaintenanceBoardScreen bottomPad={CONTENT_BOTTOM_PAD} />
+        : <AssignScreen bottomPad={CONTENT_BOTTOM_PAD} />;
       case 'setup':         return <SetupScreen bottomPad={CONTENT_BOTTOM_PAD} />;
       case 'team':          return <TeamScreen bottomPad={CONTENT_BOTTOM_PAD} />;
       case 'account':       return <AccountScreen bottomPad={CONTENT_BOTTOM_PAD} />;
@@ -340,7 +368,7 @@ export default function ManagerApp() {
         proLabel={isPro ? t('manager.proActive', 'HostelKeep Pro · active') : 'HostelKeep Pro'}
         onPro={() => { setShowSetupSheet(false); setShowPro(true); }}
         feedbackLabel={t('manager.feedback') || 'Send feedback'}
-        onFeedback={() => Linking.openURL('mailto:kohciaostudio@gmail.com')}
+        onFeedback={() => Linking.openURL('mailto:support@hostelkeep.com')}
         closeLabel={t('close')}
       />
 
@@ -418,6 +446,15 @@ export default function ManagerApp() {
                     style={[styles.notifRow, item.read && { opacity: 0.55 }]}
                     onPress={() => {
                       markAsRead(item.id);
+                      // Maintenance notifications store the task ID in
+                      // `roomId`. Without this branch the tap would try to
+                      // highlight a room that doesn't exist, and the user
+                      // would land on Assign with nothing selected.
+                      if (item.type?.startsWith('maint_')) {
+                        setTab('maintenance');
+                        setShowNotifications(false);
+                        return;
+                      }
                       setShowNotifications(false);
                       setTab('assign');
                       setHighlightRoomId(item.roomId);

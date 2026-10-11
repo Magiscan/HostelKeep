@@ -120,7 +120,7 @@ function activityLook(type) {
 export default function ReportsScreen() {
   const { t } = useTranslation();
   const {
-    rooms = [], roomStatus = {}, cleaners = [], floors = [], extraRequests = [],
+    rooms = [], roomStatus = {}, cleaners = [], housekeepers = [], floors = [], extraRequests = [],
   } = useApp();
   const { notifications } = useNotifications();
   const { isMobile } = useBreakpoint();
@@ -137,11 +137,11 @@ export default function ReportsScreen() {
   const approvedRequests = extraRequests.filter(r => r.status === 'approved').length;
   const rejectedRequests = extraRequests.filter(r => r.status === 'rejected').length;
 
-  const cleanerStats = useMemo(() => cleaners.map(c => {
+  const cleanerStats = useMemo(() => housekeepers.map(c => {
     const assigned = rooms.filter(r => r.assignedTo === c.id);
     const done = assigned.filter(r => roomStatus[r.id]?.cleaned).length;
     return { id: c.id, username: c.username, done, total: assigned.length };
-  }).sort((a, b) => b.total - a.total), [cleaners, rooms, roomStatus]);
+  }).sort((a, b) => b.total - a.total), [housekeepers, rooms, roomStatus]);
 
   const floorStats = useMemo(() => {
     const sorted = [...floors].sort((a, b) => {

@@ -129,6 +129,20 @@ async function wipeHostel(hostelCode, onProgress = () => {}) {
   await deleteCollection(['hostels', hostelCode, 'dailyLogs']);
   await deleteCollection(['hostels', hostelCode, 'config']);
 
+  // Maintenance tasks hold sub-subcollections (photos, comments) that
+  // Firestore will NOT remove when the parent task document is deleted. A
+  // naive deleteCollection(['…','maintenance']) would wipe the task rows and
+  // leave orphaned photo/comment documents behind, invisible from the app but
+  // still counting against storage and still readable by any rule that walks
+  // the path. Walk each task first, then the collection.
+  onProgress('Removing maintenance…');
+  const tasks = await getDocs(collection(db, 'hostels', hostelCode, 'maintenance'));
+  for (const task of tasks.docs) {
+    await deleteCollection(['hostels', hostelCode, 'maintenance', task.id, 'photos']);
+    await deleteCollection(['hostels', hostelCode, 'maintenance', task.id, 'comments']);
+  }
+  await deleteCollection(['hostels', hostelCode, 'maintenance']);
+
   onProgress('Removing team accounts…');
   const members = await getDocs(query(
     collection(db, 'users'),

@@ -26,6 +26,7 @@ import * as Notifications from 'expo-notifications';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { AppProvider, useApp } from './src/contexts/AppContext';
 import { NotificationProvider } from './src/contexts/NotificationContext';
+import { MaintenanceProvider } from './src/hooks/useMaintenance';
 
 import LoginScreen from './src/screens/LoginScreen';
 import CreateHostelScreen from './src/screens/CreateHostelScreen';
@@ -36,6 +37,7 @@ import AccountScreen from './src/screens/AccountScreen';
 // render and defeats bundling. A static import lets Metro pick the .web
 // variant on web and tree-shake it out of native builds.
 import ManagerLayoutWeb from './src/screens/manager/ManagerLayout.web';
+import MaintenanceScreen from './src/screens/MaintenanceScreen';
 
 import { COLORS } from './src/theme';
 // FIXED: was `import { useFonts, Inter_400Regular, ... } from './src/fonts'`.
@@ -179,7 +181,9 @@ function RootNavigator() {
     return <ManagerApp />;
   }
 
-  if (user.role === 'cleaner') return <CleanerScreen />;
+  if (user.role === 'cleaner') {
+    return user.team === 'maintenance' ? <MaintenanceScreen /> : <CleanerScreen />;
+  }
 
   // A signed-in account with an unrecognised role is not usable. Previously
   // this fell through to CleanerScreen, which showed another hostel's UI to
@@ -219,11 +223,13 @@ function App() {
         <I18nextProvider i18n={i18n}>
           <AuthProvider>
             <AppProvider>
-              <NotificationProvider>
-                <NavigationContainer theme={NavTheme}>
-                  <RootNavigator />
-                </NavigationContainer>
-              </NotificationProvider>
+              <MaintenanceProvider>
+                <NotificationProvider>
+                  <NavigationContainer theme={NavTheme}>
+                    <RootNavigator />
+                  </NavigationContainer>
+                </NotificationProvider>
+              </MaintenanceProvider>
             </AppProvider>
           </AuthProvider>
         </I18nextProvider>

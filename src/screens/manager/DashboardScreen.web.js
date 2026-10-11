@@ -165,7 +165,7 @@ function Panel({ title, action, children, flush }) {
 
 export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavigate, onReady }) {
   const {
-    rooms = [], roomStatus = {}, hostel = {}, cleaners = [],
+    rooms = [], roomStatus = {}, hostel = {}, cleaners = [], housekeepers = [],
     extraRequests = [], floors = [],
     approveExtraRoom, rejectExtraRoom, can,
   } = useApp();
@@ -222,7 +222,7 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
   const pendingExtraRequests = extraRequests.filter(r => r.status === 'pending' || !r.status);
   const approvedCount = extraRequests.filter(r => r.status === 'approved').length;
 
-  const workingCleaners = cleaners.filter(c => {
+  const workingCleaners = housekeepers.filter(c => {
     const assigned = rooms.filter(r => r.assignedTo === c.id);
     return assigned.length > 0 && assigned.some(r => !roomStatus[r.id]?.cleaned);
   }).length;
@@ -241,11 +241,11 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
       onPress: () => onNavigate('assign'),
     },
     {
-      key: 'team', icon: 'group', value: cleaners.length, label: t('kpiHousekeepersOnShift'),
+      key: 'team', icon: 'group', value: housekeepers.length, label: t('kpiHousekeepersOnShift'),
       chipBg: STATUS.inspected.bg, chipFg: STATUS.inspected.text,
       subs: [
         { label: t('kpiWorkingSuffix', { count: workingCleaners }), bg: NEUTRAL.slateChip, fg: NEUTRAL.text2 },
-        { label: t('kpiFreeSuffix', { count: cleaners.length - workingCleaners }), bg: STATUS.inspected.bg, fg: STATUS.inspected.text },
+        { label: t('kpiFreeSuffix', { count: housekeepers.length - workingCleaners }), bg: STATUS.inspected.bg, fg: STATUS.inspected.text },
       ],
       onPress: () => onNavigate('team'),
     },
@@ -480,10 +480,10 @@ export default function DashboardScreen({ highlightRoomId, onRoomOpened, onNavig
             <View style={[styles.panel, styles.panelPadded]}>
               <Text style={styles.panelTitle}>{t('panelHousekeepers')}</Text>
               <Text style={styles.panelSub}>
-                {t('housekeepersWorkingOf', { working: workingCleaners, total: cleaners.length })}
+                {t('housekeepersWorkingOf', { working: workingCleaners, total: housekeepers.length })}
               </Text>
               <View style={{ gap: 14 }}>
-                {cleaners.map(c => {
+                {housekeepers.map(c => {
                   const mine = rooms.filter(r => r.assignedTo === c.id);
                   const done = mine.filter(r => roomStatus[r.id]?.cleaned).length;
                   const pct = mine.length ? Math.round((done / mine.length) * 100) : 0;

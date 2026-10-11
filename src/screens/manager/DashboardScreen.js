@@ -684,6 +684,7 @@ function DashboardScreen({ highlightRoomId, onRoomOpened }) {
     hostel = {},
     floors = [],
     cleaners = [],
+    housekeepers = [],
     updateRoomStatus,
     resetAllRoomStatus,
     extraRequests = [],
@@ -1128,7 +1129,7 @@ function DashboardScreen({ highlightRoomId, onRoomOpened }) {
             )}
 
             {/* Cleaner Progress */}
-            {!search.trim() && cleaners.length > 0 && (
+            {!search.trim() && housekeepers.length > 0 && (
               <>
                 <View style={styles.sectionHeaderRow}>
                   <SectionTitle
@@ -1148,7 +1149,7 @@ function DashboardScreen({ highlightRoomId, onRoomOpened }) {
                     <Text style={styles.exportText}>{t('exportCSV')}</Text>
                   </TouchableOpacity>
                 </View>
-                {cleaners.map(c => {
+                {housekeepers.map(c => {
                   const assigned = rooms.filter(
                     r => r.assignedTo === c.id
                   );

@@ -5,7 +5,7 @@ import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Modal,
   Pressable, Image, TextInput,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import Icon from '../components/Icon';
@@ -30,6 +30,8 @@ import { SHADOW } from '../theme/shadows';
 import { ProfileMenu } from '../components/brand/Sheets';
 import { useAvatarPicker } from '../hooks/useAvatarPicker';
 import { AvatarPickerSheet, LanguageSheet } from '../components/brand/Pickers';
+import CleanerMaintenanceSection from '../components/maintenance/CleanerMaintenanceSection';
+import { useMaintenance } from '../hooks/useMaintenance';
 
 /**
  * HostelKeep 2.0 cleaner screen.
@@ -673,6 +675,9 @@ export default function CleanerScreen() {
   const [showLang, setShowLang] = useState(false);
 
   const [showRequestModal, setShowRequestModal] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const { enabled: maintenanceOn } = useMaintenance();   // Pro+ only
+  const insets = useSafeAreaInsets();
   const [cancelRequestId, setCancelRequestId] = useState(null);
   const [showProfile, setShowProfile] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
@@ -929,7 +934,31 @@ export default function CleanerScreen() {
             </Text>
           </View>
         )}
+
+        {/* ── Maintenance: report an issue, see your reports and tasks ── */}
+        <CleanerMaintenanceSection
+          reportOpen={showReport}
+          onReportClose={() => setShowReport(false)}
+          onToast={(msg) => toast.show(msg)}
+        />
       </ScrollView>
+
+      {/* ── Report a problem (floating, opposite the Extra Fab) ──
+          Always shown: a housekeeper with no rooms yet can still spot a leak.
+          If it doesn't line up with the Extra Fab, match `bottom` to the
+          Fab's bottom offset in components/brand/Overlays.js. */}
+      {maintenanceOn && (
+      <TouchableOpacity
+        onPress={() => setShowReport(true)}
+        style={[styles.reportFab, { bottom: 28 + insets.bottom }]}
+        activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel={t('maint.reportTitle', 'Report a problem')}
+        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+      >
+        <Icon name="build" size={24} color={COLORS.accent} />
+      </TouchableOpacity>
+      )}
 
       {/* ── Request extra (floating) ── */}
       {myRooms.length > 0 && (
@@ -1299,6 +1328,19 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.md,
     color: COLORS.successDark,
     textAlign: 'center',
+  },
+
+  /* Report-a-problem floating button (bottom-left) */
+  reportFab: {
+    position: 'absolute',
+    left: 18,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOW.fab,
   },
 
   /* Sheets */

@@ -280,7 +280,7 @@ export function SetupSheet({
 export function ContactSheet({
   visible,
   onClose,
-  email = 'kohciaostudio@gmail.com',
+  email = 'support@hostelkeep.com',
   title,
   defaultSubject = '',
   labels = {},

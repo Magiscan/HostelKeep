@@ -12,6 +12,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { buildCleanerColors } from '../../utils/cleanerColor';
 import { BRAND, NEUTRAL, STATUS, ACCENT } from '../../theme/tokens';
 import { Drawer, FieldLabel, ConfirmDialog, drawerStyles as d } from '../../components/Dashboard/Drawer.web';
+import { useTeamSwitch, TeamSwitchChip } from '../../components/maintenance/TeamSwitch';
 
 // ─── Excel helpers (same as before) ────────────────────────────
 const EXTRA_BLANK_ROWS = 5;
@@ -31,10 +32,12 @@ export default function TeamScreen({ onReady }) {
     cleaners, rooms, roomStatus, deleteCleaner, can,
   } = useApp();
   const { registerCleaner, resetCleanerPassword, user } = useAuth();
+  const teamSwitch = useTeamSwitch();
 
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [team, setTeam] = useState('housekeeping');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -54,6 +57,7 @@ export default function TeamScreen({ onReady }) {
     setShowForm(false);
     setName('');
     setPassword('');
+    setTeam('housekeeping');
     setFormError('');
   };
 
@@ -66,7 +70,7 @@ export default function TeamScreen({ onReady }) {
     setSaving(true);
     setFormError('');
     try {
-      await registerCleaner(name.trim(), password, user.hostelCode);
+      await registerCleaner(name.trim(), password, user.hostelCode, team);
       closeForm();
     } catch (e) {
       setFormError(e.message);
@@ -201,6 +205,12 @@ export default function TeamScreen({ onReady }) {
                     </View>
                    {canManageTeam && (
                     <View style={styles.cardBtns}>
+                      <TeamSwitchChip
+                        member={c}
+                        disabled={!canManageTeam}
+                        onPress={() => teamSwitch.request(c)}
+                      />
+
                       <TouchableOpacity
                         onPress={() => openReset(c)}
                         style={styles.iconBtn}
@@ -323,6 +333,36 @@ export default function TeamScreen({ onReady }) {
           />
           {!!formError && <Text style={styles.errorText}>{formError}</Text>}
         </View>
+
+        <View>
+          <FieldLabel>{t('teamLabel', 'Team')}</FieldLabel>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {['housekeeping', 'maintenance'].map(k => (
+              <TouchableOpacity
+                key={k}
+                onPress={() => setTeam(k)}
+                activeOpacity={0.8}
+                style={[styles.teamChip, team === k && styles.teamChipOn]}
+              >
+                <Icon
+                  name={k === 'maintenance' ? 'build' : 'cleaning_services'}
+                  size={16}
+                  color={team === k ? '#FFFFFF' : BRAND.navy}
+                />
+                <Text style={[styles.teamChipText, team === k && { color: '#FFFFFF' }]}>
+                  {k === 'maintenance'
+                    ? t('maint.teamMaintenance', 'Maintenance')
+                    : t('maint.teamHousekeeping', 'Housekeeping')}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={{ fontFamily: FONTS.regular, fontSize: 13, color: NEUTRAL.text3, marginTop: 6 }}>
+            {team === 'maintenance'
+              ? t('teamMaintenanceHint', 'They will see the maintenance screen instead of the room list.')
+              : t('teamHousekeepingHint', 'They will see the room list and can be assigned rooms.')}
+          </Text>
+        </View>
       </Drawer>
 
       {/* ── Reset Password Drawer ── */}
@@ -373,6 +413,8 @@ export default function TeamScreen({ onReady }) {
         onConfirm={confirmDelete}
         onCancel={() => setDeleteModal(null)}
       />
+
+      {teamSwitch.dialog}
     </View>
   );
 }
@@ -405,7 +447,18 @@ const styles = StyleSheet.create({
     color: NEUTRAL.text3, fontVariant: ['tabular-nums'],
   },
 
-  cardBtns: { flexDirection: 'row', gap: 4, flexShrink: 0 },
+  cardBtns: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+
+  teamChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 999, borderWidth: 1, borderColor: NEUTRAL.border,
+    backgroundColor: NEUTRAL.surface,
+  },
+  teamChipOn: { backgroundColor: BRAND.navy, borderColor: BRAND.navy },
+  teamChipText: {
+    fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12.5, color: BRAND.navy,
+  },
   iconBtn: {
     width: 34, height: 34, borderRadius: 11,
     borderWidth: 1, borderColor: 'transparent', backgroundColor: 'transparent',

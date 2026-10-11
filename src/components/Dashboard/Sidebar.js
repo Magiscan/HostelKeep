@@ -59,6 +59,7 @@ const buildNavSections = (t) => [
       { key: 'assign', label: t('sidebarAssign'), icon: 'swap_horiz' },
       { key: 'team', label: t('sidebarTeam'), icon: 'group' },
       { key: 'extraRequests', label: t('sidebarExtraRequests'), icon: 'flag' },
+      { key: 'maintenance', label: t('sidebarMaintenance'), icon: 'build' },
     ],
   },
   {

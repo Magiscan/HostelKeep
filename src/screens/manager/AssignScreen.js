@@ -253,7 +253,7 @@ export default function AssignScreen({ bottomPad = 0, scrollTopSignal = 0 }) {
 
   const { t } = useTranslation();
   const {
-    rooms, cleaners, floors, assignRoomWithDetails, unassignRoom,
+    rooms, cleaners, housekeepers, floors, assignRoomWithDetails, unassignRoom,
     roomStatus, updateRoomStatus, closeDayBeforeWipe,
   } = useApp();
 
@@ -453,7 +453,7 @@ const { map: roomsByFloor, counts } = useMemo(() => {
       </View>
     );
   }
-  if (!cleaners.length) {
+  if (!housekeepers.length) {
     return (
       <View style={styles.emptyWrap}>
         <Text style={styles.emptyIcon}>👤</Text>
@@ -649,7 +649,7 @@ const { map: roomsByFloor, counts } = useMemo(() => {
             </TouchableOpacity>
           )}
 
-          {[...cleaners]
+          {[...housekeepers]
             .sort((a, b) => a.username.localeCompare(b.username))
             .map(c => {
               const picked = pickedCleanerId === c.id;

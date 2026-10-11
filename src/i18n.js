@@ -3,10 +3,12 @@ import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import * as Localization from 'expo-localization';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import MAINT from './i18n.maintenance';
 
 const resources = {
   en: {
     translation: {
+      ...MAINT.en,
       // ---- Generic ----
       appName: 'HostelKeep',
       signIn: 'Sign in',
@@ -505,7 +507,7 @@ const resources = {
       actionAttributes: 'Attributes',
       actionAddRoom: 'Add room',
       actionPrintSheets: 'Print sheets',
-      actionAddHousekeeper: 'Add housekeeper',
+      actionAddHousekeeper: 'Add worker',
       actionDownloadReport: 'Download report',
       actionSaveDay: 'Save day',
       actionSaved: 'Saved',
@@ -636,7 +638,7 @@ const resources = {
         learnMore: 'Learn more',
         lockedTitle: 'The Live board is part of HostelKeep Pro',
         lockedSub: 'Pro is activated per property. When your hostel has it, the Live board unlocks here automatically, with no update needed.',
-        whereToGet: 'HostelKeep Pro is managed on our website, hostelkeep.com',
+        whereToGet: 'HostelKeep Pro isn\'t active for this hostel.',
         activeTitle: "You're on HostelKeep Pro",
         activeSub: 'The Live board and the desktop dashboard are unlocked for this hostel.',
         openLive: 'Open the Live board',
@@ -903,6 +905,7 @@ const resources = {
   },
   it: {
     translation: {
+      ...MAINT.it,
       // ---- Generic ----
       appName: 'HostelKeep',
       signIn: 'Accedi',
@@ -1498,7 +1501,7 @@ const resources = {
         learnMore: 'Scopri di più',
         lockedTitle: 'La Live board fa parte di HostelKeep Pro',
         lockedSub: 'Pro si attiva per ogni struttura. Quando il tuo ostello lo ha, la Live board si sblocca qui automaticamente, senza aggiornare l\'app.',
-        whereToGet: 'HostelKeep Pro si gestisce dal nostro sito, hostelkeep.com.',
+        whereToGet: 'HostelKeep Pro non è attivo per questo ostello.',
         activeTitle: 'Hai HostelKeep Pro',
         activeSub: 'Live board e dashboard desktop sono attive per questo ostello.',
         openLive: 'Apri la Live board',
@@ -1796,6 +1799,7 @@ const resources = {
   },
   es: {
     translation: {
+      ...MAINT.es,
       // ---- Generic ----
       appName: 'HostelKeep',
       signIn: 'Iniciar sesión',
@@ -2260,7 +2264,7 @@ const resources = {
       actionAttributes: 'Atributos',
       actionAddRoom: 'Añadir habitación',
       actionPrintSheets: 'Imprimir hojas',
-      actionAddHousekeeper: 'Añadir limpiador',
+      actionAddHousekeeper: 'Añadir trabajador',
       actionDownloadReport: 'Descargar informe',
       actionSaveDay: 'Guardar día',
       actionSaved: 'Guardado',
@@ -2391,7 +2395,7 @@ const resources = {
         learnMore: 'Más información',
         lockedTitle: 'El Live board forma parte de HostelKeep Pro',
         lockedSub: 'Pro se activa por propiedad. Cuando tu hostel lo tenga, el Live board se desbloquea aquí automáticamente, sin actualizar la app.',
-        whereToGet: 'HostelKeep Pro se gestiona desde nuestra web, hostelkeep.com.',
+        whereToGet: 'HostelKeep Pro no está activo en este hostal.',
         activeTitle: 'Tienes HostelKeep Pro',
         activeSub: 'El Live board y el panel de escritorio están activos para este hostel.',
         openLive: 'Abrir el Live board',

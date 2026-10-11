@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.hostelkeep.app",
-      "buildNumber": "10",
+      "buildNumber": "11",
       "infoPlist": {
         "NSCameraUsageDescription": "HostelKeep uses your camera to take a profile photo or a photo for an extra-room request.",
         "NSPhotoLibraryUsageDescription": "HostelKeep lets you choose a profile photo or hostel logo from your photos.",
@@ -26,7 +26,7 @@
       }
     },
     "android": {
-      "versionCode": 10,
+      "versionCode": 11,
       "package": "com.hostelkeep.app",
       "googleServicesFile": "./google-services.json",
       "permissions": [

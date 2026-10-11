@@ -14,6 +14,7 @@ import { SPACING } from '../../theme/spacing';
 import { RADIUS } from '../../theme/radius';
 import { SHADOW } from '../../theme/shadows';
 import { buildCleanerColors } from '../../utils/cleanerColor';
+import { useTeamSwitch, TeamSwitchChip } from '../../components/maintenance/TeamSwitch';
 
 /**
  * HostelKeep 2.0 team screen.
@@ -77,7 +78,7 @@ function Field({ label, value, onChangeText, placeholder, secure, autoCapitalize
 
 /* ─── Cleaner card (memoised) ─────────────────────────────────── */
 const CleanerCard = React.memo(function CleanerCard({
-  cleaner, color, done, total, pct, t, onReset, onDelete,
+  cleaner, color, done, total, pct, t, onReset, onDelete, onSwitchTeam, canManage,
 }) {
   return (
     <View style={styles.card}>
@@ -96,6 +97,12 @@ const CleanerCard = React.memo(function CleanerCard({
               : `${done}/${total} ${t('rooms')}`}
           </Text>
         </View>
+
+        <TeamSwitchChip
+          member={cleaner}
+          disabled={!canManage}
+          onPress={() => onSwitchTeam(cleaner)}
+        />
 
         <TouchableOpacity
           onPress={() => onReset(cleaner)}
@@ -135,6 +142,8 @@ const CleanerCard = React.memo(function CleanerCard({
 }, (prev, next) => (
   prev.cleaner.id === next.cleaner.id
   && prev.cleaner.username === next.cleaner.username
+  && prev.cleaner.team === next.cleaner.team
+  && prev.canManage === next.canManage
   && prev.done === next.done
   && prev.total === next.total
   && prev.color === next.color
@@ -143,12 +152,16 @@ const CleanerCard = React.memo(function CleanerCard({
 /* ─── Screen ──────────────────────────────────────────────────── */
 export default function TeamScreen({ bottomPad = 0 }) {
   const { t } = useTranslation();
-  const { cleaners, rooms, roomStatus, deleteCleaner, hostelCode } = useApp();
+  const { cleaners, rooms, roomStatus, deleteCleaner, hostelCode, can } = useApp();
   const { registerCleaner, resetCleanerPassword } = useAuth();
+
+  const canManageTeam = can('manageTeam');
+  const teamSwitch = useTeamSwitch();
 
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [team, setTeam] = useState('housekeeping');
   const [saving, setSaving] = useState(false);
 
   const [resetTarget, setResetTarget] = useState(null);
@@ -183,10 +196,11 @@ export default function TeamScreen({ bottomPad = 0 }) {
     }
     setSaving(true);
     try {
-      await registerCleaner(name.trim(), password, hostelCode);
+      await registerCleaner(name.trim(), password, hostelCode, team);
       setShowAdd(false);
       setName('');
       setPassword('');
+      setTeam('housekeeping');
     } catch (e) {
       Alert.alert(e.message);
     } finally {
@@ -233,6 +247,10 @@ export default function TeamScreen({ bottomPad = 0 }) {
 
   const openDelete = useCallback((cleaner) => setDeleteTarget(cleaner), []);
 
+  const handleSwitchTeam = useCallback((cleaner) => {
+    teamSwitch.request(cleaner);
+  }, [teamSwitch]);
+
   return (
     <View style={{ flex: 1 }}>
       <ScrollView
@@ -276,6 +294,8 @@ export default function TeamScreen({ bottomPad = 0 }) {
                 total={s.total}
                 pct={pct}
                 t={t}
+                canManage={canManageTeam}
+                onSwitchTeam={handleSwitchTeam}
                 onReset={openReset}
                 onDelete={openDelete}
               />
@@ -314,6 +334,36 @@ export default function TeamScreen({ bottomPad = 0 }) {
           <Text style={styles.hint}>
             {t('passwordHint') || `At least ${MIN_PASSWORD} characters.`}
           </Text>
+
+          <View style={{ gap: 8 }}>
+            <Text style={styles.fieldLabel}>{t('teamLabel', 'Team')}</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {['housekeeping', 'maintenance'].map(k => (
+                <TouchableOpacity
+                  key={k}
+                  onPress={() => setTeam(k)}
+                  activeOpacity={0.8}
+                  style={[styles.teamChip, team === k && styles.teamChipOn]}
+                >
+                  <Icon
+                    name={k === 'maintenance' ? 'build' : 'cleaning_services'}
+                    size={16}
+                    color={team === k ? '#FFFFFF' : COLORS.primary}
+                  />
+                  <Text style={[styles.teamChipText, team === k && { color: '#FFFFFF' }]}>
+                    {k === 'maintenance'
+                      ? t('maint.teamMaintenance', 'Maintenance')
+                      : t('maint.teamHousekeeping', 'Housekeeping')}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.hint}>
+              {team === 'maintenance'
+                ? t('teamMaintenanceHint', 'They will see the maintenance screen instead of the room list.')
+                : t('teamHousekeepingHint', 'They will see the room list and can be assigned rooms.')}
+            </Text>
+          </View>
         </View>
 
         <TouchableOpacity
@@ -415,6 +465,8 @@ export default function TeamScreen({ bottomPad = 0 }) {
           </TouchableOpacity>
         </View>
       </BottomSheet>
+
+      {teamSwitch.dialog}
     </View>
   );
 }
@@ -465,6 +517,17 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   iconBtnDanger: { borderColor: COLORS.dangerBorder },
+
+  teamChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 999, borderWidth: 1, borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  teamChipOn: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  teamChipText: {
+    fontFamily: FONTS.semiBold, fontSize: 12.5, color: COLORS.primary,
+  },
 
   track: {
     height: 8,

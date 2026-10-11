@@ -369,7 +369,11 @@ export function AuthProvider({ children }) {
   // ── Register cleaner ───────────────────────────────────────────
   // Same secondary-app technique, for the same reason: signing the cleaner in
   // on the primary app would log the manager out.
-  const registerCleaner = useCallback(async (username, password, hostelCode) => {
+  // `team` is optional and defaults to 'housekeeping'. It's written only when
+  // it's 'maintenance', so the vast majority of cleaner documents keep exactly
+  // the shape they had before — nothing downstream that reads `team` has to
+  // cope with `undefined` vs `'housekeeping'` being different.
+  const registerCleaner = useCallback(async (username, password, hostelCode, team = 'housekeeping') => {
     if (!hostelCode) throw new Error(i18n.t('authHostelCodeMissing'));
     if (password.length < MIN_PASSWORD_LENGTH) {
       throw new Error(i18n.t('authWeakPassword', { min: MIN_PASSWORD_LENGTH }));
@@ -411,6 +415,7 @@ export function AuthProvider({ children }) {
       role: 'cleaner',
       hostelCode,
       email,
+      ...(team === 'maintenance' ? { team: 'maintenance' } : {}),
     });
 
     await setDoc(doc(db, 'loginLookup', key), { email, hostelCode });
@@ -479,6 +484,17 @@ export function AuthProvider({ children }) {
     await updateDoc(doc(db, 'users', uid), { roleId });
   }, []);
 
+  // ── Move a cleaner between teams (owner action) ────────────────
+  // 'housekeeping' is the default team, so we store `team: 'maintenance'`
+  // explicitly but delete the field when moving back. That keeps the shape of
+  // a housekeeping document identical to what it was before teams existed —
+  // any consumer that reads `user.team` sees either 'maintenance' or nothing.
+  const setMemberTeam = useCallback(async (uid, team) => {
+    await updateDoc(doc(db, 'users', uid), {
+      team: team === 'maintenance' ? 'maintenance' : deleteField(),
+    });
+  }, []);
+
   // ── Remove manager access (owner action) ──────────────────────
   // Their Firestore profile goes; the Firebase Auth account survives because
   // the client SDK can only delete the signed-in user. It is inert — every
@@ -509,7 +525,7 @@ export function AuthProvider({ children }) {
 
       let newUid;
       try {
-        newUid = await registerCleaner(username, newPassword, hostelCode);
+        newUid = await registerCleaner(username, newPassword, hostelCode, oldDoc.data().team);
       } catch (e) {
         // Put the lookup back so the cleaner can still sign in with the old
         // password rather than being locked out entirely.
@@ -530,6 +546,28 @@ export function AuthProvider({ children }) {
       assigned.forEach((d) => batch.update(d.ref, { assignedTo: newUid }));
       batch.delete(doc(db, 'users', cleanerUid));
       await batch.commit();
+
+      // Maintenance tasks store their assignees as an array of uids, not a
+      // single `assignedTo` field, so the rooms migration above doesn't touch
+      // them. Separate try/catch on purpose: a staff member with `manageTeam`
+      // but without `maintenance` will be denied on the read, and that denial
+      // must not roll back the password reset that already succeeded.
+      try {
+        const tasks = await getDocs(query(
+          collection(db, 'hostels', hostelCode, 'maintenance'),
+          where('assignees', 'array-contains', cleanerUid),
+        ));
+        if (!tasks.empty) {
+          const b2 = writeBatch(db);
+          tasks.forEach((d) => b2.update(d.ref, {
+            assignees: d.data().assignees.map((a) => (a === cleanerUid ? newUid : a)),
+            updatedAt: Date.now(),
+          }));
+          await b2.commit();
+        }
+      } catch (e) {
+        console.warn('Maintenance tasks not migrated:', e.code || e.message);
+      }
 
       return newUid;
     },
@@ -704,12 +742,14 @@ export function AuthProvider({ children }) {
     addHostel,
     registerStaff,
     setStaffRole,
+    setMemberTeam,
     deleteStaffAccount,
   }), [
     user, loading, needsEmailMigration, login, logout, createHostel,
     registerCleaner, resetCleanerPassword, changeOwnPassword,
     requestPasswordReset, migrateManagerEmail, updateProfile, switchHostel, addHostel, registerStaff,
     setStaffRole,
+    setMemberTeam,
     deleteStaffAccount,
   ]);
 

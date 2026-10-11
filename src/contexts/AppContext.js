@@ -216,6 +216,17 @@ export function AppProvider({ children }) {
     };
   }, [hostelCode, markReady]);
 
+  // The subset of `cleaners` that can be handed rooms. Maintenance staff share
+  // the `role: 'cleaner'` document shape but are a different team — they
+  // never receive rooms. Every list that offers a person to assign should read
+  // this, not `cleaners`. Colour lookups and name lookups keep using
+  // `cleaners`, so an avatar colour stays identical whether or not the person
+  // shows up in an assignment list.
+  const housekeepers = useMemo(
+    () => cleaners.filter(c => c.team !== 'maintenance'),
+    [cleaners],
+  );
+
   // Whether this account is allowed to READ extra requests. Mirrors canSee()
   // in firestore.rules. Cleaners always may — they raise them. Owners always
   // may. Staff only if their role includes the section.
@@ -773,6 +784,7 @@ export function AppProvider({ children }) {
     rooms,
     roomStatus,
     cleaners,
+    housekeepers,
     hostelCode,
     roomAttributes,
     userData,
@@ -819,6 +831,7 @@ export function AppProvider({ children }) {
     rooms,
     roomStatus,
     cleaners,
+    housekeepers,
     hostelCode,
     roomAttributes,
     userData,

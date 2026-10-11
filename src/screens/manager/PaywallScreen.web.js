@@ -92,6 +92,7 @@ export function ContactDialog({ visible, intent = 'subscribe', onClose }) {
   const { hostel, hostelCode } = useApp();
 
   const trial = intent === 'trial';
+  const proplus = intent === 'proplus';
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -101,7 +102,7 @@ export function ContactDialog({ visible, intent = 'subscribe', onClose }) {
         <View style={styles.dialog}>
           <View style={styles.dialogHead}>
             <View style={styles.iconChip}>
-              <Icon name={trial ? 'rocket_launch' : 'workspace_premium'} size={24} color={BRAND.navy} />
+              <Icon name={trial ? 'rocket_launch' : proplus ? 'build' : 'workspace_premium'} size={24} color={BRAND.navy} />
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
               <Icon name="close" size={19} color={NEUTRAL.text3} />
@@ -109,10 +110,14 @@ export function ContactDialog({ visible, intent = 'subscribe', onClose }) {
           </View>
 
           <Text style={styles.dialogTitle}>
-            {trial ? t('contactRequestTrialTitle') : t('contactSubscribeTitle')}
+            {trial ? t('contactRequestTrialTitle')
+              : proplus ? t('contactProPlusTitle', 'Upgrade to Pro+')
+                : t('contactSubscribeTitle')}
           </Text>
           <Text style={styles.body}>
-            {trial ? t('contactTrialBody') : t('contactSubscribeBody')}
+            {trial ? t('contactTrialBody')
+              : proplus ? t('contactProPlusBody', 'Send us an email with your hostel code and we\'ll switch Maintenance on for your property.')
+                : t('contactSubscribeBody')}
           </Text>
 
           <View style={{ gap: 10 }}>

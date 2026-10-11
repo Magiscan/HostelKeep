@@ -287,7 +287,8 @@ function RoomDetailSheet({ room, status, floorName, cleanerName, cleanerById, ro
 export default function ReportsScreen({ bottomPad = 0, scrollTopSignal = 0 }) {
   const { t } = useTranslation();
   const {
-    rooms = [], roomStatus = {}, cleaners = [], floors = [], extraRequests = [], hostel = {},
+    rooms = [], roomStatus = {}, cleaners = [], housekeepers = [],
+    floors = [], extraRequests = [], hostel = {},
   } = useApp();
   const { notifications = [] } = useNotifications();
 
@@ -335,11 +336,11 @@ export default function ReportsScreen({ bottomPad = 0, scrollTopSignal = 0 }) {
 
   const extraMinutes = assignedRooms.reduce((n, r) => n + Number(roomStatus[r.id]?.extraTime || 0), 0);
 
-  const cleanerStats = useMemo(() => cleaners.map(c => {
+  const cleanerStats = useMemo(() => housekeepers.map(c => {
     const assigned = rooms.filter(r => r.assignedTo === c.id);
     const done = assigned.filter(r => roomStatus[r.id]?.cleaned).length;
     return { id: c.id, username: c.username || '?', done, total: assigned.length };
-  }).sort((a, b) => b.total - a.total), [cleaners, rooms, roomStatus]);
+  }).sort((a, b) => b.total - a.total), [housekeepers, rooms, roomStatus]);
 
   const workingNow = cleanerStats.filter(c => c.total > 0 && c.done < c.total).length;
 
