@@ -140,11 +140,10 @@ function RootNavigator() {
   // landscape also returns false, because its short side is ≥ 768.
   const phoneLayout = usePhoneLayout();
 
-  useEffect(() => {
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      document.title = 'HostelKeep';
-    }
-  }, []);
+  // Document title is owned by NavigationContainer's `documentTitle` prop.
+  // Do NOT set document.title here — a manual write would fight the
+  // container on first mount and win, leaving every screen titled just
+  // "HostelKeep" instead of "<Screen> · HostelKeep".
 
   // Attach the current user to every subsequent Sentry event. Runs on role
   // and hostel changes so a sign-in, sign-out or hostel switch re-tags the
@@ -231,9 +230,17 @@ function App() {
             <AppProvider>
               <MaintenanceProvider>
                 <NotificationProvider>
-                  <NavigationContainer theme={NavTheme}>
-                    <RootNavigator />
-                  </NavigationContainer>
+                <NavigationContainer
+                  theme={NavTheme}
+                  documentTitle={{
+                    formatter: (options, route) => {
+                      const page = options?.title ?? route?.name;
+                      return page ? `${page} · HostelKeep` : 'HostelKeep';
+                    },
+                  }}
+                >
+                  <RootNavigator />
+                </NavigationContainer>
                 </NotificationProvider>
               </MaintenanceProvider>
             </AppProvider>
