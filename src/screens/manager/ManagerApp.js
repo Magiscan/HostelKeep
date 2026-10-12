@@ -110,6 +110,13 @@ export default function ManagerApp() {
 
   const isPro = !!subscription?.active;
 
+  // Whether to surface Pro at all. On iOS, showing a "get Pro" teaser to
+  // someone who doesn't already have it is a store-review problem, so the
+  // entry points (Live tab, wordmark pill, SetupSheet Pro row) are hidden
+  // there unless the subscription is already active. Everywhere else — the
+  // web dashboard and Android — the teaser is always shown.
+  const showProTeaser = Platform.OS !== 'ios' || isPro;
+
   // If the subscription lapses while Live is open, fall back to Assign.
   useEffect(() => {
     if (tab === 'live' && !isPro) setTab('assign');
@@ -194,8 +201,12 @@ export default function ManagerApp() {
           badge: maint.counts.reported,
         }]
       : []),
-    { key: 'live', label: t('manager.tabLive') || 'Live', icon: 'monitoring', pro: !isPro },
-  ], [t, pendingRequestCount, isPro, maint.counts.reported, maint.enabled]);
+    // Live is only offered when Pro can be surfaced. On iOS without an
+    // active subscription, the entry point is gone entirely.
+    ...(showProTeaser
+      ? [{ key: 'live', label: t('manager.tabLive') || 'Live', icon: 'monitoring', pro: !isPro }]
+      : []),
+  ], [t, pendingRequestCount, isPro, maint.counts.reported, maint.enabled, showProTeaser]);
 
   const initials = (user.username || '?').trim().charAt(0).toUpperCase();
   const hostelInitials = (hostel.name || 'H')
@@ -245,9 +256,10 @@ export default function ManagerApp() {
       {/* ── Floating top bar ── */}
       <View style={styles.topBar}>
         <TouchableOpacity
-          onPress={() => setShowPro(true)}
+          onPress={showProTeaser ? () => setShowPro(true) : undefined}
           style={styles.glassPill}
           activeOpacity={0.8}
+          disabled={!showProTeaser}
         >
           <Text style={styles.wordmark}>
             Hostel<Text style={styles.wordmarkAccent}>Keep</Text>
@@ -365,8 +377,12 @@ export default function ManagerApp() {
             onPress: () => { setShowSetupSheet(false); setTab('team'); },
           },
         ]}
-        proLabel={isPro ? t('manager.proActive', 'HostelKeep Pro · active') : 'HostelKeep Pro'}
-        onPro={() => { setShowSetupSheet(false); setShowPro(true); }}
+        proLabel={showProTeaser
+          ? (isPro ? t('manager.proActive', 'HostelKeep Pro · active') : 'HostelKeep Pro')
+          : undefined}
+        onPro={showProTeaser
+          ? () => { setShowSetupSheet(false); setShowPro(true); }
+          : undefined}
         feedbackLabel={t('manager.feedback') || 'Send feedback'}
         onFeedback={() => Linking.openURL('mailto:support@hostelkeep.com')}
         closeLabel={t('close')}

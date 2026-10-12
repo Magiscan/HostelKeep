@@ -1602,6 +1602,7 @@ const resources = {
       team: 'Team',
       addCleaner: '+ Aggiungi',
       cleanerName: 'Nome utente addetto',
+      cleanerPassword: 'Password (min. 8, Aa, 1, !)',
       passwordHint: 'Almeno 8 caratteri, con maiuscole e minuscole, un numero e un simbolo.',
       saving: 'Salvataggio…',
       deleteCleaner: 'Elimina addetto',
