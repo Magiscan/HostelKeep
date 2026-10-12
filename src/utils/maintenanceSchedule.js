@@ -37,7 +37,8 @@ export function addDays(ms, n) {
   return d.getTime();
 }
 
-const toMs = (v) => {
+/** number | Firestore Timestamp | ISO string → millis, or null. */
+export const asMillis = (v) => {
   if (v == null) return null;
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   if (typeof v.toMillis === 'function') return v.toMillis();          // Firestore Timestamp
@@ -57,8 +58,8 @@ export function planDay(tasks, uid, dayOffset = 0, now = Date.now()) {
   const to = addDays(today0, dayOffset + 1);
 
   const mine = (tasks || []).filter(t => (t.assignees || []).includes(uid));
-  const due = (t) => toMs(t.dueAt);
-  const doneAt = (t) => toMs(t.doneAt);
+  const due = (t) => asMillis(t.dueAt);
+  const doneAt = (t) => asMillis(t.doneAt);
 
   const open = mine.filter(t => OPEN.includes(t.status));
 

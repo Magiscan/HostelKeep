@@ -2,7 +2,7 @@
 //
 // One task, on a phone. What it offers depends on who is looking:
 //   worker   (in assignees)      Start · Waiting · Mark fixed · Reopen, checklist, photos
-//   manager  (board + perm)      Edit / Assign · Mark done · Dismiss · Delete
+//   manager  (board + perm)      Edit / Assign · Mark done · Dismiss / Restore · Delete
 //   reporter (raised it)         read-only status; Withdraw while still 'reported'
 // Everyone involved can comment.
 //
@@ -27,7 +27,7 @@ import {
 } from '../../hooks/useMaintenance';
 import {
   Overline, StatusPill, PriorityPill, DuePill, Avatar, ChecklistView,
-  PhotoStrip, PhotoViewer, PrimaryButton, GhostButton, maintStyles,
+  PhotoStrip, PhotoViewer, PhotoRetentionNote, PrimaryButton, GhostButton, maintStyles,
 } from './MaintenanceParts';
 import { capturePhoto, photoErrorMessage, formatWhen, confirmDone, ask } from './maintenanceUi';
 
@@ -168,15 +168,16 @@ function Body({ task, m, onClose, onEdit }) {
         )}
 
         {/* ── Photos ── */}
-        {(photos.length > 0 || canWork) && (
+        {(photos.length > 0 || canWork || !!task.photosPurgedAt) && (
           <View>
             <Overline>{t('maint.photos', 'Photos')}</Overline>
             <PhotoStrip
               photos={photos}
-              onOpen={setViewer}
+              onOpen={(_, p) => setViewer(p)}
               onAdd={canWork ? onAddPhoto : undefined}
               adding={adding}
             />
+            <PhotoRetentionNote task={task} />
           </View>
         )}
 
@@ -296,6 +297,10 @@ function Body({ task, m, onClose, onEdit }) {
                   <GhostButton label={t('maint.dismiss', 'Dismiss')} icon="block" disabled={busy}
                     onPress={() => run(() => m.dismiss(task))} style={{ flex: 1 }} />
                 )}
+                {task.status === 'dismissed' && (
+                  <GhostButton label={t('maint.restore', 'Restore')} icon="undo" disabled={busy}
+                    onPress={() => run(() => m.restore(task))} style={{ flex: 1 }} />
+                )}
               </View>
             )}
 
@@ -312,7 +317,7 @@ function Body({ task, m, onClose, onEdit }) {
         )}
       </ScrollView>
 
-      <PhotoViewer base64={viewer} onClose={() => setViewer(null)} />
+      <PhotoViewer base64={viewer?.data} at={viewer?.at} name={task.title} onClose={() => setViewer(null)} />
     </View>
   );
 }

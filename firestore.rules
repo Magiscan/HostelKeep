@@ -79,6 +79,13 @@ rules_version = '2';
 //      set at creation or changed later by anyone with 'manageTeam'.
 //   4. (5b) maintenance.clearedBy: uids who removed a finished task from
 //      their own list. Hides it for them only; the Done tab keeps it.
+//   5. (5d) users.team may be removed (moving back to housekeeping).
+//   6. (5e) anyone who can read a finished task may clear it from their list.
+//   7. (5f) maintenance.places: [{ roomId, beds }] — several rooms, optional
+//      beds. roomId stays as the first room. Workers cannot change it.
+//   8. (5g) maintenance.dismissedAt and photosPurgedAt (numbers). Photos are
+//      deleted 30 days after a task is finished by a manager's app; deleting
+//      photos was already allowed to maintainers and the owner.
 //
 // Deploy:  firebase deploy --only firestore:rules,firestore:indexes
 // ─────────────────────────────────────────────────────────────────────────────
@@ -215,7 +222,7 @@ service cloud.firestore {
                'title', 'description', 'roomId', 'area', 'priority', 'status',
                'assignees', 'reportedBy', 'reportedAt', 'dueAt', 'checklist',
                'photoCount', 'startedAt', 'doneAt', 'doneBy', 'holdReason',
-               'updatedAt', 'clearedBy'])
+               'updatedAt', 'clearedBy', 'places', 'dismissedAt', 'photosPurgedAt'])
         && d.title is string && d.title.size() > 0 && d.title.size() <= 120
         && d.get('description', '') is string
         && d.get('description', '').size() <= 2000
@@ -228,6 +235,11 @@ service cloud.firestore {
         && d.assignees is list && d.assignees.size() <= 6
         && d.get('checklist', []) is list && d.get('checklist', []).size() <= 30
         && d.get('clearedBy', []) is list && d.get('clearedBy', []).size() <= 30
+        // 5f: several rooms per task, optionally specific beds.
+        && d.get('places', []) is list && d.get('places', []).size() <= 20
+        // 5g: archive time and photo cleanup (30 days after finishing).
+        && (d.get('dismissedAt', null) == null || d.dismissedAt is number)
+        && (d.get('photosPurgedAt', null) == null || d.photosPurgedAt is number)
         && d.reportedBy is string;
     }
 
@@ -582,10 +594,14 @@ service cloud.firestore {
                          || request.resource.data.get('doneBy', null) == request.auth.uid
                        )
                   )
-               // ROUND 5b: anyone involved may take a FINISHED task off their
-               // own list. Only their own uid can be added; nothing else moves.
+               // ROUND 5b: anyone who can see a FINISHED task may take it off
+               // their own list. Only their own uid can be added; nothing else
+               // moves. 5e: was involvedIn() — a manager who wasn't the
+               // reporter or an assignee could only clear with the
+               // 'maintenance' perm AND an active Pro+, so the board's ✕ failed
+               // for view-only staff and for everyone once Pro+ lapsed.
                || (
-                    involvedIn(resource.data)
+                    mayReadTask(hostelCode, resource.data)
                     && resource.data.status in ['done', 'dismissed']
                     && changedKeys().hasOnly(['clearedBy'])
                     && request.resource.data.clearedBy.toSet()

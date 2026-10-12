@@ -23,8 +23,9 @@ import {
   Overline, Chip, LocationPicker, ChecklistEditor, Avatar, PrimaryButton, maintStyles,
 } from './MaintenanceParts';
 import {
-  useTaskForm, dueOptions, priorityLabel, formatWhen, capturePhoto, photoErrorMessage,
+  useTaskForm, priorityLabel, capturePhoto, photoErrorMessage,
 } from './maintenanceUi';
+import DueDatePicker from './DueDatePicker';
 
 export default function TaskFormSheet({ task = null, onClose, onSaved }) {
   const { t } = useTranslation();
@@ -33,10 +34,8 @@ export default function TaskFormSheet({ task = null, onClose, onSaved }) {
   const f = useTaskForm(task);
   const [busy, setBusy] = useState(false);
   const colors = useMemo(() => buildCleanerColors(cleaners), [cleaners]);
-  const options = useMemo(() => dueOptions(t), [t]);
 
   const triage = task?.status === 'reported';
-  const customDue = f.dueAt && !options.some(o => o.value === f.dueAt);
 
   const save = async () => {
     if (!f.valid) return;
@@ -121,12 +120,7 @@ export default function TaskFormSheet({ task = null, onClose, onSaved }) {
 
         <View>
           <Overline>{t('maint.dueLabel', 'Due')}</Overline>
-          <View style={styles.wrap}>
-            {options.map(o => (
-              <Chip key={o.key} label={o.label} selected={!customDue && f.dueAt === o.value} onPress={() => f.setDueAt(o.value)} />
-            ))}
-            {customDue && <Chip label={formatWhen(f.dueAt)} selected onPress={() => {}} />}
-          </View>
+          <DueDatePicker value={f.dueAt} onChange={f.setDueAt} />
         </View>
 
         <View>

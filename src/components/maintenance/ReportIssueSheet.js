@@ -19,7 +19,7 @@ import { capturePhoto, photoErrorMessage } from './maintenanceUi';
 
 export default function ReportIssueSheet({ visible, onClose, rooms, onSubmit, onSent }) {
   const { t } = useTranslation();
-  const [where, setWhere] = useState({ roomId: null, area: '' });
+  const [where, setWhere] = useState({ places: [], area: '' });
   const [title, setTitle] = useState('');
   const [details, setDetails] = useState('');
   const [urgent, setUrgent] = useState(false);
@@ -27,7 +27,7 @@ export default function ReportIssueSheet({ visible, onClose, rooms, onSubmit, on
   const [busy, setBusy] = useState(false);
 
   const reset = () => {
-    setWhere({ roomId: null, area: '' });
+    setWhere({ places: [], area: '' });
     setTitle('');
     setDetails('');
     setUrgent(false);
@@ -49,7 +49,7 @@ export default function ReportIssueSheet({ visible, onClose, rooms, onSubmit, on
     }
   };
 
-  const hasPlace = !!where.roomId || !!where.area?.trim();
+  const hasPlace = where.places.length > 0 || !!where.area?.trim();
   const canSend = !!title.trim() && hasPlace && !busy;
 
   const send = async () => {
@@ -59,7 +59,7 @@ export default function ReportIssueSheet({ visible, onClose, rooms, onSubmit, on
       await onSubmit({
         title,
         description: details,
-        roomId: where.roomId,
+        places: where.places,
         area: where.area,
         priority: urgent ? 'urgent' : 'medium',
         photoBase64: photo,

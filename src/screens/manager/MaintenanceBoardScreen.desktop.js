@@ -29,7 +29,7 @@ import { ContactDialog } from './PaywallScreen.web';
 import { Drawer, FieldLabel, ConfirmDialog, drawerStyles as d } from '../../components/Dashboard/Drawer.web';
 import {
   StatusPill, PriorityPill, DuePill, AvatarStack, Avatar, Chip, LocationPicker,
-  ChecklistEditor, ChecklistView, PhotoStrip, PhotoViewer,
+  ChecklistEditor, ChecklistView, PhotoStrip, PhotoViewer, PhotoRetentionNote, PhotoCleanupBanner,
 } from '../../components/maintenance/MaintenanceParts';
 import {
   PRIORITY_LOOK, useTaskForm, dueOptions, priorityLabel, statusLabel, formatWhen,
@@ -135,6 +135,16 @@ export default function MaintenanceBoardScreen({ onReady }) {
   return (
     <View style={styles.container}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.page}>
+        {m.canManage && (
+          <PhotoCleanupBanner
+            tasks={m.tasks}
+            onShow={(soon) => {
+              const kinds = new Set(soon.map(x => x.status));
+              setTab(kinds.size === 1 ? [...kinds][0] : 'current');
+            }}
+          />
+        )}
+
         {/* ── Tabs ── */}
         <View style={styles.tabs}>
           {TABS.map(tb => {
@@ -415,6 +425,11 @@ function TaskDrawer({ task, isNew, onClose, colors, onConfirmDone }) {
                 <Text style={d.btnGhostText}>{t('maint.dismiss', 'Dismiss')}</Text>
               </TouchableOpacity>
             )}
+            {!isNew && task.status === 'dismissed' && (
+              <TouchableOpacity onPress={() => run(() => m.restore(task))} style={d.btnGhost} activeOpacity={0.8}>
+                <Text style={d.btnGhostText}>{t('maint.restore', 'Restore')}</Text>
+              </TouchableOpacity>
+            )}
             <View style={{ flex: 1 }} />
             <TouchableOpacity onPress={onClose} style={d.btnGhost} activeOpacity={0.8}>
               <Text style={d.btnGhostText}>{t('cancel', 'Cancel')}</Text>
@@ -651,11 +666,12 @@ function Activity({ task }) {
         <FieldLabel>{t('maint.photos', 'Photos')}</FieldLabel>
         <PhotoStrip
           photos={photos}
-          onOpen={setViewer}
+          onOpen={(_, p) => setViewer(p)}
           onAdd={m.canManage && task.status !== 'reported' ? onAddPhoto : undefined}
           adding={adding}
         />
         {photos.length === 0 && !m.canManage && <Text style={styles.hint}>—</Text>}
+        <PhotoRetentionNote task={task} />
       </View>
 
       <View>
@@ -686,7 +702,7 @@ function Activity({ task }) {
         {!!error && <Text style={styles.error}>{error}</Text>}
       </View>
 
-      <PhotoViewer base64={viewer} onClose={() => setViewer(null)} />
+      <PhotoViewer base64={viewer?.data} at={viewer?.at} name={task.title} onClose={() => setViewer(null)} />
     </View>
   );
 }

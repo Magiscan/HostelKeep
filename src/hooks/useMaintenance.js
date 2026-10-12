@@ -8,7 +8,9 @@
 //
 //   title        string ≤120        "Shower drain blocked"
 //   description  string ≤2000
-//   roomId       string | null      a room, or null for a common area
+//   places       [{ roomId, beds: [bedId] }] ≤20 rooms; beds empty = whole room
+//   roomId       string | null      first room in `places` (kept for older
+//                                   clients and for notifications)
 //   area         string | null ≤80  free text when there's no room ("Laundry")
 //   priority     'low' | 'medium' | 'high' | 'urgent'
 //   status       'reported' | 'open' | 'in_progress' | 'on_hold' | 'done' | 'dismissed'
@@ -23,6 +25,9 @@
 //   holdReason   string | null ≤200 "Waiting for the plumber"
 //   updatedAt    ms
 //   clearedBy    uid[]              people who removed it (finished) from THEIR list
+//   dismissedAt  ms | null           when it was archived (5g)
+//   photosPurgedAt ms | null         when its photos were deleted, 30 days after
+//                                   it was finished (5g, utils/photoRetention.js)
 //
 //   ./photos/{id}    { data: base64, by, at, kind: 'report' | 'progress' | 'fix' }
 //   ./comments/{id}  { text, by, at }
@@ -33,7 +38,7 @@
 // decides what to ask for; if the two disagree the rules win.
 
 import React, {
-  createContext, useCallback, useContext, useEffect, useMemo, useState,
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from 'react';
 import {
   collection, doc, onSnapshot, query, where, orderBy,
@@ -44,6 +49,8 @@ import { useApp } from '../contexts/AppContext';
 import { notifyHostel } from '../utils/notify';
 import { pushToManagers, pushToUser } from '../services/push';
 import i18n from '../i18n';
+import { asMillis } from '../utils/maintenanceSchedule';
+import { photosToPurge } from '../utils/photoRetention';
 
 /* ─── Vocabulary ──────────────────────────────────────────────── */
 
@@ -78,6 +85,36 @@ const str = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
 const genId = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
 
+/* ─── Places: one or more rooms, optionally specific beds ─────────
+   Tasks written before multi-room support only have `roomId`; placesOf()
+   reads both, so nothing needs migrating. */
+
+export const MAX_PLACES = 20;
+export const MAX_BEDS_PER_PLACE = 30;
+
+export function normalisePlaces(places) {
+  const seen = new Set();
+  return (Array.isArray(places) ? places : [])
+    .map(p => (typeof p === 'string' ? { roomId: p } : p))
+    .filter(p => p && typeof p.roomId === 'string' && p.roomId && !seen.has(p.roomId) && seen.add(p.roomId))
+    .slice(0, MAX_PLACES)
+    .map(p => ({
+      roomId: p.roomId,
+      beds: [...new Set((Array.isArray(p.beds) ? p.beds : []).filter(b => typeof b === 'string' && b))]
+        .slice(0, MAX_BEDS_PER_PLACE),
+    }));
+}
+
+export function placesOf(task) {
+  if (Array.isArray(task?.places) && task.places.length) return normalisePlaces(task.places);
+  return task?.roomId ? [{ roomId: task.roomId, beds: [] }] : [];
+}
+
+const bedLabel = (room, bedId) => {
+  const bed = (room?.beds || []).find(b => b.id === bedId);
+  return (bed?.name || bed?.label || bedId || '').trim();
+};
+
 export function normaliseChecklist(items) {
   return (Array.isArray(items) ? items : [])
     .map(i => (typeof i === 'string' ? { text: i } : i))
@@ -89,15 +126,27 @@ export function normaliseChecklist(items) {
 /** Finished, and this person removed it from their own list. */
 export const isClearedFor = (task, uid) => (task?.clearedBy || []).includes(uid);
 export const isFinished = (task) => CLOSED_STATUSES.includes(task?.status);
+/** Where an archived task goes back to: triage if nobody was assigned. */
+export const restoredStatus = (task) => ((task?.assignees || []).length ? 'open' : 'reported');
 
 export function isOverdue(task, now = Date.now()) {
-  return !!task?.dueAt && ACTIVE_STATUSES.includes(task.status) && task.dueAt < now;
+  // asMillis: a due date edited in the Firebase console is a Timestamp, and
+  // `Timestamp < number` compares seconds-as-text with millis — always true.
+  const due = asMillis(task?.dueAt);
+  return due != null && ACTIVE_STATUSES.includes(task.status) && due < now;
 }
 
-/** "Room 12", "Laundry", or "General". */
+/** "101", "101 (A, B) · 102", "Laundry", or "General". */
 export function locationLabel(task, rooms = []) {
-  if (task?.roomId) {
-    return rooms.find(r => r.id === task.roomId)?.name || task.area || '—';
+  const places = placesOf(task);
+  if (places.length) {
+    const parts = places.map((p) => {
+      const room = rooms.find(r => r.id === p.roomId);
+      if (!room) return null;
+      const beds = p.beds.map(b => bedLabel(room, b)).filter(Boolean);
+      return beds.length ? `${room.name} (${beds.join(', ')})` : room.name;
+    }).filter(Boolean);
+    return parts.length ? parts.join(' · ') : (task.area || '—');
   }
   return task?.area || tr('maintGeneral', 'General');
 }
@@ -110,8 +159,8 @@ export function compareTasks(a, b, now = Date.now()) {
   const pa = PRIORITY_RANK[a.priority] ?? 1;
   const pb = PRIORITY_RANK[b.priority] ?? 1;
   if (pa !== pb) return pb - pa;
-  const da = a.dueAt || Infinity;
-  const dbb = b.dueAt || Infinity;
+  const da = asMillis(a.dueAt) ?? Infinity;
+  const dbb = asMillis(b.dueAt) ?? Infinity;
   if (da !== dbb) return da - dbb;
   return (b.reportedAt || 0) - (a.reportedAt || 0);
 }
@@ -121,8 +170,14 @@ function buildTask(fields, { status, reportedBy, now }) {
   return {
     title: str(fields.title, 120),
     description: str(fields.description, 2000),
-    roomId: fields.roomId || null,
-    area: fields.roomId ? null : (str(fields.area, 80) || null),
+    ...(() => {
+      const places = normalisePlaces(fields.places ?? (fields.roomId ? [{ roomId: fields.roomId }] : []));
+      return {
+        places,
+        roomId: places[0]?.roomId || null,
+        area: places.length ? null : (str(fields.area, 80) || null),
+      };
+    })(),
     priority: PRIORITIES.includes(fields.priority) ? fields.priority : 'medium',
     status,
     assignees: Array.isArray(fields.assignees) ? [...new Set(fields.assignees)].slice(0, 6) : [],
@@ -377,8 +432,13 @@ function useMaintenanceData() {
     if ('title' in next) next.title = str(next.title, 120);
     if ('description' in next) next.description = str(next.description, 2000);
     if ('area' in next) next.area = str(next.area, 80) || null;
-    if ('roomId' in next) {
+    if ('places' in next) {
+      next.places = normalisePlaces(next.places);
+      next.roomId = next.places[0]?.roomId || null;
+      if (next.places.length) next.area = null;
+    } else if ('roomId' in next) {
       next.roomId = next.roomId || null;
+      next.places = next.roomId ? [{ roomId: next.roomId, beds: [] }] : [];
       if (next.roomId) next.area = null;
     }
     if ('checklist' in next) next.checklist = normaliseChecklist(next.checklist);
@@ -474,9 +534,62 @@ function useMaintenanceData() {
   }, [hostelCode, uid]);
 
   const dismiss = useCallback(
-    (task) => updateTask(task, { status: 'dismissed' }),
+    (task) => updateTask(task, { status: 'dismissed', dismissedAt: Date.now() }),
     [updateTask],
   );
+
+  /* ── Restore an archived (dismissed) task (manager) ──
+     Back to 'reported' if nobody is assigned, otherwise 'open'. clearedBy is
+     emptied so it shows up again for everyone who had removed it. */
+  const restore = useCallback(async (task) => {
+    if (!hostelCode || !task?.id || task.status !== 'dismissed') return;
+    await updateDoc(taskRef(hostelCode, task.id), {
+      status: restoredStatus(task),
+      clearedBy: [],
+      dismissedAt: null,
+      updatedAt: Date.now(),
+    });
+  }, [hostelCode]);
+
+  /* ── Photo cleanup (30 days after a task is finished) ──
+     Runs on the device of whoever can manage maintenance, while the board's
+     data is loaded. Deletes the photos, sets photoCount 0 and photosPurgedAt;
+     the task, comments and history stay. A few tasks per pass so a backlog
+     doesn't burst the free plan's daily delete quota; the next snapshot
+     picks up the rest. Two managers running it at once is harmless. */
+  const purging = useRef(false);
+  const failed = useRef(new Set());
+  const [purgeRound, setPurgeRound] = useState(0);
+  useEffect(() => {
+    if (!hostelCode || !enabled || !canManage || !managerSees || !loaded || purging.current) return;
+    const due = photosToPurge(tasks).filter(x => !failed.current.has(x.id)).slice(0, 10);
+    if (!due.length) return;
+
+    purging.current = true;
+    (async () => {
+      for (const task of due) {
+        try {
+          const ref = taskRef(hostelCode, task.id);
+          const snap = await getDocs(collection(ref, 'photos'));
+          for (let i = 0; i < snap.docs.length; i += 400) {
+            const batch = writeBatch(db);
+            snap.docs.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+            await batch.commit();
+          }
+          // updatedAt deliberately untouched: archived tasks without
+          // dismissedAt use it as their finish time.
+          await updateDoc(ref, { photoCount: 0, photosPurgedAt: Date.now() });
+        } catch (e) {
+          failed.current.add(task.id); // don't retry it in a loop this session
+          console.warn('maintenance photo cleanup failed for', task.id, e.code || e.message);
+        }
+      }
+    })().finally(() => {
+      purging.current = false;
+      // Snapshots that arrived mid-pass were skipped; look again.
+      setPurgeRound(n => n + 1);
+    });
+  }, [hostelCode, enabled, canManage, managerSees, loaded, tasks, purgeRound]);
 
   /* ── Checklist (assignee or manager) ── */
   const toggleChecklistItem = useCallback(async (task, itemId) => {
@@ -526,12 +639,13 @@ function useMaintenanceData() {
     updateTask,
     setStatus,
     dismiss,
+    restore,
     clearForMe,
     toggleChecklistItem,
     deleteTask,
   }), [
     enabled, billingLoaded, loaded, tasks, myTasks, myReports, counts, assignable, managerSees, canManage,
-    nameOf, uid, reportIssue, createTask, updateTask, setStatus, dismiss, clearForMe,
+    nameOf, uid, reportIssue, createTask, updateTask, setStatus, dismiss, restore, clearForMe,
     toggleChecklistItem, deleteTask,
   ]);
 }

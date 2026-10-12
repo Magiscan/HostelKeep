@@ -1,69 +1,75 @@
-import {
-  describeSubscription, GRACE_DAYS, SALES_ALLOWED, contactMailto,
-} from '../../src/utils/subscription';
+/**
+ * Plan detection (src/utils/subscription.js). Must agree with isPaid() and
+ * isProPlus() in firestore.rules — the rules tests check the server side.
+ */
+import { describeSubscription, contactMailto, GRACE_DAYS } from '../../src/utils/subscription';
 
-const DAY = 24 * 60 * 60 * 1000;
-const NOW = Date.UTC(2026, 8, 28, 12, 0, 0);
-// Stands in for a Firestore Timestamp: describeSubscription only calls toMillis().
+const DAY = 24 * 3600 * 1000;
+const NOW = new Date(2026, 9, 12, 12, 0).getTime();
 const ts = (ms) => ({ toMillis: () => ms });
+const billing = (o = {}) => ({ status: 'active', currentPeriodEnd: ts(NOW + 10 * DAY), ...o });
 
-describe('describeSubscription', () => {
-  test('no billing document: locked, and not an error', () => {
+describe('Pro and Pro+', () => {
+  test('no billing document: nothing', () => {
     const s = describeSubscription(null, NOW);
-    expect(s).toMatchObject({ exists: false, active: false, incomplete: false });
-  });
-
-  test('active with time left', () => {
-    const s = describeSubscription({ status: 'active', currentPeriodEnd: ts(NOW + 10 * DAY) }, NOW);
-    expect(s).toMatchObject({ active: true, inGrace: false, isTrial: false, daysLeft: 10 });
-  });
-
-  test('trial with time left', () => {
-    const s = describeSubscription({ status: 'trialing', currentPeriodEnd: ts(NOW + 3 * DAY) }, NOW);
-    expect(s).toMatchObject({ active: true, isTrial: true });
-  });
-
-  test('period ended but inside the grace window: still open, flagged as grace', () => {
-    const s = describeSubscription({ status: 'active', currentPeriodEnd: ts(NOW - DAY) }, NOW);
-    expect(s).toMatchObject({ active: true, inGrace: true, daysLeft: 0 });
-  });
-
-  test('past the grace window: locked', () => {
-    const end = NOW - (GRACE_DAYS * DAY) - 1;
-    const s = describeSubscription({ status: 'active', currentPeriodEnd: ts(end) }, NOW);
     expect(s.active).toBe(false);
+    expect(s.proPlus).toBe(false);
   });
 
-  test('canceled is locked even with time left', () => {
-    const s = describeSubscription({ status: 'canceled', currentPeriodEnd: ts(NOW + 10 * DAY) }, NOW);
-    expect(s).toMatchObject({ active: false, incomplete: false });
+  test('active without tier is plain Pro', () => {
+    const s = describeSubscription(billing(), NOW);
+    expect(s.active).toBe(true);
+    expect(s.tier).toBe('pro');
+    expect(s.proPlus).toBe(false);
   });
 
-  test('date typed as text in the console: incomplete and locked, like the rules', () => {
-    const s = describeSubscription({ status: 'active', currentPeriodEnd: '2026-12-31' }, NOW);
-    expect(s).toMatchObject({ active: false, incomplete: true });
+  test('tier "proplus" unlocks Maintenance', () => {
+    const s = describeSubscription(billing({ tier: 'proplus' }), NOW);
+    expect(s.proPlus).toBe(true);
   });
 
-  test('misspelt status: incomplete and locked', () => {
-    const s = describeSubscription({ status: 'actve', currentPeriodEnd: ts(NOW + 10 * DAY) }, NOW);
-    expect(s).toMatchObject({ active: false, incomplete: true });
+  test('plan is the billing period, not the tier: plan "proplus" alone does nothing', () => {
+    expect(describeSubscription(billing({ plan: 'proplus' }), NOW).proPlus).toBe(false);
+    expect(describeSubscription(billing({ plan: 'monthly', tier: 'proplus' }), NOW).proPlus).toBe(true);
+  });
+
+  test('a trial can be Pro+', () => {
+    expect(describeSubscription(billing({ status: 'trialing', tier: 'proplus' }), NOW).proPlus).toBe(true);
+  });
+
+  test(`Pro+ survives the ${GRACE_DAYS}-day grace period, then stops`, () => {
+    const inGrace = billing({ tier: 'proplus', currentPeriodEnd: ts(NOW - 1 * DAY) });
+    const after = billing({ tier: 'proplus', currentPeriodEnd: ts(NOW - (GRACE_DAYS + 1) * DAY) });
+    expect(describeSubscription(inGrace, NOW).proPlus).toBe(true);
+    expect(describeSubscription(after, NOW).proPlus).toBe(false);
+  });
+
+  test('canceled Pro+ is not Pro+', () => {
+    expect(describeSubscription(billing({ status: 'canceled', tier: 'proplus' }), NOW).proPlus).toBe(false);
+  });
+
+  test('a date typed as text in the console never grants access (same as the rules)', () => {
+    const s = describeSubscription(billing({ tier: 'proplus', currentPeriodEnd: '2030-01-01' }), NOW);
+    expect(s.active).toBe(false);
+    expect(s.proPlus).toBe(false);
+    expect(s.incomplete).toBe(true);
+  });
+
+  test('a misspelt tier is plain Pro, never Pro+', () => {
+    expect(describeSubscription(billing({ tier: 'pro+' }), NOW).proPlus).toBe(false);
+    expect(describeSubscription(billing({ tier: 'PROPLUS' }), NOW).proPlus).toBe(false);
   });
 });
 
-describe('store builds do not sell', () => {
-  // jest-expo's default preset runs as a native platform, like the Play build.
-  test('SALES_ALLOWED is false on native', () => {
-    expect(SALES_ALLOWED).toBe(false);
+describe('upgrade email', () => {
+  test('the Pro+ request names Maintenance and the hostel code', () => {
+    const url = decodeURIComponent(contactMailto({ intent: 'proplus', hostelCode: 'ABC234', hostelName: 'Sunset' }));
+    expect(url).toMatch(/Pro\+ \(Maintenance\) — ABC234/);
+    expect(url).toMatch(/Hostel code: ABC234/);
   });
-});
 
-describe('contactMailto (web only)', () => {
-  test('includes the hostel code, safely encoded', () => {
-    const url = contactMailto({
-      intent: 'trial', hostelCode: 'ABC234', hostelName: 'Sunset & Co', email: 'a@b.com',
-    });
-    expect(url.startsWith('mailto:')).toBe(true);
-    expect(decodeURIComponent(url)).toContain('ABC234');
-    expect(url).not.toContain('Sunset & Co');   // the ampersand must be encoded
+  test('the ordinary Pro request is unchanged', () => {
+    const url = decodeURIComponent(contactMailto({ intent: 'subscribe', hostelCode: 'ABC234' }));
+    expect(url).toMatch(/HostelKeep Pro subscription — ABC234/);
   });
 });

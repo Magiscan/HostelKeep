@@ -18,7 +18,7 @@ import { useMaintenance, isFinished, isClearedFor } from '../../hooks/useMainten
 import { FONTS } from '../../theme/typography';
 import { BRAND, NEUTRAL } from '../../theme/tokens';
 import { COLORS } from '../../theme/colors';
-import { TaskCard } from '../../components/maintenance/MaintenanceParts';
+import { TaskCard, PhotoCleanupBanner } from '../../components/maintenance/MaintenanceParts';
 import TaskDetailSheet from '../../components/maintenance/TaskDetailSheet';
 import TaskFormSheet from '../../components/maintenance/TaskFormSheet';
 import MaintenanceUpsell from '../../components/maintenance/MaintenanceUpsell';
@@ -78,6 +78,8 @@ export default function MaintenanceBoardScreen({ bottomPad = 0 }) {
             </TouchableOpacity>
           )}
         </View>
+
+        {m.canManage && <PhotoCleanupBanner tasks={m.tasks} onShow={() => setTab('closed')} />}
 
         <View style={styles.tabs}>
           {TABS.map(tb => {

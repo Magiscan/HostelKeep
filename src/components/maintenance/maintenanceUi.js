@@ -10,7 +10,10 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { NEUTRAL, STATUS } from '../../theme/tokens';
 import { COLORS } from '../../theme/colors';
-import { MAX_PHOTO_CHARS, ACTIVE_STATUSES, normaliseChecklist } from '../../hooks/useMaintenance';
+import {
+  MAX_PHOTO_CHARS, ACTIVE_STATUSES, normaliseChecklist, placesOf,
+} from '../../hooks/useMaintenance';
+import { asMillis } from '../../utils/maintenanceSchedule';
 
 /* ─── Looks ───────────────────────────────────────────────────── */
 
@@ -46,8 +49,9 @@ export const priorityLabel = (t, p) => t(`maint.priority.${p}`, PRIORITY_DEFAULT
 
 /** { overdue, label } — "+20 h" when late (Flexkeeping style), "in 3 h" otherwise. */
 export function dueInfo(task, t, now = Date.now()) {
-  if (!task?.dueAt || !ACTIVE_STATUSES.includes(task.status)) return null;
-  const diff = task.dueAt - now;
+  const dueMs = asMillis(task?.dueAt);
+  if (dueMs == null || !ACTIVE_STATUSES.includes(task.status)) return null;
+  const diff = dueMs - now;
   const abs = Math.abs(diff);
   const hours = Math.round(abs / 3600000);
   const days = Math.round(abs / 86400000);
@@ -58,7 +62,8 @@ export function dueInfo(task, t, now = Date.now()) {
   return { overdue: false, label: t('maint.dueIn', 'in {{span}}', { span }) };
 }
 
-export function formatWhen(ms) {
+export function formatWhen(value) {
+  const ms = asMillis(value);
   if (!ms) return '';
   const d = new Date(ms);
   if (!Number.isFinite(d.getTime())) return '';
@@ -81,6 +86,43 @@ export function dueOptions(t) {
     { key: '3d',       label: t('maint.due3Days', 'In 3 days'),  value: at(3, 12) },
     { key: 'week',     label: t('maint.dueWeek', 'In a week'),   value: at(7, 12) },
   ];
+}
+
+/** Where "Pick date & time" starts when there's no date yet: tomorrow 09:00. */
+export function defaultCustomDue(now = Date.now()) {
+  const d = new Date(now);
+  d.setDate(d.getDate() + 1);
+  d.setHours(9, 0, 0, 0);
+  return d.getTime();
+}
+
+/** Earliest pickable day: today — or the current due date if it's already past
+    (editing an overdue task mustn't silently move its date). */
+export function minimumDueDate(value, now = Date.now()) {
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const ms = asMillis(value);
+  return new Date(ms != null && ms < today.getTime() ? ms : today.getTime());
+}
+
+const pad2 = (n) => String(n).padStart(2, '0');
+/** millis → "YYYY-MM-DDTHH:mm" in local time, for <input type="datetime-local">. */
+export function toLocalInput(value) {
+  const ms = asMillis(value);
+  if (ms == null) return '';
+  const x = new Date(ms);
+  return `${x.getFullYear()}-${pad2(x.getMonth() + 1)}-${pad2(x.getDate())}T${pad2(x.getHours())}:${pad2(x.getMinutes())}`;
+}
+
+/** "Shower drain blocked" + time → "hostelkeep-shower-drain-blocked-2026-10-12-0930.jpg" */
+export function photoFileName(name, at) {
+  const slug = String(name || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  const ms = asMillis(at) ?? Date.now();
+  const stamp = toLocalInput(ms).replace('T', '-').replace(':', '');
+  return `hostelkeep-${slug ? `${slug}-` : ''}${stamp}.jpg`;
 }
 
 /* ─── Confirmations ──────────────────────────────────────────────
@@ -161,7 +203,8 @@ export function photoErrorMessage(e, t) {
 export function useTaskForm(task) {
   const [title, setTitle] = useState(task?.title || '');
   const [description, setDescription] = useState(task?.description || '');
-  const [location, setLocation] = useState({ roomId: task?.roomId || null, area: task?.area || '' });
+  // { places: [{ roomId, beds }], area } — rooms OR a free-text place.
+  const [location, setLocation] = useState({ places: placesOf(task), area: task?.area || '' });
   const [priority, setPriority] = useState(task?.priority || 'medium');
   const [dueAt, setDueAt] = useState(task?.dueAt || null);
   const [assignees, setAssignees] = useState(task?.assignees || []);
@@ -185,8 +228,8 @@ export function useTaskForm(task) {
   const values = {
     title,
     description,
-    roomId: location.roomId,
-    area: location.roomId ? null : location.area,
+    places: location.places,
+    area: location.places.length ? null : location.area,
     priority,
     dueAt,
     assignees,
