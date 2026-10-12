@@ -243,11 +243,13 @@ export function SetupSheet({
               </TouchableOpacity>
             ))}
 
-            <TouchableOpacity style={s.proRow} onPress={onPro} activeOpacity={0.9}>
-              <Icon name="workspace_premium" size={22} color={BRAND.yellow} />
-              <Text style={s.proRowText}>{proLabel}</Text>
-              <Icon name="chevron_right" size={20} color={BRAND.yellow} />
-            </TouchableOpacity>
+            {!!onPro && (
+              <TouchableOpacity style={s.proRow} onPress={onPro} activeOpacity={0.9}>
+                <Icon name="workspace_premium" size={22} color={BRAND.yellow} />
+                <Text style={s.proRowText}>{proLabel}</Text>
+                <Icon name="chevron_right" size={20} color={BRAND.yellow} />
+              </TouchableOpacity>
+            )}
 
             {!!onFeedback && (
               <TouchableOpacity style={s.outlineRow} onPress={onFeedback} activeOpacity={0.85}>

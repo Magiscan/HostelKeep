@@ -78,7 +78,7 @@ function Field({ label, value, onChangeText, placeholder, secure, autoCapitalize
 
 /* ─── Cleaner card (memoised) ─────────────────────────────────── */
 const CleanerCard = React.memo(function CleanerCard({
-  cleaner, color, done, total, pct, t, onReset, onDelete, onSwitchTeam, canManage,
+  cleaner, color, done, total, pct, t, onReset, onDelete, onSwitchTeam, canManage, showTeam,
 }) {
   return (
     <View style={styles.card}>
@@ -98,11 +98,15 @@ const CleanerCard = React.memo(function CleanerCard({
           </Text>
         </View>
 
-        <TeamSwitchChip
-          member={cleaner}
-          disabled={!canManage}
-          onPress={() => onSwitchTeam(cleaner)}
-        />
+        {/* Pro+ only. Someone already on maintenance keeps the chip so they
+            can be moved back if the plan lapses. */}
+        {(showTeam || cleaner.team === 'maintenance') && (
+          <TeamSwitchChip
+            member={cleaner}
+            disabled={!canManage}
+            onPress={() => onSwitchTeam(cleaner)}
+          />
+        )}
 
         <TouchableOpacity
           onPress={() => onReset(cleaner)}
@@ -144,6 +148,7 @@ const CleanerCard = React.memo(function CleanerCard({
   && prev.cleaner.username === next.cleaner.username
   && prev.cleaner.team === next.cleaner.team
   && prev.canManage === next.canManage
+  && prev.showTeam === next.showTeam
   && prev.done === next.done
   && prev.total === next.total
   && prev.color === next.color
@@ -152,8 +157,11 @@ const CleanerCard = React.memo(function CleanerCard({
 /* ─── Screen ──────────────────────────────────────────────────── */
 export default function TeamScreen({ bottomPad = 0 }) {
   const { t } = useTranslation();
-  const { cleaners, rooms, roomStatus, deleteCleaner, hostelCode, can } = useApp();
+  const { cleaners, rooms, roomStatus, deleteCleaner, hostelCode, can, subscription } = useApp();
   const { registerCleaner, resetCleanerPassword } = useAuth();
+  // Maintenance is Pro+. Without it, don't offer a team that leads to a
+  // locked screen (and, on iOS, to a paid-feature teaser).
+  const maintenanceOn = !!subscription?.proPlus;
 
   const canManageTeam = can('manageTeam');
   const teamSwitch = useTeamSwitch();
@@ -295,6 +303,7 @@ export default function TeamScreen({ bottomPad = 0 }) {
                 pct={pct}
                 t={t}
                 canManage={canManageTeam}
+                showTeam={maintenanceOn}
                 onSwitchTeam={handleSwitchTeam}
                 onReset={openReset}
                 onDelete={openDelete}
@@ -335,6 +344,7 @@ export default function TeamScreen({ bottomPad = 0 }) {
             {t('passwordHint') || `At least ${MIN_PASSWORD} characters.`}
           </Text>
 
+          {maintenanceOn && (
           <View style={{ gap: 8 }}>
             <Text style={styles.fieldLabel}>{t('teamLabel', 'Team')}</Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -364,6 +374,7 @@ export default function TeamScreen({ bottomPad = 0 }) {
                 : t('teamHousekeepingHint', 'They will see the room list and can be assigned rooms.')}
             </Text>
           </View>
+          )}
         </View>
 
         <TouchableOpacity
