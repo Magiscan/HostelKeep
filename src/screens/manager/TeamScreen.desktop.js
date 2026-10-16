@@ -188,6 +188,7 @@ export default function TeamScreen({ onReady }) {
               const total = assignedRooms.length;
               const pct = total ? Math.round((done / total) * 100) : 0;
               const isExpanded = expandedCleaner === c.id;
+              const isMaint = c.team === 'maintenance';
 
               return (
                 <View key={c.id} style={styles.card}>
@@ -197,19 +198,24 @@ export default function TeamScreen({ onReady }) {
                         {c.username?.[0]?.toUpperCase()}
                       </Text>
                     </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
+                    <View style={{ flex: 1, minWidth: 0, gap: 5 }}>
                       <Text style={styles.cleanerName} numberOfLines={1}>{c.username}</Text>
-                      <Text style={styles.roomsLabel}>
-                        {done}/{total} {t('rooms')}
-                      </Text>
+                      <View style={styles.metaRow}>
+                        <TeamSwitchChip
+                          member={c}
+                          variant="small"
+                          disabled={!canManageTeam}
+                          onPress={() => teamSwitch.request(c)}
+                        />
+                        {!isMaint && (
+                          <Text style={styles.roomsLabel} numberOfLines={1}>
+                            {done}/{total} {t('rooms')}
+                          </Text>
+                        )}
+                      </View>
                     </View>
                    {canManageTeam && (
                     <View style={styles.cardBtns}>
-                      <TeamSwitchChip
-                        member={c}
-                        disabled={!canManageTeam}
-                        onPress={() => teamSwitch.request(c)}
-                      />
 
                       <TouchableOpacity
                         onPress={() => openReset(c)}
@@ -231,6 +237,7 @@ export default function TeamScreen({ onReady }) {
                     )}
                   </View>
 
+                  {!isMaint && (<>
                   <View style={styles.track}>
                     <View style={[styles.fill, {
                       width: `${pct}%`,
@@ -278,6 +285,7 @@ export default function TeamScreen({ onReady }) {
                       )}
                     </View>
                   )}
+                  </>)}
                 </View>
               );
             })}
@@ -443,9 +451,10 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.display, fontWeight: '600', fontSize: 17, color: NEUTRAL.text,
   },
   roomsLabel: {
-    marginTop: 2, fontFamily: FONTS.regular, fontSize: 12.5,
+    marginTop: 0, fontFamily: FONTS.regular, fontSize: 12.5,
     color: NEUTRAL.text3, fontVariant: ['tabular-nums'],
   },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
 
   cardBtns: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
 

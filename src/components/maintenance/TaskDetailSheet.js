@@ -23,13 +23,15 @@ import { auth } from '../../firebase';
 import { useApp } from '../../contexts/AppContext';
 import { buildCleanerColors } from '../../utils/cleanerColor';
 import {
-  useMaintenance, useTaskThread, locationLabel, isFinished, isClearedFor,
+  useMaintenance, useTaskThread, locationLabel, isFinished, isClearedFor, MAX_TASK_PHOTOS, MAX_NEW_PHOTOS,
 } from '../../hooks/useMaintenance';
 import {
   Overline, StatusPill, PriorityPill, DuePill, Avatar, ChecklistView,
   PhotoStrip, PhotoViewer, PhotoRetentionNote, PrimaryButton, GhostButton, maintStyles,
 } from './MaintenanceParts';
-import { capturePhoto, photoErrorMessage, formatWhen, confirmDone, ask } from './maintenanceUi';
+import {
+  pickPhotos, choosePhotoSource, photoErrorMessage, formatWhen, confirmDone, ask,
+} from './maintenanceUi';
 
 export default function TaskDetailSheet({ taskId, onClose, onEdit }) {
   const { t } = useTranslation();
@@ -71,10 +73,17 @@ function Body({ task, m, onClose, onEdit }) {
   const status = (next, extra) => run(() => m.setStatus(task, next, extra));
 
   const onAddPhoto = async () => {
-    setAdding(true);
+    const left = MAX_TASK_PHOTOS - photos.length;
+    if (left <= 0) return;
     try {
-      const b64 = await capturePhoto();
-      if (b64) await addPhoto(b64, task.status === 'done' ? 'fix' : 'progress');
+      const source = await choosePhotoSource(t);
+      if (!source) return;
+      setAdding(true);
+      const picked = await pickPhotos({ source, limit: Math.min(left, MAX_NEW_PHOTOS) });
+      for (const b64 of picked) {
+        // eslint-disable-next-line no-await-in-loop
+        await addPhoto(b64, task.status === 'done' ? 'fix' : 'progress');
+      }
     } catch (e) {
       Alert.alert(t('error', 'Error'), photoErrorMessage(e, t));
     } finally {
@@ -174,7 +183,7 @@ function Body({ task, m, onClose, onEdit }) {
             <PhotoStrip
               photos={photos}
               onOpen={(_, p) => setViewer(p)}
-              onAdd={canWork ? onAddPhoto : undefined}
+              onAdd={canWork && photos.length < MAX_TASK_PHOTOS ? onAddPhoto : undefined}
               adding={adding}
             />
             <PhotoRetentionNote task={task} />

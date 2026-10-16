@@ -18,7 +18,7 @@ import Icon from '../../components/Icon';
 import { useApp } from '../../contexts/AppContext';
 import { buildCleanerColors, fallbackCleanerColor } from '../../utils/cleanerColor';
 import {
-  useMaintenance, useTaskThread, locationLabel, PRIORITIES, isOverdue,
+  useMaintenance, useTaskThread, locationLabel, PRIORITIES, isOverdue, MAX_TASK_PHOTOS, MAX_NEW_PHOTOS,
   isFinished, isClearedFor,
 } from '../../hooks/useMaintenance';
 import { FONTS } from '../../theme/typography';
@@ -30,10 +30,11 @@ import { Drawer, FieldLabel, ConfirmDialog, drawerStyles as d } from '../../comp
 import {
   StatusPill, PriorityPill, DuePill, AvatarStack, Avatar, Chip, LocationPicker,
   ChecklistEditor, ChecklistView, PhotoStrip, PhotoViewer, PhotoRetentionNote, PhotoCleanupBanner,
+  NewPhotosField,
 } from '../../components/maintenance/MaintenanceParts';
 import {
   PRIORITY_LOOK, useTaskForm, dueOptions, priorityLabel, statusLabel, formatWhen,
-  capturePhoto, photoErrorMessage,
+  pickPhotos, photoErrorMessage,
 } from '../../components/maintenance/maintenanceUi';
 
 // 'current' is the working view: everything open, plus finished tasks that
@@ -378,7 +379,7 @@ function TaskDrawer({ task, isNew, onClose, colors, onConfirmDone }) {
     : f.values;
 
   const save = () => run(() => (isNew
-    ? m.createTask({ ...f.values, photoBase64: f.photoBase64 })
+    ? m.createTask({ ...f.values, photos: f.photos })
     : m.updateTask(task, values)));
 
   const title = isNew
@@ -395,15 +396,6 @@ function TaskDrawer({ task, isNew, onClose, colors, onConfirmDone }) {
     ? t('saving', 'Saving…')
     : isNew ? t('maint.createTask', 'Create task')
       : triage && f.assignees.length ? t('maint.assignAndSend', 'Assign & notify') : t('save', 'Save');
-
-  const pickPhoto = async () => {
-    try {
-      const b64 = await capturePhoto();
-      if (b64) f.setPhotoBase64(b64);
-    } catch (e) {
-      setError(photoErrorMessage(e, t));
-    }
-  };
 
   return (
     <>
@@ -577,17 +569,8 @@ function TaskDrawer({ task, isNew, onClose, colors, onConfirmDone }) {
 
             {isNew && (
               <View>
-                <FieldLabel>{t('maint.photo', 'Photo')}</FieldLabel>
-                {f.photoBase64 ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <PhotoStrip photos={[{ id: 'new', data: f.photoBase64 }]} onOpen={() => {}} />
-                    <TouchableOpacity onPress={() => f.setPhotoBase64(null)}>
-                      <Text style={[styles.hint, { color: COLORS.danger }]}>{t('removePhoto', 'Remove photo')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  <Chip label={t('maint.uploadPhoto', 'Upload a photo')} icon="upload" onPress={pickPhoto} />
-                )}
+                <FieldLabel>{t('maint.photos', 'Photos')}</FieldLabel>
+                <NewPhotosField photos={f.photos} onChange={f.setPhotos} onError={setError} />
               </View>
             )}
           </>
@@ -648,11 +631,16 @@ function Activity({ task }) {
   };
 
   const onAddPhoto = async () => {
+    const left = MAX_TASK_PHOTOS - photos.length;
+    if (left <= 0) return;
     setAdding(true);
     setError('');
     try {
-      const b64 = await capturePhoto();
-      if (b64) await addPhoto(b64, task.status === 'done' ? 'fix' : 'progress');
+      const picked = await pickPhotos({ source: 'library', limit: Math.min(left, MAX_NEW_PHOTOS) });
+      for (const b64 of picked) {
+        // eslint-disable-next-line no-await-in-loop
+        await addPhoto(b64, task.status === 'done' ? 'fix' : 'progress');
+      }
     } catch (e) {
       setError(photoErrorMessage(e, t));
     } finally {
@@ -667,7 +655,7 @@ function Activity({ task }) {
         <PhotoStrip
           photos={photos}
           onOpen={(_, p) => setViewer(p)}
-          onAdd={m.canManage && task.status !== 'reported' ? onAddPhoto : undefined}
+          onAdd={m.canManage && task.status !== 'reported' && photos.length < MAX_TASK_PHOTOS ? onAddPhoto : undefined}
           adding={adding}
         />
         {photos.length === 0 && !m.canManage && <Text style={styles.hint}>—</Text>}

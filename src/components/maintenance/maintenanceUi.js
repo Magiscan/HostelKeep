@@ -166,27 +166,64 @@ export const sortRooms = (rooms = []) =>
    app.json); the web build opens a file picker instead.
    Throws Error('camera-permission') or Error('photo-too-large'). */
 
-export async function capturePhoto() {
-  let result;
-  if (Platform.OS === 'web') {
-    result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
-  } else {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') throw new Error('camera-permission');
-    result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1, exif: false });
-  }
-  if (result.canceled || !result.assets?.length) return null;
-
-  const { uri, width = 0, height = 0 } = result.assets[0];
+/** One picked image → resized JPEG base64 (≤1280 px), or null if too large. */
+async function shrink(asset) {
+  const { uri, width = 0, height = 0 } = asset;
   const resize = width >= height ? { width: 1280 } : { height: 1280 };
   const out = await ImageManipulator.manipulateAsync(uri, [{ resize }], {
     compress: 0.6,
     format: ImageManipulator.SaveFormat.JPEG,
     base64: true,
   });
-  if (!out?.base64) return null;
-  if (out.base64.length >= MAX_PHOTO_CHARS) throw new Error('photo-too-large');
+  if (!out?.base64 || out.base64.length >= MAX_PHOTO_CHARS) return null;
   return out.base64;
+}
+
+/** Camera (one photo) or gallery (up to `limit`). Resolves to a list of
+    base64 JPEGs, empty if cancelled. The gallery uses the system photo
+    picker, which needs no storage permission on Android 13+ or iOS. */
+export async function pickPhotos({ source = 'camera', limit = 1 } = {}) {
+  const max = Math.max(1, limit);
+  let result;
+  if (Platform.OS === 'web' || source === 'library') {
+    result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'], quality: 1,
+      allowsMultipleSelection: max > 1, selectionLimit: max,
+    });
+  } else {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') throw new Error('camera-permission');
+    result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 1, exif: false });
+  }
+  if (result.canceled || !result.assets?.length) return [];
+
+  const out = [];
+  let tooLarge = 0;
+  for (const asset of result.assets.slice(0, max)) {
+    // eslint-disable-next-line no-await-in-loop
+    const b64 = await shrink(asset);
+    if (b64) out.push(b64); else tooLarge += 1;
+  }
+  if (!out.length && tooLarge) throw new Error('photo-too-large');
+  return out;
+}
+
+/** One photo: the camera on a phone, a file in a browser. */
+export async function capturePhoto() {
+  const [b64] = await pickPhotos({ source: 'camera', limit: 1 });
+  return b64 || null;
+}
+
+/** Phone: "Take a photo" or "Choose from gallery". Web: always the file picker. */
+export function choosePhotoSource(t) {
+  if (Platform.OS === 'web') return Promise.resolve('library');
+  return new Promise((resolve) => {
+    Alert.alert(t('maint.addPhotoTitle', 'Add a photo'), undefined, [
+      { text: t('cancel', 'Cancel'), style: 'cancel', onPress: () => resolve(null) },
+      { text: t('maint.fromGallery', 'Gallery'), onPress: () => resolve('library') },
+      { text: t('maint.fromCamera', 'Camera'), onPress: () => resolve('camera') },
+    ], { cancelable: true, onDismiss: () => resolve(null) });
+  });
 }
 
 export function photoErrorMessage(e, t) {
@@ -209,7 +246,7 @@ export function useTaskForm(task) {
   const [dueAt, setDueAt] = useState(task?.dueAt || null);
   const [assignees, setAssignees] = useState(task?.assignees || []);
   const [checklist, setChecklist] = useState(task?.checklist || []);
-  const [photoBase64, setPhotoBase64] = useState(null); // create only
+  const [photos, setPhotos] = useState([]); // create only: base64 JPEGs, ≤ MAX_NEW_PHOTOS
 
   const toggleAssignee = useCallback((id) => {
     setAssignees(prev => (prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id].slice(0, 6)));
@@ -244,7 +281,7 @@ export function useTaskForm(task) {
     dueAt, setDueAt,
     assignees, toggleAssignee,
     checklist, addItem, removeItem,
-    photoBase64, setPhotoBase64,
+    photos, setPhotos,
     values,
     valid: title.trim().length > 0,
   };

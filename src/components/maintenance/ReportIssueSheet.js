@@ -6,16 +6,14 @@
 
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, ScrollView, Image, Switch, TouchableOpacity, Alert, StyleSheet,
+  View, Text, TextInput, ScrollView, Switch, Alert, StyleSheet,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import BottomSheet from '../BottomSheet';
-import Icon from '../Icon';
 import { FONTS } from '../../theme/typography';
 import { BRAND, NEUTRAL } from '../../theme/tokens';
 import { COLORS } from '../../theme/colors';
-import { LocationPicker, Overline, PrimaryButton, maintStyles } from './MaintenanceParts';
-import { capturePhoto, photoErrorMessage } from './maintenanceUi';
+import { LocationPicker, Overline, PrimaryButton, NewPhotosField, maintStyles } from './MaintenanceParts';
 
 export default function ReportIssueSheet({ visible, onClose, rooms, onSubmit, onSent }) {
   const { t } = useTranslation();
@@ -23,7 +21,7 @@ export default function ReportIssueSheet({ visible, onClose, rooms, onSubmit, on
   const [title, setTitle] = useState('');
   const [details, setDetails] = useState('');
   const [urgent, setUrgent] = useState(false);
-  const [photo, setPhoto] = useState(null);
+  const [photos, setPhotos] = useState([]);
   const [busy, setBusy] = useState(false);
 
   const reset = () => {
@@ -31,22 +29,13 @@ export default function ReportIssueSheet({ visible, onClose, rooms, onSubmit, on
     setTitle('');
     setDetails('');
     setUrgent(false);
-    setPhoto(null);
+    setPhotos([]);
   };
 
   const close = () => {
     if (busy) return;
     reset();
     onClose();
-  };
-
-  const takePhoto = async () => {
-    try {
-      const b64 = await capturePhoto();
-      if (b64) setPhoto(b64);
-    } catch (e) {
-      Alert.alert(t('error', 'Error'), photoErrorMessage(e, t));
-    }
   };
 
   const hasPlace = where.places.length > 0 || !!where.area?.trim();
@@ -62,7 +51,7 @@ export default function ReportIssueSheet({ visible, onClose, rooms, onSubmit, on
         places: where.places,
         area: where.area,
         priority: urgent ? 'urgent' : 'medium',
-        photoBase64: photo,
+        photos,
       });
       reset();
       onClose();
@@ -119,25 +108,8 @@ export default function ReportIssueSheet({ visible, onClose, rooms, onSubmit, on
         </View>
 
         <View>
-          <Overline>{t('maint.photo', 'Photo')}</Overline>
-          {photo ? (
-            <View style={styles.photoRow}>
-              <Image source={{ uri: `data:image/jpeg;base64,${photo}` }} style={styles.photo} />
-              <View style={{ flex: 1, gap: 8 }}>
-                <TouchableOpacity onPress={takePhoto} activeOpacity={0.8}>
-                  <Text style={styles.link}>{t('cleanerScreen.changePhoto', 'Change photo')}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setPhoto(null)} activeOpacity={0.8}>
-                  <Text style={[styles.link, { color: COLORS.danger }]}>{t('removePhoto', 'Remove photo')}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <TouchableOpacity onPress={takePhoto} style={styles.photoBtn} activeOpacity={0.85}>
-              <Icon name="photo_camera" size={22} color={BRAND.navy} />
-              <Text style={styles.photoBtnText}>{t('cleanerScreen.addPhoto', 'Add a photo')}</Text>
-            </TouchableOpacity>
-          )}
+          <Overline>{t('maint.photos', 'Photos')}</Overline>
+          <NewPhotosField photos={photos} onChange={setPhotos} />
         </View>
 
         <View style={styles.urgentRow}>
@@ -173,14 +145,6 @@ const styles = StyleSheet.create({
   body: { gap: 18, paddingBottom: 24 },
   title: { fontFamily: FONTS.display, fontSize: 22, color: BRAND.navy },
   sub: { fontFamily: FONTS.regular, fontSize: 14, color: NEUTRAL.text2, marginTop: 4 },
-  photoBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    padding: 14, borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed', borderColor: NEUTRAL.text4,
-  },
-  photoBtnText: { fontFamily: FONTS.medium, fontSize: 15, color: BRAND.navy },
-  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  photo: { width: 96, height: 96, borderRadius: 12 },
-  link: { fontFamily: FONTS.semiBold, fontSize: 14.5, color: BRAND.navy },
   urgentRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     padding: 14, borderRadius: 14, backgroundColor: NEUTRAL.slateChip,

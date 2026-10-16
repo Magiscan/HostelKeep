@@ -8,7 +8,7 @@
 
 import React, { useMemo, useState } from 'react';
 import {
-  View, Text, TextInput, ScrollView, Image, TouchableOpacity, Alert, StyleSheet,
+  View, Text, TextInput, ScrollView, TouchableOpacity, Alert, StyleSheet,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import BottomSheet from '../BottomSheet';
@@ -20,10 +20,10 @@ import { useApp } from '../../contexts/AppContext';
 import { buildCleanerColors, fallbackCleanerColor } from '../../utils/cleanerColor';
 import { useMaintenance, PRIORITIES } from '../../hooks/useMaintenance';
 import {
-  Overline, Chip, LocationPicker, ChecklistEditor, Avatar, PrimaryButton, maintStyles,
+  Overline, Chip, LocationPicker, ChecklistEditor, Avatar, PrimaryButton, NewPhotosField, maintStyles,
 } from './MaintenanceParts';
 import {
-  useTaskForm, priorityLabel, capturePhoto, photoErrorMessage,
+  useTaskForm, priorityLabel,
 } from './maintenanceUi';
 import DueDatePicker from './DueDatePicker';
 
@@ -47,7 +47,7 @@ export default function TaskFormSheet({ task = null, onClose, onSaved }) {
         const checklist = f.checklist.map(i => ({ ...i, done: live.find(x => x.id === i.id)?.done ?? i.done }));
         await m.updateTask(task, { ...f.values, checklist });
       } else {
-        await m.createTask({ ...f.values, photoBase64: f.photoBase64 });
+        await m.createTask({ ...f.values, photos: f.photos });
       }
       onSaved?.();
       onClose();
@@ -55,15 +55,6 @@ export default function TaskFormSheet({ task = null, onClose, onSaved }) {
       Alert.alert(t('error', 'Error'), e.message);
     } finally {
       setBusy(false);
-    }
-  };
-
-  const takePhoto = async () => {
-    try {
-      const b64 = await capturePhoto();
-      if (b64) f.setPhotoBase64(b64);
-    } catch (e) {
-      Alert.alert(t('error', 'Error'), photoErrorMessage(e, t));
     }
   };
 
@@ -155,15 +146,8 @@ export default function TaskFormSheet({ task = null, onClose, onSaved }) {
 
         {!task && (
           <View>
-            <Overline>{t('maint.photo', 'Photo')}</Overline>
-            {f.photoBase64 ? (
-              <TouchableOpacity onPress={() => f.setPhotoBase64(null)} activeOpacity={0.8} style={styles.photoRow}>
-                <Image source={{ uri: `data:image/jpeg;base64,${f.photoBase64}` }} style={styles.photo} />
-                <Text style={[styles.hint, { color: COLORS.danger }]}>{t('removePhoto', 'Remove photo')}</Text>
-              </TouchableOpacity>
-            ) : (
-              <Chip label={t('cleanerScreen.addPhoto', 'Add a photo')} icon="photo_camera" onPress={takePhoto} />
-            )}
+            <Overline>{t('maint.photos', 'Photos')}</Overline>
+            <NewPhotosField photos={f.photos} onChange={f.setPhotos} />
           </View>
         )}
 
@@ -185,6 +169,4 @@ const styles = StyleSheet.create({
   personRowOn: { borderColor: COLORS.success, backgroundColor: COLORS.successLight },
   personName: { fontFamily: FONTS.semiBold, fontSize: 15, color: NEUTRAL.text },
   personTeam: { fontFamily: FONTS.regular, fontSize: 12.5, color: NEUTRAL.text3 },
-  photoRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  photo: { width: 72, height: 72, borderRadius: 12 },
 });

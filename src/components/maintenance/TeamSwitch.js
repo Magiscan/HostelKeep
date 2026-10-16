@@ -21,7 +21,9 @@
 // the database answers permission-denied — the dialog says that plainly.
 
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import {
+  View, Text, TouchableOpacity, Modal, Pressable, StyleSheet, ActivityIndicator, Platform,
+} from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -127,18 +129,62 @@ export function useTeamSwitch() {
   return { request: (m) => { setError(''); setMember(m); }, dialog };
 }
 
-/** The chip on a member row: shows the current team; tapping asks to switch. */
-export function TeamSwitchChip({ member, onPress, disabled }) {
+/** The control on a member row: shows the current team; tapping asks to
+    switch.
+      variant="small"  a low labelled chip that sits UNDER the member's name
+                       (what the Team screens use — next to the buttons it
+                       squeezed the name until it was cut off or wrapped one
+                       letter per line)
+      variant="icon"   a square button the size of a row's icon buttons
+      variant="chip"   the full labelled chip
+    Without a variant: icon on phones, chip on the web.
+    Hidden without Pro+ (Maintenance is a Pro+ feature, so it isn't shown or
+    offered in the store builds), except for someone already on Maintenance,
+    who can still be moved back. */
+export function TeamSwitchChip({ member, onPress, disabled, variant }) {
   const { t } = useTranslation();
+  const { subscription } = useApp();
   const maint = teamOf(member) === 'maintenance';
+  if (!subscription?.proPlus && !maint) return null;
+
+  const label = maint ? t('maint.teamMaintenance', 'Maintenance') : t('maint.teamHousekeeping', 'Housekeeping');
+  const compact = (variant || (Platform.OS === 'web' ? 'chip' : 'icon')) === 'icon';
+  const a11y = `${label}. ${t('teamSwitchA11y', 'Change team')}`;
+
+  if (variant === 'small') {
+    return (
+      <TouchableOpacity onPress={onPress} disabled={disabled} activeOpacity={0.8}
+        style={[s.mini, maint && s.chipMaint, disabled && s.miniStatic]}
+        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+        accessibilityRole="button" accessibilityLabel={a11y}>
+        <Icon name={maint ? 'build' : 'cleaning_services'} size={13} color={maint ? '#FFFFFF' : BRAND.navy} />
+        <Text style={[s.miniText, maint && { color: '#FFFFFF' }]} numberOfLines={1}>{label}</Text>
+        {!disabled && <Icon name="swap_horiz" size={13} color={maint ? '#FFFFFF' : NEUTRAL.text3} />}
+      </TouchableOpacity>
+    );
+  }
+
+  if (compact) {
+    return (
+      <TouchableOpacity onPress={onPress} disabled={disabled} activeOpacity={0.8}
+        style={[s.square, maint && s.chipMaint, disabled && { opacity: 0.5 }]}
+        accessibilityRole="button" accessibilityLabel={a11y}>
+        <Icon name={maint ? 'build' : 'cleaning_services'} size={22} color={maint ? '#FFFFFF' : BRAND.navy} />
+        {!disabled && (
+          <View style={[s.swapBadge, maint && s.swapBadgeMaint]}>
+            <Icon name="swap_horiz" size={11} color={maint ? BRAND.navy : '#FFFFFF'} />
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <TouchableOpacity onPress={onPress} disabled={disabled} activeOpacity={0.8}
       style={[s.chip, maint && s.chipMaint, disabled && { opacity: 0.5 }]}
-      accessibilityLabel={t('teamSwitchA11y', 'Change team')}>
+      accessibilityRole="button" accessibilityLabel={a11y}>
       <Icon name={maint ? 'build' : 'cleaning_services'} size={16} color={maint ? '#FFFFFF' : BRAND.navy} />
-      <Text style={[s.chipText, maint && { color: '#FFFFFF' }]}>
-        {maint ? t('maint.teamMaintenance', 'Maintenance') : t('maint.teamHousekeeping', 'Housekeeping')}
-      </Text>
+      <Text style={[s.chipText, maint && { color: '#FFFFFF' }]} numberOfLines={1}>{label}</Text>
       {!disabled && <Icon name="swap_horiz" size={16} color={maint ? '#FFFFFF' : NEUTRAL.text3} />}
     </TouchableOpacity>
   );
@@ -164,9 +210,27 @@ const s = StyleSheet.create({
   primary: { backgroundColor: BRAND.navy },
   primaryText: { fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 15, color: '#FFFFFF' },
   chip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7,
+    flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7,
     borderRadius: 999, borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
   },
   chipMaint: { backgroundColor: BRAND.navy, borderColor: BRAND.navy },
+  square: {
+    width: 48, height: 48, flexShrink: 0, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+  },
+  swapBadge: {
+    position: 'absolute', right: -4, bottom: -4, width: 18, height: 18, borderRadius: 9,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: BRAND.navy,
+    borderWidth: 2, borderColor: NEUTRAL.surface,
+  },
+  swapBadgeMaint: { backgroundColor: BRAND.yellow },
+  mini: {
+    alignSelf: 'flex-start', flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 4,
+    height: 24, paddingHorizontal: 8, borderRadius: 999,
+    borderWidth: 1, borderColor: NEUTRAL.border, backgroundColor: NEUTRAL.surface,
+  },
+  // Read-only (no permission to switch): a label, not a faded button.
+  miniStatic: { opacity: 1 },
+  miniText: { flexShrink: 1, fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 12, color: BRAND.navy },
   chipText: { fontFamily: FONTS.semiBold, fontWeight: '600', fontSize: 13, color: BRAND.navy },
 });

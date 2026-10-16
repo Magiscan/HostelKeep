@@ -22,6 +22,7 @@
       "infoPlist": {
         "NSCameraUsageDescription": "HostelKeep uses your camera to take a profile photo, a photo for an extra-room request, or a photo of a maintenance issue.",
         "NSPhotoLibraryUsageDescription": "HostelKeep lets you choose a profile photo, a hostel logo, or a photo of a maintenance issue from your photos.",
+        "NSPhotoLibraryAddUsageDescription": "HostelKeep saves maintenance photos to your photo library when you choose Save Image.",
         "ITSAppUsesNonExemptEncryption": false
       },
       "privacyManifests": {

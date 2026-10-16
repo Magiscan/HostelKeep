@@ -89,24 +89,24 @@ const CleanerCard = React.memo(function CleanerCard({
           </Text>
         </View>
 
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ flex: 1, minWidth: 0, gap: 6 }}>
           <Text style={styles.name} numberOfLines={1}>{cleaner.username}</Text>
-          <Text style={styles.roomsLabel}>
-            {total === 0
-              ? (t('noRoomsAssigned') || 'No rooms assigned')
-              : `${done}/${total} ${t('rooms')}`}
-          </Text>
+          {(showTeam || cleaner.team === 'maintenance') && (
+            <TeamSwitchChip
+              member={cleaner}
+              variant="small"
+              disabled={!canManage}
+              onPress={() => onSwitchTeam(cleaner)}
+            />
+          )}
+          {cleaner.team !== 'maintenance' && (
+            <Text style={styles.roomsLabel}>
+              {total === 0
+                ? (t('noRoomsAssigned') || 'No rooms assigned')
+                : `${done}/${total} ${t('rooms')}`}
+            </Text>
+          )}
         </View>
-
-        {/* Pro+ only. Someone already on maintenance keeps the chip so they
-            can be moved back if the plan lapses. */}
-        {(showTeam || cleaner.team === 'maintenance') && (
-          <TeamSwitchChip
-            member={cleaner}
-            disabled={!canManage}
-            onPress={() => onSwitchTeam(cleaner)}
-          />
-        )}
 
         <TouchableOpacity
           onPress={() => onReset(cleaner)}
@@ -128,7 +128,7 @@ const CleanerCard = React.memo(function CleanerCard({
       </View>
 
       {/* Progress — only meaningful once they have rooms */}
-      {total > 0 && (
+      {total > 0 && cleaner.team !== 'maintenance' && (
         <View style={styles.track}>
           <View
             style={[

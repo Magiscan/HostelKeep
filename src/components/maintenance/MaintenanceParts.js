@@ -20,8 +20,10 @@ import {
   photosDeleteAt, photosExpiringSoon, PHOTO_RETENTION_DAYS, PHOTO_WARNING_DAYS,
 } from '../../utils/photoRetention';
 import { savePhoto } from './savePhoto';
+import { MAX_NEW_PHOTOS } from '../../hooks/useMaintenance';
 import {
   STATUS_LOOK, PRIORITY_LOOK, statusLabel, priorityLabel, dueInfo, sortRooms,
+  pickPhotos, choosePhotoSource, photoErrorMessage,
 } from './maintenanceUi';
 
 /* ─── Labels ──────────────────────────────────────────────────── */
@@ -361,7 +363,7 @@ export function PhotoStrip({ photos = [], onOpen, onAdd, adding }) {
   );
 }
 
-export function PhotoViewer({ base64, onClose, name, at }) {
+export function PhotoViewer({ base64, onClose, name, at, canSave = true }) {
   const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
 
@@ -387,7 +389,7 @@ export function PhotoViewer({ base64, onClose, name, at }) {
           accessibilityLabel={t('close', 'Close')}>
           <Icon name="close" size={24} color="#FFFFFF" />
         </TouchableOpacity>
-        {!!base64 && (
+        {!!base64 && canSave && (
           <TouchableOpacity onPress={save} disabled={saving} style={[s.lightboxSave, saving && { opacity: 0.6 }]} activeOpacity={0.85}>
             {saving
               ? <ActivityIndicator color={BRAND.navy} />
@@ -397,6 +399,77 @@ export function PhotoViewer({ base64, onClose, name, at }) {
         )}
       </View>
     </Modal>
+  );
+}
+
+/* ─── Photos picked for a new task or report ─────────────────────
+   Thumbnails you can open full-screen or remove, plus an "Add photo" tile
+   (camera or gallery on a phone, several at once from the gallery). */
+
+export function NewPhotosField({ photos = [], onChange, max = MAX_NEW_PHOTOS, onError }) {
+  const { t } = useTranslation();
+  const [viewer, setViewer] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const left = max - photos.length;
+
+  const fail = (e) => {
+    const msg = photoErrorMessage(e, t);
+    if (onError) onError(msg); else Alert.alert(t('error', 'Error'), msg);
+  };
+
+  const add = async () => {
+    if (left <= 0) return;
+    try {
+      const source = await choosePhotoSource(t);
+      if (!source) return;
+      setAdding(true);
+      const picked = await pickPhotos({ source, limit: left });
+      if (picked.length) onChange([...photos, ...picked].slice(0, max));
+    } catch (e) {
+      fail(e);
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  return (
+    <View style={{ gap: 6 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.newPhotos}>
+        {photos.map((b64, i) => (
+          <View key={`${i}-${b64.length}`} style={s.newPhotoWrap}>
+            <TouchableOpacity onPress={() => setViewer(b64)} activeOpacity={0.85}
+              accessibilityLabel={t('maint.viewPhoto', 'View photo')}>
+              <Image source={{ uri: dataUri(b64) }} style={s.newPhoto} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => onChange(photos.filter((_, j) => j !== i))}
+              style={s.newPhotoRemove}
+              hitSlop={8}
+              activeOpacity={0.8}
+              accessibilityLabel={t('removePhoto', 'Remove photo')}
+            >
+              <Icon name="close" size={14} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        ))}
+        {left > 0 && (
+          <TouchableOpacity onPress={add} disabled={adding} style={[s.newPhoto, s.thumbAdd]} activeOpacity={0.8}>
+            {adding
+              ? <ActivityIndicator color={BRAND.navy} />
+              : <Icon name="add_a_photo" size={24} color={BRAND.navy} />}
+            <Text style={s.thumbAddText}>
+              {photos.length ? `${photos.length}/${max}` : t('maint.addPhotoShort', 'Photo')}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </ScrollView>
+      <Text style={s.newPhotosHint}>
+        {left > 0
+          ? t('maint.photosUpTo', 'Up to {{max}} photos. Tap one to see it.', { max })
+          : t('maint.photosMax', 'That\'s the maximum of {{max}} photos.', { max })}
+      </Text>
+      <PhotoViewer base64={viewer} canSave={false} onClose={() => setViewer(null)} />
+    </View>
   );
 }
 
@@ -608,6 +681,15 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 8,
     height: 48, paddingHorizontal: 22, borderRadius: 24, backgroundColor: BRAND.yellow,
   },
+  newPhotos: { gap: 10, paddingTop: 6, paddingRight: 6 },
+  newPhotoWrap: { position: 'relative' },
+  newPhoto: { width: 84, height: 84, borderRadius: 12 },
+  newPhotoRemove: {
+    position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: 12,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: BRAND.navy,
+    borderWidth: 2, borderColor: NEUTRAL.surface,
+  },
+  newPhotosHint: { fontFamily: FONTS.regular, fontSize: 12.5, color: NEUTRAL.text3 },
   lightboxSaveText: { fontFamily: FONTS.semiBold, fontSize: 15, color: BRAND.navy },
   retention: {
     flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8,

@@ -21,7 +21,7 @@ import path from 'path';
 import {
   PRIORITIES, ACTIVE_STATUSES, CLOSED_STATUSES, WORK_STATUSES, MAX_PHOTO_CHARS,
   normaliseChecklist, isClearedFor, isFinished, isOverdue, locationLabel, compareTasks,
-  normalisePlaces, placesOf, MAX_PLACES,
+  normalisePlaces, placesOf, MAX_PLACES, newPhotosOf, MAX_NEW_PHOTOS, MAX_TASK_PHOTOS,
 } from '../../src/hooks/useMaintenance';
 
 const NOW = new Date(2026, 9, 12, 12, 0).getTime();
@@ -128,6 +128,28 @@ describe('several rooms and beds', () => {
     expect(out[0]).toEqual({ roomId: 'r1', beds: ['A'] });
     expect(out[1]).toEqual({ roomId: 'r2', beds: [] });
     expect(out).toHaveLength(MAX_PLACES);
+  });
+});
+
+describe('photos attached when creating', () => {
+  test('a list of photos, at most 5', () => {
+    const many = Array.from({ length: 8 }, (_, i) => `photo${i}`);
+    expect(newPhotosOf({ photos: many })).toEqual(many.slice(0, MAX_NEW_PHOTOS));
+    expect(MAX_NEW_PHOTOS).toBe(5);
+  });
+
+  test('empty entries are dropped', () => {
+    expect(newPhotosOf({ photos: ['a', '', null, undefined, 'b'] })).toEqual(['a', 'b']);
+  });
+
+  test('the older single-photo field still works', () => {
+    expect(newPhotosOf({ photoBase64: 'only' })).toEqual(['only']);
+    expect(newPhotosOf({ photoBase64: null })).toEqual([]);
+    expect(newPhotosOf({})).toEqual([]);
+  });
+
+  test('a task can collect more over time than at creation', () => {
+    expect(MAX_TASK_PHOTOS).toBeGreaterThan(MAX_NEW_PHOTOS);
   });
 });
 

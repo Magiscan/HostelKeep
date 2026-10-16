@@ -20,6 +20,7 @@
 //   dueAt        ms | null
 //   checklist    [{ id, text, done }] ≤30
 //   photoCount   number              photos live in ./photos, never inline
+//                                   (≤5 when created, ≤12 in total — client side)
 //   startedAt, doneAt  ms | null
 //   doneBy       uid | null
 //   holdReason   string | null ≤200 "Waiting for the plumber"
@@ -61,6 +62,15 @@ export const WORK_STATUSES = ['open', 'in_progress', 'on_hold', 'done'];
 
 // Same ceiling as extra requests; the rules reject at 700 000 characters.
 export const MAX_PHOTO_CHARS = 700000;
+// Photos attached when a task or report is created (one write, well under
+// Firestore's 10 MB request limit), and the most a task collects in total.
+export const MAX_NEW_PHOTOS = 5;
+export const MAX_TASK_PHOTOS = 12;
+
+/** fields.photos (list) or the older fields.photoBase64 → up to 5 photos. */
+export const newPhotosOf = (fields) => (Array.isArray(fields?.photos) ? fields.photos : [fields?.photoBase64])
+  .filter(p => typeof p === 'string' && p.length > 0)
+  .slice(0, MAX_NEW_PHOTOS);
 
 const PRIORITY_RANK = { urgent: 3, high: 2, medium: 1, low: 0 };
 
@@ -185,7 +195,7 @@ function buildTask(fields, { status, reportedBy, now }) {
     reportedAt: now,
     dueAt: Number.isFinite(fields.dueAt) ? fields.dueAt : null,
     checklist: normaliseChecklist(fields.checklist),
-    photoCount: fields.photoBase64 ? 1 : 0,
+    photoCount: newPhotosOf(fields).length,
     startedAt: null,
     doneAt: null,
     doneBy: null,
@@ -359,7 +369,8 @@ function useMaintenanceData() {
     if (!str(fields?.title, 120)) {
       throw new Error(tr('maintTitleRequired', 'Describe the problem in a few words.'));
     }
-    checkPhoto(fields.photoBase64);
+    const photos = newPhotosOf(fields);
+    photos.forEach(checkPhoto);
 
     const now = Date.now();
     const ref = doc(tasksCol(hostelCode));
@@ -371,11 +382,10 @@ function useMaintenanceData() {
 
     const batch = writeBatch(db);
     batch.set(ref, data);
-    if (fields.photoBase64) {
-      batch.set(doc(collection(ref, 'photos')), {
-        data: fields.photoBase64, by: uid, at: now, kind: 'report',
-      });
-    }
+    // at: now + i keeps them in the order they were added.
+    photos.forEach((data, i) => batch.set(doc(collection(ref, 'photos')), {
+      data, by: uid, at: now + i, kind: 'report',
+    }));
     await batch.commit();
 
     const where_ = locationLabel(data, rooms);
@@ -403,7 +413,8 @@ function useMaintenanceData() {
     if (!str(fields?.title, 120)) {
       throw new Error(tr('maintTitleRequired', 'Describe the problem in a few words.'));
     }
-    checkPhoto(fields.photoBase64);
+    const photos = newPhotosOf(fields);
+    photos.forEach(checkPhoto);
 
     const now = Date.now();
     const ref = doc(tasksCol(hostelCode));
@@ -411,11 +422,10 @@ function useMaintenanceData() {
 
     const batch = writeBatch(db);
     batch.set(ref, data);
-    if (fields.photoBase64) {
-      batch.set(doc(collection(ref, 'photos')), {
-        data: fields.photoBase64, by: uid, at: now, kind: 'report',
-      });
-    }
+    // at: now + i keeps them in the order they were added.
+    photos.forEach((data, i) => batch.set(doc(collection(ref, 'photos')), {
+      data, by: uid, at: now + i, kind: 'report',
+    }));
     await batch.commit();
 
     pushAssigned(data.assignees, data, ref.id);
